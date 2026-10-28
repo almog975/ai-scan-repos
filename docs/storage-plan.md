@@ -10,7 +10,7 @@
 
 * **local**: local-path ignores `mountOptions`, so noexec is **not enforced** (dev only).
   Mitigation: pods run as uid 10001 with readOnlyRootFilesystem, drop ALL caps and no privilege escalation; nothing is ever executed from /reports.
-* **k3s**: a static `local` PV (`deploy/platform/overlays/k3s/reports-pv.yaml`) on a host
+* **k3s**: a static `local` PV (`infra/bootstrap/overlays/k3s/reports-pv.yaml`, applied by the installer, bound via PVC `volumeName`) on a host
   directory that is itself mounted noexec. Host prep, which `infra/installer/scripts/install-ssh-k3s.sh` does:
   ```bash
   mkdir -p /srv/ai-scan/reports

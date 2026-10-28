@@ -1,6 +1,6 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-resources: [../../base, efs-storageclass.yaml]
+resources: [../../base]  # StorageClass efs-sc: infra/bootstrap/overlays/eks
 patches:
   - target: {kind: PersistentVolumeClaim, name: reports}
     patch: |

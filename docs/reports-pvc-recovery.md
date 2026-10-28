@@ -4,7 +4,7 @@
 > build box. Run `infra/scripts/verify-reports-pvc-restart.sh` on/against K3S-SRV and record the result here.
 
 ## K3s: static local PV `ai-scan-reports-pv` (StorageClass `reports-local`)
-Defined in `deploy/platform/overlays/k3s/reports-pv.yaml`: a `local:` volume at `/srv/ai-scan/reports`
+Defined in `infra/bootstrap/overlays/k3s/reports-pv.yaml` (applied by the installer with `kubectl apply -k infra/bootstrap/overlays/k3s`, not by Argo CD; the PVC in `deploy/platform/overlays/k3s` pins it via `volumeName`): a `local:` volume at `/srv/ai-scan/reports`
 (not `hostPath`, but same idea: a directory on the node's disk), pinned by `nodeAffinity` to one node,
 `persistentVolumeReclaimPolicy: Retain` (already set; StorageClass also `reclaimPolicy: Retain`).
 

@@ -1,26 +1,19 @@
 # Argo CD (ns argocd)
 
-## Install
+## Install order
 ```bash
-kubectl create namespace argocd
+kubectl apply -k infra/bootstrap/overlays/k3s            # namespaces (incl. argocd) + PV/SC; done by installer
 helm repo add argo https://argoproj.github.io/argo-helm && helm repo update
-helm upgrade --install argocd argo/argo-cd -n argocd --version 7.6.12 \
-  --set configs.params."server\.insecure"=true   # TLS terminated at Traefik
-# or plain manifests:
-# kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
-kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d; echo
-kubectl apply -f infra/argocd/project.yaml -f infra/argocd/root-app.yaml
+helm upgrade --install argocd argo/argo-cd -n argocd --set configs.params."server\.insecure"=true
+# or: kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+kubectl -n argocd patch cm argocd-cm --type merge --patch-file infra/argocd/argocd-cm-health-patch.yaml
+# repo credentials: docs/argocd-repo-credentials.md (Almog creates them)
+kubectl apply -f infra/argocd/appproject-ai-scan.yaml    # MUST be applied BEFORE the root app
+kubectl apply -n argocd -f deploy/argocd/root-app.yaml   # Pipelines-owned
 ```
+The AppProject `ai-scan` must exist before the root app syncs, otherwise children referencing it fail.
 
-## Layout
-- `project.yaml` – AppProject `ai-scan-repos`.
-- `root-app.yaml` – app-of-apps `ai-scan-root`, renders `deploy/argocd-app.yaml` (Pipelines-owned, 6 children
-  `ai-scan-<component>-k3s` → `deploy/<component>/overlays/k3s`). Child Applications are NOT duplicated here.
-
-## Requested alignment in `deploy/argocd-app.yaml` (Pipelines owns it)
-For every child Application:
-1. `spec.project: ai-scan-repos` (currently `default`).
-2. `syncOptions: [CreateNamespace=false]` (currently `true`) – the `platform` app creates the namespaces.
-3. `metadata.annotations: {argocd.argoproj.io/sync-wave: "<w>"}` with platform `-1`, postgres `0`,
-   frontend/gateway/review-api/scanner-worker `1`.
-Until (1) lands the root app still works; children just stay in project `default`.
+## Ownership
+- Infra: `appproject-ai-scan.yaml`, `argocd-cm-health-patch.yaml`, `infra/bootstrap/` (not Argo CD-managed).
+- Pipelines: `deploy/argocd/root-app.yaml` (project `default`) and `deploy/argocd/apps/*.yaml`
+  (project `ai-scan`, finalizer `resources-finalizer.argocd.argoproj.io`).

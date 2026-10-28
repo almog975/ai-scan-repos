@@ -13,5 +13,11 @@ run "sudo mkdir -p $REPORTS_DIR && \
   sudo chown 10001:10001 $REPORTS_DIR && sudo chmod 750 $REPORTS_DIR && findmnt -no OPTIONS $REPORTS_DIR"
 # 2. K3s (bundled Traefik kept)
 run "command -v k3s >/dev/null || curl -sfL https://get.k3s.io | sh -"
-# 3. TODO: copy registries.yaml, fetch kubeconfig, set node name in reports PV, apply deploy/*/overlays/k3s
-echo "TODO: deploy overlays (k3s)"
+# 3. Cluster-scoped bootstrap (namespaces, reports PV + StorageClass) BEFORE Argo CD.
+ROOT="${ROOT:-$(cd "$(dirname "$0")/../../.." && pwd)}"
+: "${NODE_NAME:=$SSH_HOST}"
+echo "+ kubectl apply -k infra/bootstrap/overlays/k3s (node $NODE_NAME)"
+if [ "${DRY_RUN:-1}" != 1 ]; then
+  kubectl kustomize "$ROOT/infra/bootstrap/overlays/k3s" | sed "s/REPLACE_NODE_NAME/$NODE_NAME/" | kubectl apply -f -
+fi
+# 4. TODO: copy registries.yaml, fetch kubeconfig, install Argo CD (infra/argocd/README.md)

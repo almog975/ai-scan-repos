@@ -7,6 +7,6 @@ output "cluster_endpoint" {
 }
 
 output "efs_file_system_id" {
-  description = "Put into deploy/platform/overlays/eks/efs-storageclass.yaml"
+  description = "Put into infra/bootstrap/overlays/eks/efs-storageclass.yaml"
   value       = aws_efs_file_system.reports.id
 }
