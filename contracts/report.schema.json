@@ -8,6 +8,7 @@
     "review_id",
     "repo",
     "depth",
+    "provider",
     "started_at",
     "finished_at",
     "summary",
@@ -56,10 +57,7 @@
       "$ref": "common.schema.json#/$defs/depth"
     },
     "provider": {
-      "type": [
-        "object",
-        "null"
-      ],
+      "type": "object",
       "properties": {
         "name": {
           "type": "string"
@@ -72,9 +70,12 @@
         }
       },
       "required": [
-        "kind"
+        "name",
+        "kind",
+        "model"
       ],
-      "additionalProperties": false
+      "additionalProperties": false,
+      "description": "AI provider used. kind is the DB provider row's kind (never derived from the adapter). No AI: {name:'none', kind:'onprem', model:'none'}."
     },
     "started_at": {
       "$ref": "common.schema.json#/$defs/timestamp"
