@@ -6,3 +6,4 @@ ALTER TABLE reviews ADD COLUMN next_retry_at timestamptz;
 ALTER TABLE reviews ADD COLUMN paused_by uuid REFERENCES users(id) ON DELETE SET NULL;
 ALTER TABLE reviews ADD COLUMN cancelled_at timestamptz;
 ALTER TABLE reviews ADD COLUMN cancelled_by uuid REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE reviews ADD COLUMN overdue_since timestamptz;  -- reconciler: first pass over the heartbeat threshold

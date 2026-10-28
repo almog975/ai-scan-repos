@@ -238,7 +238,7 @@ def worker_progress(id: str, body: WorkerProgress, request: Request, db=Depends(
     if a is not None and a.ended_at is not None:
         raise conflict("attempt already ended", state=st.value)
     s = _settings(request)
-    r.last_heartbeat = now()
+    r.last_heartbeat, r.overdue_since = now(), None
     if st in (State.queued, State.retrying):
         transition(r, State.running)
     if body.commit_sha and not r.commit_sha:

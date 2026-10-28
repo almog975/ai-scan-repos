@@ -58,7 +58,9 @@ def test_stale_heartbeat_marks_stuck_then_relaunches_next_cycle(client, H, k8s, 
     rid = create(client, H)
     with db() as s:
         assert sweep(s, k8s, settings) == {}  # fresh launch, job active
-        assert sweep(s, k8s, settings, at=later()) == {rid: "stuck"}
+        assert sweep(s, k8s, settings, at=later()) == {rid: "overdue"}  # 1st pass over the threshold
+        assert s.get(Review, rid).state == State.queued
+        assert sweep(s, k8s, settings, at=later(20.5)) == {rid: "stuck"}  # 2nd consecutive pass
         r = s.get(Review, rid)
         assert r.state == State.stuck and r.attempt == 1 and r.stuck_since is not None  # visible >= one cycle
         assert r.next_retry_at is not None
@@ -66,7 +68,7 @@ def test_stale_heartbeat_marks_stuck_then_relaunches_next_cycle(client, H, k8s, 
     check("Review", stuck)
     assert stuck["state"] == "stuck" and stuck["stuck_since"] and stuck["next_retry_at"]
     with db() as s:
-        assert sweep(s, k8s, settings, at=later(21)) == {rid: "relaunched"}
+        assert sweep(s, k8s, settings, at=later(22)) == {rid: "relaunched"}
         r = s.get(Review, rid)
         assert r.state == State.retrying and r.attempt == 2 and r.budget_no == 1 and r.stuck_since is None
     assert k8s.deleted == [f"scan-{rid}-a1"] and k8s.launched[-1] == (1, 2)
@@ -79,25 +81,44 @@ def test_stuck_not_relaunched_before_next_retry_at(client, H, k8s, settings):
     rid = create(client, H)
     t = later()
     with db() as s:
+        sweep(s, k8s, settings, at=t - timedelta(seconds=60))
         assert sweep(s, k8s, settings, at=t) == {rid: "stuck"}
         assert sweep(s, k8s, settings, at=t + timedelta(seconds=30)) == {}
         assert sweep(s, k8s, settings, at=t + timedelta(seconds=settings.watchdog_interval_seconds)) == {rid: "relaunched"}
 
 
-def test_queued_job_died_before_first_heartbeat(client, H, k8s, settings):
+def test_queued_without_job_recreated_after_15min_without_counting_attempt(client, H, k8s, settings):
     rid = create(client, H)
     assert client.get(f"/reviews/{rid}", headers=H).json()["state"] == "queued"
-    k8s.st.pop(f"scan-{rid}-a1")  # Job vanished, worker never sent a heartbeat
+    k8s.st.pop(f"scan-{rid}-a1")  # Job vanished (or was never created), worker never sent a heartbeat
     with db() as s:
-        assert sweep(s, k8s, settings) == {rid: "stuck"}
-        assert sweep(s, k8s, settings, at=later()) == {rid: "relaunched"}
+        assert sweep(s, k8s, settings, at=later(14)) == {}  # < 15 min: leave it
+        assert sweep(s, k8s, settings, at=later(16)) == {rid: "requeued"}
+        r = s.get(Review, rid)
+        assert (r.state, r.attempt, r.budget_no) == (State.queued, 1, 1)
+        assert s.query(ReviewAttempt).filter_by(review_id=rid).count() == 1
+    assert k8s.launched == [(1, 1), (1, 1)] and f"scan-{rid}-a1" in k8s.st
+
+
+def test_heartbeat_between_passes_resets_overdue(client, H, k8s, settings):
+    rid = create(client, H)
+    with db() as s:
+        assert sweep(s, k8s, settings, at=later(16)) == {rid: "overdue"}
+    from tests.test_control import beat
+    assert beat(client, rid).status_code == 200
+    with db() as s:
+        assert s.get(Review, rid).overdue_since is None
+        # the counter restarted: this is again only the first pass over the threshold, not stuck
+        assert sweep(s, k8s, settings, at=later(17)) == {rid: "overdue"}
+        assert s.get(Review, rid).state == State.running
 
 
 def test_queued_no_heartbeat_timeout(client, H, k8s, settings):
     rid = create(client, H)  # Job "active" (e.g. Pending forever) but no heartbeat
     with db() as s:
         assert sweep(s, k8s, settings, at=later(14)) == {}
-        assert sweep(s, k8s, settings, at=later(16)) == {rid: "stuck"}
+        assert sweep(s, k8s, settings, at=later(16)) == {rid: "overdue"}
+        assert sweep(s, k8s, settings, at=later(17)) == {rid: "stuck"}
         assert "heartbeat" in s.query(ReviewAttempt).filter_by(review_id=rid, n=1).one().error
 
 
@@ -121,7 +142,8 @@ def test_worker_reported_error(client, H, k8s, settings):
 
 def exhaust(s, k8s, settings, rid, start=1):
     for i in range(start, 6):
-        assert sweep(s, k8s, settings, at=later(40 * i)) == {rid: "stuck"}
+        assert sweep(s, k8s, settings, at=later(40 * i)) == {rid: "overdue"}
+        assert sweep(s, k8s, settings, at=later(40 * i + 1)) == {rid: "stuck"}
         assert sweep(s, k8s, settings, at=later(40 * i + 2)) == {rid: "relaunched" if i < 5 else "failed"}
 
 
@@ -186,5 +208,6 @@ def test_relaunch_launch_error_recorded(client, H, k8s, settings):
     with db() as s:
         sweep(s, k8s, settings, at=later())
         sweep(s, k8s, settings, at=later(21))
+        sweep(s, k8s, settings, at=later(22))
         a2 = s.query(ReviewAttempt).filter_by(review_id=rid, n=2).one()
         assert a2.outcome == Outcome.error and "api down" in a2.error

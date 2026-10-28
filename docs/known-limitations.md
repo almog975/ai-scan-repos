@@ -16,4 +16,5 @@ These are tracked as `xfail(strict=True)` in `review-api/tests/test_phase3_recov
 ## Recovery semantics (Phase 3)
 
 - A pause has no expiry: a paused review stays paused until it is resumed or cancelled, and the reconciler never touches it.
-- The reconciler keeps `stuck` visible for at least one cycle (`WATCHDOG_INTERVAL_SECONDS`, default 60) before it relaunches.
+- A review is marked `stuck` only after 2 consecutive reconciler passes over `HEARTBEAT_TIMEOUT_SECONDS`, and `stuck` stays visible for at least one cycle (`WATCHDOG_INTERVAL_SECONDS`, default 60) before the relaunch.
+- A queued or retrying review whose Job has been missing for more than 15 min (`QUEUED_JOB_TIMEOUT_SECONDS`) gets its Job created again for the same attempt, and no attempt is counted.

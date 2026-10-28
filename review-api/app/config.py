@@ -28,7 +28,8 @@ class Settings(BaseSettings):
     scanner_active_deadline_seconds: int = 21600
     review_api_internal_url: str = "http://review-api:8001"
     # Watchdog
-    heartbeat_timeout_seconds: int = 900  # 15 minutes
+    heartbeat_timeout_seconds: int = 900  # 15 minutes; stuck after 2 consecutive reconciler passes over it
+    queued_job_timeout_seconds: int = 900  # queued/retrying with no Job for 15 min -> Job recreated (same attempt)
     max_attempts: int = 5
     watchdog_interval_seconds: int = 60
     watchdog_enabled: bool = True

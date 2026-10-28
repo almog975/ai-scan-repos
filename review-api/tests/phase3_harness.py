@@ -148,14 +148,17 @@ class Stack:
         return r
 
     def sweep(self, at: datetime | None = None):
-        """One reconciler pass, plus (for reviews it marked stuck) the next pass one interval later: the
-        reconciler keeps `stuck` visible for a cycle before relaunching (Planner, Phase 3)."""
+        """One reconciler pass, plus follow-up passes one interval apart while a review is `overdue` (stuck needs
+        2 consecutive passes over the threshold) or `stuck` (kept visible a cycle before the relaunch)."""
         from datetime import timedelta, timezone
         launcher = self.app.state.deps["launcher"]
         with dbmod.session_factory()() as db:
             out = sweep(db, launcher, self.settings, at=at)
-        if any(v == "stuck" for v in out.values()):
-            nxt = (at or datetime.now(timezone.utc)) + timedelta(seconds=self.settings.watchdog_interval_seconds)
+        nxt = at or datetime.now(timezone.utc)
+        for _ in range(2):
+            if not any(v in ("overdue", "stuck") for v in out.values()):
+                break
+            nxt += timedelta(seconds=self.settings.watchdog_interval_seconds)
             with dbmod.session_factory()() as db:
                 out.update({k: v for k, v in sweep(db, launcher, self.settings, at=nxt).items() if k in out})
         self.track()

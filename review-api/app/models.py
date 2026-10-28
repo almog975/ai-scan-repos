@@ -140,6 +140,8 @@ class Review(Base):
     paused_by: Mapped[str | None] = mapped_column(GUID, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     cancelled_at: Mapped[datetime | None] = mapped_column(TZ, nullable=True)
     cancelled_by: Mapped[str | None] = mapped_column(GUID, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    # internal (not in the API): first reconciler pass that saw the heartbeat over the threshold
+    overdue_since: Mapped[datetime | None] = mapped_column(TZ, nullable=True)
 
 
 class ReviewAttempt(Base):

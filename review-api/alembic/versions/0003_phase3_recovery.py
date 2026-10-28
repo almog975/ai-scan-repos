@@ -1,4 +1,5 @@
-"""Phase 3 recovery columns (failure_code, stuck_since, next_retry_at, paused_by, cancelled_at, cancelled_by).
+"""Phase 3 recovery columns (failure_code, stuck_since, next_retry_at, paused_by, cancelled_at, cancelled_by,
+overdue_since).
 
 On Postgres the DDL is alembic/sql/0003_phase3_recovery.sql (= the Phase 3 block at the end of infra/db/schema.sql).
 failure_detail is the existing failure_reason column (free text). paused_at already exists (0002).
@@ -19,7 +20,7 @@ depends_on = None
 SQL = Path(__file__).resolve().parent.parent / "sql" / "0003_phase3_recovery.sql"
 CODES = ("CLONE_FAILED", "REPO_TOO_LARGE", "SCANNER_ERROR", "AI_PROVIDER_ERROR", "AI_RATE_LIMITED", "TIMEOUT",
          "MAX_ATTEMPTS_EXCEEDED", "INTERNAL")
-COLS = ("failure_code", "stuck_since", "next_retry_at", "paused_by", "cancelled_at", "cancelled_by")
+COLS = ("failure_code", "stuck_since", "next_retry_at", "paused_by", "cancelled_at", "cancelled_by", "overdue_since")
 
 
 def upgrade():
@@ -37,6 +38,7 @@ def upgrade():
     op.add_column("reviews", sa.Column("paused_by", sa.CHAR(36), nullable=True))
     op.add_column("reviews", sa.Column("cancelled_at", tz, nullable=True))
     op.add_column("reviews", sa.Column("cancelled_by", sa.CHAR(36), nullable=True))
+    op.add_column("reviews", sa.Column("overdue_since", tz, nullable=True))
 
 
 def downgrade():
