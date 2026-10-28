@@ -13,10 +13,10 @@ from ..auth import current_user
 from ..db import get_db
 from ..errors import ApiError, conflict, not_found, validation
 from ..github import split
-from ..models import AIProvider, ProviderKind, Review, State, User
+from ..models import AIProvider, ProviderKind, Review, ReviewAttempt, State, User
 from ..schemas import ReviewCreate
 from ..service import start_attempt
-from ..state import ACTIVE
+from ..state import ACTIVE, open_new_budget
 
 router = APIRouter()
 
@@ -34,6 +34,13 @@ def get_review(db, review_id: str, user: User) -> Review:
 
 def out(db, r: Review) -> dict:
     return serialize.review(r, db.get(AIProvider, r.provider_id) if r.provider_id else None)
+
+
+def check_capacity(db, cfg: dict) -> None:
+    active = db.scalar(select(func.count()).select_from(Review).where(Review.state.in_(
+        [State.running, State.retrying, State.queued]))) or 0
+    if active >= cfg["max_concurrent_reviews"]:
+        raise ApiError(429, "RATE_LIMITED", "too many concurrent reviews", headers={"Retry-After": "60"})
 
 
 def _provider(db, provider_id: str | None, ack_cloud: bool, cfg: dict) -> AIProvider | None:
@@ -69,10 +76,7 @@ def create_review(body: ReviewCreate, request: Request, user: User = Depends(cur
                                           Review.state.in_(list(ACTIVE)))).first()
     if dup:
         raise conflict("an active review exists for this repo and commit", review_id=dup.id)
-    active = db.scalar(select(func.count()).select_from(Review).where(Review.state.in_(
-        [State.running, State.retrying, State.queued]))) or 0
-    if active >= cfg["max_concurrent_reviews"]:
-        raise ApiError(429, "RATE_LIMITED", "too many concurrent reviews", headers={"Retry-After": "60"})
+    check_capacity(db, cfg)
     r = Review(user_id=user.id, repo_url=body.repo_url, repo_private=info.private, ref=body.ref, commit_sha=sha,
                depth=body.depth, provider_id=provider.id if provider else None, state=State.queued,
                attempt=1, budget_no=1)
@@ -97,3 +101,26 @@ def list_reviews(state: State | None = None, page: int = Query(1, ge=1), page_si
 @router.get("/reviews/{id}")
 def read_review(id: str, user: User = Depends(current_user), db=Depends(get_db)):
     return out(db, get_review(db, id, user))
+
+
+@router.get("/reviews/{id}/attempts")
+def list_attempts(id: str, budget_no: int | None = Query(None, ge=1), user: User = Depends(current_user),
+                  db=Depends(get_db)):
+    r = get_review(db, id, user)
+    q = select(ReviewAttempt).where(ReviewAttempt.review_id == r.id)
+    if budget_no is not None:
+        q = q.where(ReviewAttempt.budget_no == budget_no)
+    return [serialize.attempt(a) for a in db.scalars(q.order_by(ReviewAttempt.budget_no, ReviewAttempt.n))]
+
+
+@router.post("/reviews/{id}/retry", status_code=202)
+def retry_review(id: str, request: Request, user: User = Depends(current_user), db=Depends(get_db)):
+    """failed -> retrying: budget_no+1, attempt 1, new Job. 409 from any other state."""
+    r = get_review(db, id, user)
+    if State(r.state) != State.failed:
+        raise conflict(f"retry is only allowed from failed (state is {State(r.state).value})", state=State(r.state).value)
+    check_capacity(db, settings_store.load(db))
+    open_new_budget(r)
+    start_attempt(db, r, request.app.state.deps["launcher"], mark_running=False)
+    db.commit()
+    return JSONResponse(out(db, r), 202)

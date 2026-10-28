@@ -50,6 +50,8 @@ class JobLauncher(Protocol):
 
     def cleanup(self, review_id: str) -> None: ...
 
+    def status(self, job_name: str) -> str: ...  # active | succeeded | failed | missing
+
 
 def job_name_for(review_id: str, attempt: int) -> str:
     """Deterministic: scan-<reviewId>-a<attempt> (idempotent create; <= 63 chars for a uuid)."""
@@ -173,6 +175,13 @@ class LocalLauncher:
     def cleanup(self, review_id: str) -> None:
         pass
 
+    def status(self, job_name: str) -> str:
+        p = self.procs.get(job_name)
+        if p is None:
+            return "missing"
+        rc = p.poll() if hasattr(p, "poll") else None
+        return "active" if rc is None else "succeeded" if rc == 0 else "failed"
+
 
 class KubernetesJobLauncher:
     def __init__(self, settings: Settings, batch_api=None, core_api=None, sleep=time.sleep):
@@ -231,6 +240,20 @@ class KubernetesJobLauncher:
                 namespace=self.s.k8s_namespace, label_selector=f"{SECRET_LABEL}=true,review-id={review_id}")
         except Exception:  # noqa: BLE001 - GC via ownerReference is the fallback
             log.warning("could not delete per-review secrets for %s", review_id)
+
+
+    def status(self, job_name: str) -> str:
+        try:
+            st = self.api.read_namespaced_job_status(name=job_name, namespace=self.s.k8s_namespace).status
+        except Exception as e:
+            if getattr(e, "status", None) == 404:
+                return "missing"
+            raise
+        if getattr(st, "succeeded", None):
+            return "succeeded"
+        if getattr(st, "failed", None):
+            return "failed"  # backoffLimit 0 / activeDeadlineSeconds exceeded
+        return "active"
 
 
 def make_launcher(settings: Settings) -> JobLauncher:

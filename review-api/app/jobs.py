@@ -41,3 +41,6 @@ class ReviewJobs:
 
     def cleanup(self, review_id: str) -> None:
         self.inner.cleanup(review_id)
+
+    def status(self, job_name: str) -> str:
+        return self.inner.status(job_name) if hasattr(self.inner, "status") else "active"

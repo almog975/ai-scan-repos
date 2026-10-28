@@ -1,6 +1,8 @@
 """review-api (contract: contracts/review-api.openapi.yaml)."""
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import logging
 import os
 
@@ -25,7 +27,19 @@ def create_app(settings: Settings | None = None, **deps) -> FastAPI:
     if settings.database_url.startswith("sqlite"):
         from . import models  # noqa: F401
         dbmod.Base.metadata.create_all(dbmod.get_engine())  # postgres uses Alembic
-    app = FastAPI(title="AI Scan Repos — review-api", version="0.1.0")
+    start_watchdog = deps.pop("start_watchdog", True) and settings.watchdog_enabled
+
+    @contextlib.asynccontextmanager
+    async def lifespan(app):
+        task = None
+        if start_watchdog:
+            from .watchdog import watchdog_loop
+            task = asyncio.create_task(watchdog_loop(dbmod.session_factory(), app.state.deps["launcher"], settings))
+        yield
+        if task:
+            task.cancel()
+
+    app = FastAPI(title="AI Scan Repos — review-api", version="0.1.0", lifespan=lifespan)
     app.state.settings = settings
     deps.setdefault("github", None) or deps.update(github=HttpGitHub(settings.github_token))
     deps["launcher"] = ReviewJobs(deps.get("launcher") or make_launcher(settings), settings)

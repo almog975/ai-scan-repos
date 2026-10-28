@@ -29,7 +29,9 @@ def spec():
 
 def validator(name: str):
     reg, _ = _registry()
-    if name.endswith(".json"):
+    if isinstance(name, dict):
+        schema = name
+    elif name.endswith(".json"):
         schema = {"$ref": name}
     else:
         schema = {"$ref": f"urn:review-api#/components/schemas/{name}"}

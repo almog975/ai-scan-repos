@@ -131,3 +131,37 @@ def test_review_gets_decrypted_provider_key(client, A, H, launcher, monkeypatch)
     r = client.post("/reviews", json={"repo_url": "https://github.com/a/b", "depth": "deep", "provider_id": p["id"]}, headers=H)
     assert r.status_code == 201
     assert got["env"] == {"AI_PROVIDER": "ollama", "AI_MODEL": "llama3", "AI_BASE_URL": "http://ollama:11434", "AI_API_KEY": "k-123456"}
+
+
+def test_job_status():
+    class P:
+        def __init__(self, rc):
+            self.rc = rc
+
+        def poll(self):
+            return self.rc
+    ll = LocalLauncher(Settings(), popen=lambda *a, **k: None)
+    assert ll.status("nope") == "missing"
+    ll.procs.update(a=P(None), b=P(0), c=P(2))
+    assert [ll.status(n) for n in "abc"] == ["active", "succeeded", "failed"]
+
+    class St:
+        def __init__(self, **kw):
+            self.succeeded, self.failed = kw.get("s"), kw.get("f")
+
+    class Api:
+        def __init__(self, res):
+            self.res = res
+
+        def read_namespaced_job_status(self, name, namespace):
+            if isinstance(self.res, Exception):
+                raise self.res
+            return type("J", (), {"status": self.res})()
+
+    class E(Exception):
+        status = 404
+    s = Settings()
+    assert KubernetesJobLauncher(s, Api(St(s=1)), object()).status("j") == "succeeded"
+    assert KubernetesJobLauncher(s, Api(St(f=1)), object()).status("j") == "failed"
+    assert KubernetesJobLauncher(s, Api(St()), object()).status("j") == "active"
+    assert KubernetesJobLauncher(s, Api(E()), object()).status("j") == "missing"

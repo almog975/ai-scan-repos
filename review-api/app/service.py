@@ -24,14 +24,16 @@ def end_attempt(db, r: Review, outcome: Outcome, error: str | None = None) -> No
         a.ended_at, a.outcome, a.error = now(), outcome, error
 
 
-def start_attempt(db, r: Review, launcher) -> ReviewAttempt:
-    """Launch the Job for (budget_no, attempt) and record it; review -> running."""
+def start_attempt(db, r: Review, launcher, *, mark_running: bool = True) -> ReviewAttempt:
+    """Launch the Job for (budget_no, attempt) and record a review_attempts row.
+    mark_running=False keeps the review in `retrying` until the worker's first heartbeat."""
     job = launcher.launch(r)
     a = current_attempt(db, r)
     if a is None:
         a = ReviewAttempt(review_id=r.id, budget_no=r.budget_no, n=r.attempt)
         db.add(a)
     a.job_name, a.started_at, a.ended_at, a.outcome, a.error = job, now(), None, None, None
-    transition(r, State.running)
+    if mark_running:
+        transition(r, State.running)
     r.last_heartbeat = now()
     return a
