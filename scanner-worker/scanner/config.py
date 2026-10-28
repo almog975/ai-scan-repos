@@ -24,6 +24,7 @@ class WorkerConfig:
     ai_base_url: str = field(default_factory=lambda: os.environ.get("AI_BASE_URL", ""))
     ai_api_key: str = field(default_factory=lambda: os.environ.get("AI_API_KEY", ""))
     scanner_timeout: int = field(default_factory=lambda: _int("SCANNER_TIMEOUT_SECONDS", 900))
+    heartbeat_seconds: int = field(default_factory=lambda: _int("HEARTBEAT_SECONDS", 60))
     clone_timeout: int = field(default_factory=lambda: _int("CLONE_TIMEOUT_SECONDS", 300))
     max_files: int = field(default_factory=lambda: _int("MAX_FILES", 5000))
     deep_max_files: int = field(default_factory=lambda: _int("DEEP_MAX_FILES", 40))

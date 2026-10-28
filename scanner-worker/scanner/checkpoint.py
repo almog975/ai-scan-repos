@@ -39,9 +39,23 @@ def atomic_write_text(path: Path, text: str) -> None:
             f.flush()
             os.fsync(f.fileno())
         os.replace(tmp, path)
+        _fsync_dir(path.parent)  # make the rename itself durable
     except BaseException:
         Path(tmp).unlink(missing_ok=True)
         raise
+
+
+def _fsync_dir(d: Path) -> None:
+    try:
+        fd = os.open(d, os.O_RDONLY)
+    except OSError:
+        return
+    try:
+        os.fsync(fd)
+    except OSError:
+        pass
+    finally:
+        os.close(fd)
 
 
 def atomic_write_json(path: Path, data) -> None:
@@ -92,8 +106,20 @@ class Checkpoint:
         return list(out.values())
 
     def append_findings(self, items: list[dict]) -> None:
-        """Append + fsync, then commit the new offset in checkpoint.json (caller saves)."""
+        """Append + fsync, then commit the new offset in checkpoint.json (caller saves).
+        Dedupe by finding.id against the committed findings.partial.jsonl: a record identical to the one
+        already committed for its id is dropped (resume re-running a stage/file never duplicates);
+        a changed record with the same id (AI enrichment) is appended and wins."""
         self._truncate_to_offset()
+        have = {f["id"]: json.dumps(f, sort_keys=True) for f in self.findings()}
+        fresh, seen = [], set()
+        for it in items:
+            line = json.dumps(it, sort_keys=True)
+            if have.get(it["id"]) == line or line in seen:
+                continue
+            seen.add(line)
+            fresh.append(it)
+        items = fresh
         if items:
             with self.partial.open("a") as f:
                 for it in items:
