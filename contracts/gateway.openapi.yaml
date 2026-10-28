@@ -16,7 +16,20 @@ components:
   securitySchemes:
     session: {type: apiKey, in: cookie, name: aiscan_session}
   schemas:
-    Error: {$ref: 'review-api.openapi.yaml#/components/schemas/Error'}
+    Error:
+      type: object
+      additionalProperties: false
+      required: [error, request_id]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message]
+          properties:
+            code: {type: string}
+            message: {type: string}
+            details: {type: object}
+        request_id: {type: string}
     Me:
       type: object
       required: [id, github_login, avatar_url, role]
@@ -108,9 +121,9 @@ paths:
     $ref: 'review-api.openapi.yaml#/paths/~1ai-providers'
   /api/admin/ai-providers:
     $ref: 'review-api.openapi.yaml#/paths/~1admin~1ai-providers'
-  /api/admin/ai-providers/{provider_id}:
-    $ref: 'review-api.openapi.yaml#/paths/~1admin~1ai-providers~1{provider_id}'
-  /api/admin/ai-providers/{provider_id}/test:
-    $ref: 'review-api.openapi.yaml#/paths/~1admin~1ai-providers~1{provider_id}~1test'
+  /api/admin/ai-providers/{id}:
+    $ref: 'review-api.openapi.yaml#/paths/~1admin~1ai-providers~1{id}'
+  /api/admin/ai-providers/{id}/test:
+    $ref: 'review-api.openapi.yaml#/paths/~1admin~1ai-providers~1{id}~1test'
   /api/admin/settings:
     $ref: 'review-api.openapi.yaml#/paths/~1admin~1settings'
