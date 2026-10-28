@@ -28,7 +28,7 @@ def test_grok_cloud_via_openai_compatible_end_to_end(tmp_path, monkeypatch, dept
     try:
         with mock_ai.MockAI() as m:
             p = s.http.post("/admin/ai-providers", headers=s.H, json={
-                "name": "grok", "kind": "cloud", "base_url": f"{m.url}/v1", "model": "grok-4", "api_key": KEY})
+                "name": "grok", "kind": "cloud", "base_url": f"{m.url}/v1", "model": "grok-4", "api_key": KEY, "cloud_ack": {"acknowledged": True}})
             assert p.status_code == 201, p.text
             check("AIProvider", p.json())
             pid = p.json()["id"]

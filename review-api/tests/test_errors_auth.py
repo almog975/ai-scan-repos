@@ -63,5 +63,6 @@ def test_migration_sql_matches_infra_schema():
     infra = (root / "infra/db/schema.sql").read_text().splitlines(keepends=True)
     body = "".join(l for i, l in enumerate(infra) if not (i < 3 and l.startswith("--")))
     p3 = (root / "review-api/alembic/sql/0003_phase3_recovery.sql").read_text()
-    assert body.endswith("\n" + p3)  # Phase 3 block appended verbatim
-    assert (root / "review-api/alembic/sql/0002_contract_v1.sql").read_text() == body[: -len(p3) - 1]
+    p4 = (root / "review-api/alembic/sql/0004_phase4_provider_ack.sql").read_text()
+    assert body.endswith("\n" + p3 + "\n" + p4)  # Phase 3 and Phase 4 blocks appended verbatim
+    assert (root / "review-api/alembic/sql/0002_contract_v1.sql").read_text() == body[: -len(p3) - len(p4) - 2]

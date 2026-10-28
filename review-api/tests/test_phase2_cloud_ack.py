@@ -58,7 +58,7 @@ def test_grok_xai_is_cloud_from_db_row_and_needs_ack(client, A, H, launcher, mon
     orig = launcher.launch
     monkeypatch.setattr(launcher, "launch", lambda spec, secret_env=None: got.update(env=secret_env) or orig(spec, secret_env))
     p = client.post("/admin/ai-providers", json={"name": "grok", "kind": "cloud", "base_url": xai,
-                                                 "model": "grok-4", "api_key": "xai-123456"}, headers=A)
+                                                 "model": "grok-4", "api_key": "xai-123456", "cloud_ack": {"acknowledged": True}}, headers=A)
     assert p.status_code == 201, p.text
     pid = p.json()["id"]
     r = client.post("/reviews", json={"repo_url": URL, "depth": "brief", "provider_id": pid}, headers=H)

@@ -9,7 +9,8 @@ from app.models import AIProvider
 from app.providers import ADAPTERS, adapter_name
 from contract import check, common_enum
 
-W = {"name": "OpenAI", "kind": "cloud", "base_url": "https://api.openai.com/v1", "model": "gpt-4o-mini", "api_key": "sk-test-secret-1234"}
+W = {"name": "OpenAI", "kind": "cloud", "base_url": "https://api.openai.com/v1", "model": "gpt-4o-mini", "api_key": "sk-test-secret-1234",
+     "cloud_ack": {"acknowledged": True}}
 
 
 def test_crypto_roundtrip_and_tamper():
@@ -38,7 +39,11 @@ def test_admin_crud_and_no_secret_leak(client, A, H):
     with dbmod.session_factory()() as db:
         row = db.get(AIProvider, p["id"])
         assert b"sk-test" not in row.api_key_enc and row.key_nonce
-    assert client.post(f"/admin/ai-providers/{p['id']}/test", headers=A).json()["adapter"] == "openai"
+    t = client.post(f"/admin/ai-providers/{p['id']}/test", headers=A)
+    assert t.status_code == 200, t.text
+    check("ProviderTestResult", t.json())
+    assert t.json()["model"] == "gpt-4o-mini" and "adapter" not in t.json()
+    assert p["cloud_ack"]["acknowledged"] is True and p["cloud_ack"]["by"]["login"]
     lst = client.get("/admin/ai-providers", headers=A).json()
     for x in lst:
         check("AIProvider", x)
@@ -56,7 +61,8 @@ def test_admin_crud_and_no_secret_leak(client, A, H):
     r = client.patch(f"/admin/ai-providers/{p['id']}", json={"enabled": False}, headers=A)
     assert r.json()["enabled"] is False and client.get("/ai-providers", headers=H).json() == []
     assert client.patch(f"/admin/ai-providers/{p['id']}", json={}, headers=A).status_code == 400
-    assert client.patch(f"/admin/ai-providers/{p['id']}", json={"kind": "onprem"}, headers=A).status_code == 400
+    r = client.patch(f"/admin/ai-providers/{p['id']}", json={"kind": "onprem"}, headers=A)
+    assert r.status_code == 200 and r.json()["cloud_ack"] == {"acknowledged": False, "at": None, "by": None}
     assert client.delete(f"/admin/ai-providers/{p['id']}", headers=A).status_code == 204
     assert client.delete(f"/admin/ai-providers/{p['id']}", headers=A).status_code == 404
 
@@ -125,7 +131,7 @@ def _mk(client, A, **kw):
 def test_provider_test_makes_real_minimal_call(client, A, ai_http):
     pid = _mk(client, A, kind="onprem", base_url="http://lmstudio.tailnet:1234", api_key=None, name="LM")
     r = client.post(f"/admin/ai-providers/{pid}/test", headers=A)
-    assert r.status_code == 200 and r.json()["adapter"] == "openai_compatible"
+    assert r.status_code == 200 and r.json()["ok"] is True and r.json()["model"] == W["model"]
     req = ai_http.seen[-1]
     assert str(req.url) == "http://lmstudio.tailnet:1234/v1/chat/completions"
     assert json.loads(req.content)["max_tokens"] <= 5

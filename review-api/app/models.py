@@ -103,6 +103,8 @@ class AIProvider(Base):
     key_last4: Mapped[str | None] = mapped_column(String(4), nullable=True)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     created_by: Mapped[str | None] = mapped_column(GUID, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    cloud_ack_at: Mapped[datetime | None] = mapped_column(TZ, nullable=True)
+    cloud_ack_by: Mapped[str | None] = mapped_column(GUID, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(TZ, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(TZ, default=utcnow, onupdate=utcnow)
 
