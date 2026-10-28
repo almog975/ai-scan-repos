@@ -222,6 +222,7 @@ paths:
     get:
       operationId: getReview
       responses:
+        '400': {$ref: '#/components/responses/BadRequest'}
         '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/Review'}}}}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '404': {$ref: '#/components/responses/NotFound'}
@@ -237,6 +238,7 @@ paths:
         - `event: state` – data: {"state": <state>, "attempt": n, "budget_no": n}
         - `event: done` – data: {"state": "completed"|"failed"|"cancelled"}; server closes the stream afterwards.
       responses:
+        '400': {$ref: '#/components/responses/BadRequest'}
         '200':
           description: SSE stream or JSON snapshot
           content:
@@ -265,6 +267,7 @@ paths:
       parameters:
         - {name: budget_no, in: query, required: false, schema: {type: integer, minimum: 1}, description: Only attempts of this retry budget}
       responses:
+        '400': {$ref: '#/components/responses/BadRequest'}
         '200': {description: OK, content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/ReviewAttempt'}}}}}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '404': {$ref: '#/components/responses/NotFound'}
@@ -272,29 +275,30 @@ paths:
     parameters: [{$ref: '#/components/parameters/ReviewId'}]
     post:
       operationId: pauseReview
-      responses: {'202': {$ref: '#/components/responses/Accepted'}, '401': {$ref: '#/components/responses/Unauthorized'}, '404': {$ref: '#/components/responses/NotFound'}, '409': {$ref: '#/components/responses/InvalidState'}}
+      responses: {'400': {$ref: '#/components/responses/BadRequest'}, '202': {$ref: '#/components/responses/Accepted'}, '401': {$ref: '#/components/responses/Unauthorized'}, '404': {$ref: '#/components/responses/NotFound'}, '409': {$ref: '#/components/responses/InvalidState'}}
   /reviews/{id}/resume:
     parameters: [{$ref: '#/components/parameters/ReviewId'}]
     post:
       operationId: resumeReview
       description: paused|stuck -> queued (new Job, same budget).
-      responses: {'202': {$ref: '#/components/responses/Accepted'}, '401': {$ref: '#/components/responses/Unauthorized'}, '404': {$ref: '#/components/responses/NotFound'}, '409': {$ref: '#/components/responses/InvalidState'}, '429': {$ref: '#/components/responses/TooMany'}}
+      responses: {'400': {$ref: '#/components/responses/BadRequest'}, '202': {$ref: '#/components/responses/Accepted'}, '401': {$ref: '#/components/responses/Unauthorized'}, '404': {$ref: '#/components/responses/NotFound'}, '409': {$ref: '#/components/responses/InvalidState'}, '429': {$ref: '#/components/responses/TooMany'}}
   /reviews/{id}/retry:
     parameters: [{$ref: '#/components/parameters/ReviewId'}]
     post:
       operationId: retryReview
       description: Only for `failed` reviews (409 CONFLICT otherwise). Starts a fresh 5-attempt budget (budget_no+1, attempt=1) and a new Job.
-      responses: {'202': {$ref: '#/components/responses/Accepted'}, '401': {$ref: '#/components/responses/Unauthorized'}, '404': {$ref: '#/components/responses/NotFound'}, '409': {$ref: '#/components/responses/InvalidState'}, '429': {$ref: '#/components/responses/TooMany'}}
+      responses: {'400': {$ref: '#/components/responses/BadRequest'}, '202': {$ref: '#/components/responses/Accepted'}, '401': {$ref: '#/components/responses/Unauthorized'}, '404': {$ref: '#/components/responses/NotFound'}, '409': {$ref: '#/components/responses/InvalidState'}, '429': {$ref: '#/components/responses/TooMany'}}
   /reviews/{id}/cancel:
     parameters: [{$ref: '#/components/parameters/ReviewId'}]
     post:
       operationId: cancelReview
-      responses: {'202': {$ref: '#/components/responses/Accepted'}, '401': {$ref: '#/components/responses/Unauthorized'}, '404': {$ref: '#/components/responses/NotFound'}, '409': {$ref: '#/components/responses/InvalidState'}}
+      responses: {'400': {$ref: '#/components/responses/BadRequest'}, '202': {$ref: '#/components/responses/Accepted'}, '401': {$ref: '#/components/responses/Unauthorized'}, '404': {$ref: '#/components/responses/NotFound'}, '409': {$ref: '#/components/responses/InvalidState'}}
   /reviews/{id}/report.json:
     parameters: [{$ref: '#/components/parameters/ReviewId'}]
     get:
       operationId: getReportJson
       responses:
+        '400': {$ref: '#/components/responses/BadRequest'}
         '200': {description: Report, content: {application/json: {schema: {$ref: 'report.schema.json'}}}}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '404': {$ref: '#/components/responses/NotFound'}
@@ -304,6 +308,7 @@ paths:
     get:
       operationId: getReportMd
       responses:
+        '400': {$ref: '#/components/responses/BadRequest'}
         '200': {description: Markdown report, content: {text/markdown: {schema: {type: string}}}}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '404': {$ref: '#/components/responses/NotFound'}
@@ -356,12 +361,13 @@ paths:
         '404': {$ref: '#/components/responses/NotFound'}
     delete:
       operationId: deleteProvider
-      responses: {'204': {description: Deleted}, '401': {$ref: '#/components/responses/Unauthorized'}, '403': {$ref: '#/components/responses/Forbidden'}, '404': {$ref: '#/components/responses/NotFound'}}
+      responses: {'400': {$ref: '#/components/responses/BadRequest'}, '204': {description: Deleted}, '401': {$ref: '#/components/responses/Unauthorized'}, '403': {$ref: '#/components/responses/Forbidden'}, '404': {$ref: '#/components/responses/NotFound'}}
   /admin/ai-providers/{id}/test:
     parameters: [{$ref: '#/components/parameters/ProviderId'}]
     post:
       operationId: testProvider
       responses:
+        '400': {$ref: '#/components/responses/BadRequest'}
         '200': {description: Reachable}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '403': {$ref: '#/components/responses/Forbidden'}
