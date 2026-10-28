@@ -45,6 +45,10 @@
             "string",
             "null"
           ]
+        },
+        "private": {
+          "type": "boolean",
+          "description": "true when the repo was cloned with a token"
         }
       }
     },
@@ -66,7 +70,11 @@
         "kind": {
           "$ref": "common.schema.json#/$defs/provider_kind"
         }
-      }
+      },
+      "required": [
+        "kind"
+      ],
+      "additionalProperties": false
     },
     "started_at": {
       "$ref": "common.schema.json#/$defs/timestamp"
@@ -91,7 +99,8 @@
         "high",
         "medium",
         "low",
-        "info"
+        "info",
+        "files_scanned"
       ],
       "properties": {
         "critical": {
