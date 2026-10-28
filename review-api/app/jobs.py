@@ -26,7 +26,9 @@ class ReviewJobs:
         if p is None:
             return None
         kind = getattr(p.kind, "value", p.kind)
-        env = {"AI_PROVIDER": adapter_name(p.base_url, kind), "AI_MODEL": p.model, "AI_BASE_URL": p.base_url or ""}
+        # AI_KIND is the DB row's kind (onprem|cloud): the worker must never derive it from the adapter name.
+        env = {"AI_PROVIDER": adapter_name(p.base_url, kind), "AI_KIND": kind, "AI_PROVIDER_NAME": p.name,
+               "AI_MODEL": p.model, "AI_BASE_URL": p.base_url or ""}
         if p.api_key_enc:
             try:
                 env["AI_API_KEY"] = KeyCipher(self.s.ai_keys_encryption_key).decrypt(p.api_key_enc, p.key_nonce, p.id)

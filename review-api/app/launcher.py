@@ -38,10 +38,12 @@ class JobSpec:
     repo_url: str
     commit_sha: str | None = None
     ref: str = "HEAD"
+    repo_private: bool = False
 
     @classmethod
     def of(cls, r) -> "JobSpec":
-        return cls(r.id, r.attempt, r.budget_no, getattr(r.depth, "value", r.depth), r.repo_url, r.commit_sha, r.ref)
+        return cls(r.id, r.attempt, r.budget_no, getattr(r.depth, "value", r.depth), r.repo_url, r.commit_sha, r.ref,
+                   bool(getattr(r, "repo_private", False)))
 
 
 class JobLauncher(Protocol):
@@ -69,7 +71,8 @@ def check_image(image: str) -> None:
 
 def contract_env(spec: JobSpec) -> list[dict]:
     env = {"REVIEW_ID": spec.review_id, "ATTEMPT": str(spec.attempt), "BUDGET_NO": str(spec.budget_no),
-           "DEPTH": spec.depth, "REPO_URL": spec.repo_url, "REF": spec.ref, "COMMIT_SHA": spec.commit_sha or ""}
+           "DEPTH": spec.depth, "REPO_URL": spec.repo_url, "REF": spec.ref, "COMMIT_SHA": spec.commit_sha or "",
+           "REPO_PRIVATE": "true" if spec.repo_private else "false"}
     return [{"name": k, "value": v} for k, v in env.items()]
 
 

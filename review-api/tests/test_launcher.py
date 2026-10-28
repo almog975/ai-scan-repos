@@ -130,7 +130,7 @@ def test_review_gets_decrypted_provider_key(client, A, H, launcher, monkeypatch)
                                                  "model": "llama3", "api_key": "k-123456"}, headers=A).json()
     r = client.post("/reviews", json={"repo_url": "https://github.com/a/b", "depth": "deep", "provider_id": p["id"]}, headers=H)
     assert r.status_code == 201
-    assert got["env"] == {"AI_PROVIDER": "ollama", "AI_MODEL": "llama3", "AI_BASE_URL": "http://ollama:11434", "AI_API_KEY": "k-123456"}
+    assert got["env"] == {"AI_PROVIDER": "ollama", "AI_KIND": "onprem", "AI_PROVIDER_NAME": "o", "AI_MODEL": "llama3", "AI_BASE_URL": "http://ollama:11434", "AI_API_KEY": "k-123456"}
 
 
 def test_job_status():
