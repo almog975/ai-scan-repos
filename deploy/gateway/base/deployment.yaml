@@ -1,0 +1,24 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: gateway, namespace: ai-scan-repos, labels: {app: gateway}}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: gateway}}
+  template:
+    metadata: {labels: {app: gateway}}
+    spec:
+      securityContext: {runAsNonRoot: true, runAsUser: 10001, runAsGroup: 10001, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: gateway
+          image: ai-scan/gateway:GIT_SHA   # rewritten by overlay images:, never latest
+          ports: [{name: http, containerPort: 8000}]
+          env: [{name: REVIEW_API_URL, value: "http://review-api:8001"}]
+          envFrom: [{secretRef: {name: gateway-secrets}}]
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+          resources: {requests: {cpu: 100m, memory: 128Mi}, limits: {cpu: 500m, memory: 512Mi}}
+          livenessProbe: {httpGet: {path: /healthz, port: http}, periodSeconds: 20}
+          readinessProbe: {httpGet: {path: /readyz, port: http}, periodSeconds: 10}
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - {name: tmp, emptyDir: {}}

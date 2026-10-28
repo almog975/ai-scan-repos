@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: review-api, namespace: ai-scan-repos, labels: {app: review-api}}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: review-api}}
+  template:
+    metadata: {labels: {app: review-api}}
+    spec:
+      serviceAccountName: review-api
+      securityContext: {runAsNonRoot: true, runAsUser: 10001, runAsGroup: 10001, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: review-api
+          image: ai-scan/review-api:GIT_SHA   # rewritten by overlay images:, never latest
+          ports: [{name: http, containerPort: 8001}]
+          args: [uvicorn, --factory, app.main:get_app, --host, 0.0.0.0, --port, "8001"]
+          env:
+            - {name: JOB_LAUNCHER, value: kubernetes}
+            - {name: K8S_NAMESPACE, value: ai-scan-repos}
+            - {name: REPORTS_DIR, value: /reports}
+            - {name: REPORTS_PVC, value: reports}
+            - {name: SCANNER_SERVICE_ACCOUNT, value: scanner}
+            - {name: SCANNER_SECRET_NAME, value: scanner-secrets}
+            - name: SCANNER_IMAGE   # substituted into scanner-job-template ${IMAGE}
+              valueFrom: {configMapKeyRef: {name: scanner-image, key: SCANNER_IMAGE}}
+            - {name: REVIEW_API_INTERNAL_URL, value: "http://review-api:8001"}
+          envFrom:
+            - secretRef: {name: db-secrets}        # DATABASE_URL
+            - secretRef: {name: ai-keys-master}    # AI_KEYS_ENCRYPTION_KEY
+            - secretRef: {name: scanner-secrets}   # INTERNAL_API_TOKEN
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+          resources: {requests: {cpu: 100m, memory: 128Mi}, limits: {cpu: 500m, memory: 512Mi}}
+          livenessProbe: {httpGet: {path: /healthz, port: http}, periodSeconds: 20}
+          readinessProbe: {httpGet: {path: /readyz, port: http}, periodSeconds: 10}
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}
+            - {name: reports, mountPath: /reports}
+      volumes:
+        - {name: tmp, emptyDir: {}}
+        - {name: reports, persistentVolumeClaim: {claimName: reports}}

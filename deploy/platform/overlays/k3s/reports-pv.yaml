@@ -1,0 +1,24 @@
+# Static local PV for reports. Host prep (done by infra/installer/scripts/install-ssh-k3s.sh):
+#   /srv/ai-scan/reports mounted with noexec,nosuid,nodev (see docs/storage-plan.md)
+apiVersion: v1
+kind: PersistentVolume
+metadata: {name: ai-scan-reports-pv, labels: {app: reports}}
+spec:
+  capacity: {storage: 5Gi}
+  accessModes: [ReadWriteOnce]
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: reports-local
+  mountOptions: [noexec, nosuid, nodev]
+  local: {path: /srv/ai-scan/reports}
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - {key: kubernetes.io/hostname, operator: In, values: [REPLACE_NODE_NAME]}
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata: {name: reports-local}
+provisioner: kubernetes.io/no-provisioner
+volumeBindingMode: WaitForFirstConsumer
+reclaimPolicy: Retain

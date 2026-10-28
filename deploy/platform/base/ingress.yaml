@@ -1,0 +1,37 @@
+# K3s bundled Traefik (traefik.io/v1alpha1 CRDs). Host overridden per overlay.
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata: {name: security-headers, namespace: ai-scan-repos}
+spec:
+  headers:
+    frameDeny: true
+    contentTypeNosniff: true
+    browserXssFilter: true
+    referrerPolicy: strict-origin-when-cross-origin
+    stsSeconds: 31536000
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata: {name: api-ratelimit, namespace: ai-scan-repos}
+spec:
+  rateLimit: {average: 50, burst: 100}
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata: {name: ai-scan, namespace: ai-scan-repos}
+spec:
+  entryPoints: [websecure]
+  routes:
+    - match: Host(`ai-scan.local`) && (PathPrefix(`/api`) || PathPrefix(`/auth`) || PathPrefix(`/me`) || PathPrefix(`/webhooks`))
+      kind: Rule
+      priority: 100
+      middlewares: [{name: security-headers}, {name: api-ratelimit}]
+      services: [{name: gateway, port: 8000}]
+    - match: Host(`ai-scan.local`) && PathPrefix(`/`)
+      kind: Rule
+      priority: 10
+      middlewares: [{name: security-headers}]
+      services: [{name: frontend, port: 8080}]
+  tls: {}   # K3s Traefik default cert; set secretName/certResolver per overlay
+# review-api is intentionally NOT routed.
