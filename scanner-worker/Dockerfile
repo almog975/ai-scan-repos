@@ -16,4 +16,5 @@ RUN groupadd -g 10001 scanner && useradd -u 10001 -g scanner -M -s /usr/sbin/nol
  && mkdir -p /work /reports && chown 10001:10001 /work /reports
 USER 10001
 # No source code is baked in: repos are cloned at runtime into /work (emptyDir) and deleted.
+EXPOSE 8002
 ENTRYPOINT ["python", "-m", "scanner.run"]

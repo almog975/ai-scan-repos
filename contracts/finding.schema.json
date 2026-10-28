@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/almog975/FinalProject/ai-scan-repos/contracts/finding.schema.json",
+  "title": "Finding (normalized, v1)",
+  "type": "object",
+  "required": ["id", "tool", "rule", "severity", "file", "line", "title", "description"],
+  "properties": {
+    "id": {"type": "string", "description": "sha1(tool+rule+file+line)", "pattern": "^[a-f0-9]{40}$"},
+    "tool": {"enum": ["semgrep", "gitleaks", "trivy", "ai"]},
+    "category": {"enum": ["sast", "secret", "dependency", "misconfig", "ai_review"]},
+    "rule": {"type": "string", "description": "rule_id from the tool"},
+    "severity": {"enum": ["critical", "high", "medium", "low", "info"]},
+    "file": {"type": "string"},
+    "line": {"type": ["integer", "null"], "minimum": 0, "description": "line_start"},
+    "line_end": {"type": ["integer", "null"], "minimum": 0},
+    "title": {"type": "string"},
+    "description": {"type": "string"},
+    "cwe": {"type": "array", "items": {"type": "string", "pattern": "^CWE-[0-9]+$"}},
+    "cve": {"type": ["string", "null"]},
+    "package": {"type": ["string", "null"]},
+    "fixed_version": {"type": ["string", "null"]},
+    "secret_redacted": {"type": "boolean"},
+    "ai_explanation": {"type": ["string", "null"]},
+    "ai_fix": {"type": ["string", "null"]},
+    "confidence": {"type": ["number", "null"], "minimum": 0, "maximum": 1}
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/almog975/FinalProject/ai-scan-repos/contracts/checkpoint.schema.json",
+  "title": "checkpoint.json (v1) – written tmp -> fsync -> rename after every file",
+  "type": "object",
+  "required": ["schema", "review_id", "stage", "progress", "cursor", "updated_at"],
+  "properties": {
+    "schema": {"const": "checkpoint/v1"},
+    "review_id": {"type": "string"},
+    "commit_sha": {"type": ["string", "null"]},
+    "depth": {"enum": ["quick", "brief", "deep"]},
+    "attempt": {"type": "integer", "minimum": 1, "maximum": 5},
+    "stage": {"enum": ["start", "clone", "scanners", "ai_analysis", "report", "done"]},
+    "progress": {"type": "integer", "minimum": 0, "maximum": 100},
+    "cursor": {
+      "type": "object",
+      "description": "resume position",
+      "properties": {
+        "scanners_done": {"type": "array", "items": {"enum": ["semgrep", "gitleaks", "trivy"]}},
+        "files_total": {"type": "integer", "minimum": 0},
+        "files_done": {"type": "array", "items": {"type": "string"}},
+        "findings_offset": {"type": "integer", "minimum": 0}
+      }
+    },
+    "updated_at": {"type": "string", "format": "date-time"}
+  }
+}

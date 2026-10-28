@@ -7,4 +7,5 @@ RUN pip install -r requirements.txt
 COPY app ./app
 USER 10001
 EXPOSE 8000
+HEALTHCHECK --interval=30s --timeout=3s --retries=3 CMD python -c "import urllib.request,sys; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=2)" || exit 1
 CMD ["uvicorn", "--factory", "app.main:get_app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers"]

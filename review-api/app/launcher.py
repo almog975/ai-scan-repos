@@ -40,7 +40,7 @@ class LocalLauncher:
         self.launched.append((review_id, attempt))
         cmd = shlex.split(self.s.local_worker_cmd) + ["--review-id", review_id]
         env = {**os.environ, "REVIEW_ID": review_id, "ATTEMPT": str(attempt),
-               "REPORTS_DIR": self.s.reports_dir, "REVIEW_API_URL": os.environ.get("REVIEW_API_URL", "http://localhost:8000"),
+               "REPORTS_DIR": self.s.reports_dir, "REVIEW_API_URL": os.environ.get("REVIEW_API_URL", "http://localhost:8001"),
                **(secret_env or {})}  # per-review AI key: env only, never argv
         try:
             self._popen(cmd, cwd=self.s.local_worker_cwd or None, env=env)

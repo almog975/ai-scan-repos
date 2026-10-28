@@ -1,0 +1,131 @@
+openapi: 3.1.0
+info:
+  title: AI Scan Repos – gateway
+  version: 0.1.0-rc
+  description: Public edge. GitHub OAuth, sessions, webhooks, and authenticated proxy of /api/* to review-api.
+servers:
+  - {url: 'http://gateway:8000', description: in-cluster}
+  - {url: 'http://localhost:8000', description: local}
+components:
+  securitySchemes:
+    session: {type: apiKey, in: cookie, name: aiscan_session}
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: {type: string}
+            message: {type: string}
+            details: {type: object}
+        request_id: {type: string}
+    Me:
+      type: object
+      required: [id, github_login, role]
+      properties:
+        id: {type: string}
+        github_login: {type: string}
+        avatar_url: {type: [string, "null"]}
+        role: {enum: [user, admin]}
+  responses:
+    Unauthorized: {description: Not authenticated, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+paths:
+  /healthz:
+    get: {operationId: healthz, responses: {'200': {description: OK, content: {application/json: {schema: {type: object, properties: {status: {const: ok}}}}}}}}
+  /readyz:
+    get: {operationId: readyz, responses: {'200': {description: Ready}, '503': {description: Not ready}}}
+  /metrics:
+    get: {operationId: metrics, responses: {'200': {description: Prometheus metrics, content: {text/plain: {schema: {type: string}}}}}}
+  /auth/github/login:
+    get:
+      operationId: login
+      description: Redirect to GitHub with CSRF `state` in a cookie (scopes read:user repo).
+      responses: {'302': {description: Redirect to GitHub}}
+  /auth/github/callback:
+    get:
+      operationId: callback
+      parameters:
+        - {name: code, in: query, required: true, schema: {type: string}}
+        - {name: state, in: query, required: true, schema: {type: string}}
+      responses:
+        '302': {description: 'Session cookie set (HttpOnly; Secure; SameSite=Lax), redirect to UI'}
+        '400': {description: State mismatch, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '502': {description: GitHub error, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+  /auth/logout:
+    post:
+      operationId: logout
+      security: [{session: []}]
+      responses: {'204': {description: Session revoked}}
+  /me:
+    get:
+      operationId: me
+      security: [{session: []}]
+      responses:
+        '200': {description: Current user, content: {application/json: {schema: {$ref: '#/components/schemas/Me'}}}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+  /webhooks/github:
+    post:
+      operationId: githubWebhook
+      parameters:
+        - {name: X-GitHub-Event, in: header, required: true, schema: {type: string}}
+        - {name: X-GitHub-Delivery, in: header, required: true, schema: {type: string}}
+        - {name: X-Hub-Signature-256, in: header, required: true, schema: {type: string, pattern: '^sha256=[a-f0-9]{64}$'}}
+      requestBody: {required: true, content: {application/json: {schema: {type: object}}}}
+      responses:
+        '202': {description: Accepted, content: {application/json: {schema: {type: object, properties: {accepted: {type: boolean}}}}}}
+        '401': {description: INVALID_SIGNATURE, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '409': {description: Duplicate delivery, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+  /api/reviews:
+    $ref: 'review-api.openapi.yaml#/paths/~1reviews'
+  /api/reviews/{id}:
+    $ref: 'review-api.openapi.yaml#/paths/~1reviews~1{id}'
+  /api/reviews/{id}/progress:
+    $ref: 'review-api.openapi.yaml#/paths/~1reviews~1{id}~1progress'
+  /api/reviews/{id}/pause:
+    $ref: 'review-api.openapi.yaml#/paths/~1reviews~1{id}~1pause'
+  /api/reviews/{id}/resume:
+    $ref: 'review-api.openapi.yaml#/paths/~1reviews~1{id}~1resume'
+  /api/reviews/{id}/cancel:
+    $ref: 'review-api.openapi.yaml#/paths/~1reviews~1{id}~1cancel'
+  /api/reviews/{id}/report.json:
+    $ref: 'review-api.openapi.yaml#/paths/~1reviews~1{id}~1report.json'
+  /api/reviews/{id}/report.md:
+    $ref: 'review-api.openapi.yaml#/paths/~1reviews~1{id}~1report.md'
+  /api/ai-providers:
+    $ref: 'review-api.openapi.yaml#/paths/~1ai-providers'
+  /api/repos/check:
+    $ref: 'review-api.openapi.yaml#/paths/~1repos~1check'
+  /api/reviews/{id}/files:
+    $ref: 'review-api.openapi.yaml#/paths/~1reviews~1{id}~1files'
+  /api/reviews/{id}/retry:
+    $ref: 'review-api.openapi.yaml#/paths/~1reviews~1{id}~1retry'
+  /api/reviews/{id}/attempts:
+    $ref: 'review-api.openapi.yaml#/paths/~1reviews~1{id}~1attempts'
+  /api/admin/ai-providers:
+    $ref: 'review-api.openapi.yaml#/paths/~1admin~1ai-providers'
+  /api/admin/ai-providers/{id}:
+    $ref: 'review-api.openapi.yaml#/paths/~1admin~1ai-providers~1{id}'
+  /api/admin/ai-providers/{id}/test:
+    $ref: 'review-api.openapi.yaml#/paths/~1admin~1ai-providers~1{id}~1test'
+  /api/admin/settings:
+    $ref: 'review-api.openapi.yaml#/paths/~1admin~1settings'
+  /api/{path}:
+    parameters:
+      - {name: path, in: path, required: true, schema: {type: string}}
+    get: &proxy
+      operationId: proxyGet
+      description: >-
+        Authenticated proxy to review-api (see review-api.openapi.yaml): /api/reviews[/{id}[/progress|files|attempts|pause|resume|retry|cancel|report.json|report.md]],
+        /api/ai-providers, /api/repos/check, /api/admin/ai-providers[/{id}[/test]], /api/admin/settings. Gateway injects X-User-Id and X-Internal-Token.
+      security: [{session: []}]
+      responses:
+        '2XX': {description: Upstream response}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {description: Forbidden, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+    post: {<<: *proxy, operationId: proxyPost}
+    put: {<<: *proxy, operationId: proxyPut}
+    patch: {<<: *proxy, operationId: proxyPatch}
+    delete: {<<: *proxy, operationId: proxyDelete}

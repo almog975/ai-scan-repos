@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/almog975/FinalProject/ai-scan-repos/contracts/progress.schema.json",
+  "title": "progress.json (v1) – per-file live progress on the reports volume (atomic tmp+rename)",
+  "type": "object",
+  "required": ["review_id", "attempt", "updated_at", "totals", "files"],
+  "properties": {
+    "schema": {"const": "progress/v1"},
+    "review_id": {"type": "string"},
+    "attempt": {"type": "integer", "minimum": 1, "maximum": 5},
+    "updated_at": {"type": "string", "format": "date-time", "description": "doubles as heartbeat"},
+    "totals": {
+      "type": "object",
+      "required": ["files", "done", "skipped", "error"],
+      "properties": {
+        "files": {"type": "integer", "minimum": 0},
+        "done": {"type": "integer", "minimum": 0},
+        "skipped": {"type": "integer", "minimum": 0},
+        "error": {"type": "integer", "minimum": 0}
+      }
+    },
+    "files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "status", "findings_count"],
+        "properties": {
+          "path": {"type": "string"},
+          "status": {"enum": ["pending", "scanning", "done", "skipped", "error"]},
+          "findings_count": {"type": "integer", "minimum": 0},
+          "started_at": {"type": ["string", "null"], "format": "date-time"},
+          "finished_at": {"type": ["string", "null"], "format": "date-time"}
+        }
+      }
+    }
+  }
+}

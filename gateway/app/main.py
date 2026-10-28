@@ -74,6 +74,16 @@ def create_app(settings: Settings | None = None, transport: httpx.AsyncBaseTrans
     def healthz():
         return {"status": "ok"}
 
+    @app.get("/readyz")
+    def readyz():
+        from sqlalchemy import text
+        try:
+            with SessionLocal() as db:
+                db.execute(text("SELECT 1"))
+        except Exception:  # noqa: BLE001
+            raise HTTPException(503, "db not ready")
+        return {"status": "ready"}
+
     @app.get("/metrics")
     def metrics():
         return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)

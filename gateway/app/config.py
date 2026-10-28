@@ -5,7 +5,7 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     database_url: str = "sqlite:///./gateway.db"
-    review_api_url: str = "http://review-api:8000"
+    review_api_url: str = "http://review-api:8001"
     internal_api_token: str = "change-me-dev-only"
     github_client_id: str = ""
     github_client_secret: str = ""

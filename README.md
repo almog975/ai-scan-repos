@@ -42,16 +42,16 @@ export AI_KEYS_ENCRYPTION_KEY=$(python -c "from cryptography.fernet import Ferne
 export REPORTS_DIR=$PWD/reports
 export LOCAL_WORKER_CWD=$PWD/scanner-worker
 export AI_PROVIDER=none          # or openai_compatible + AI_BASE_URL/AI_MODEL
-cd review-api && uvicorn --factory app.main:get_app --port 8000
+cd review-api && uvicorn --factory app.main:get_app --port 8001
 ```
 
 In another shell (gitleaks/trivy are skipped with status `skipped` if not on PATH):
 
 ```bash
 H='-H X-Internal-Token:dev-token -H X-User-Id:alice -H Content-Type:application/json'
-curl -s $H -X POST localhost:8000/reviews -d '{"repo_url":"https://github.com/OWASP/NodeGoat","depth":"quick"}'
-curl -s $H localhost:8000/reviews/<id>          # status/progress
-curl -s $H localhost:8000/reviews/<id>/report.md
+curl -s $H -X POST localhost:8001/reviews -d '{"repo_url":"https://github.com/OWASP/NodeGoat","depth":"quick"}'
+curl -s $H localhost:8001/reviews/<id>          # status/progress
+curl -s $H localhost:8001/reviews/<id>/report.md
 ```
 
 ### Tests
@@ -67,7 +67,7 @@ cd scanner-worker && pytest -q    # parsers/report (fixtures), AI client (mock t
 docker build -t ai-scan-repos/review-api:dev review-api
 docker build -t ai-scan-repos/scanner-worker:dev scanner-worker
 ```
-Both run as UID 10001. review-api runs `alembic upgrade head` then uvicorn on :8000.
+Both run as UID 10001. review-api runs `alembic upgrade head` then uvicorn on :8001.
 
 ## API summary
 

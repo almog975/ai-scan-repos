@@ -20,7 +20,7 @@ services:
       dockerfile: review-api/Dockerfile.local
     depends_on:
       postgres: {condition: service_healthy}
-    ports: ["127.0.0.1:8000:8000"]   # internal API: localhost only
+    ports: ["127.0.0.1:8001:8001"]   # internal API: localhost only
     env_file: [.env]
     environment:
       DATABASE_URL: postgresql+psycopg://aiscan:${POSTGRES_PASSWORD:-aiscan-dev}@postgres:5432/aiscan
@@ -29,10 +29,10 @@ services:
       LOCAL_WORKER_CWD: /opt/scanner
       REPORTS_DIR: /reports
       WORK_DIR: /work
-      REVIEW_API_URL: http://localhost:8000
+      REVIEW_API_URL: http://localhost:8001
     volumes: [reports:/reports]
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8000/readyz')"]
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8001/readyz')"]
       interval: 5s
       retries: 20
 
@@ -43,10 +43,10 @@ services:
     env_file: [.env]
     environment:
       DATABASE_URL: postgresql+psycopg://aiscan:${POSTGRES_PASSWORD:-aiscan-dev}@postgres:5432/aiscan
-      REVIEW_API_URL: http://review-api:8000
+      REVIEW_API_URL: http://review-api:8001
       PUBLIC_URL: http://localhost:8080
       COOKIE_SECURE: "false"   # plain http on localhost only; keep true behind TLS
-    ports: ["127.0.0.1:8001:8000"]   # for `npm run dev` proxy
+    ports: ["127.0.0.1:8000:8000"]   # for `npm run dev` proxy
 
   frontend:
     build: frontend

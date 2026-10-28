@@ -1,0 +1,274 @@
+openapi: 3.1.0
+info:
+  title: AI Scan Repos – review-api
+  version: 0.1.0-rc
+  description: Internal API (reached via gateway /api/*). Reviews lifecycle, reports, AI providers, settings.
+servers:
+  - {url: 'http://review-api:8001', description: in-cluster}
+  - {url: 'http://localhost:8001', description: local}
+security: [{internal: [], user: []}]
+components:
+  securitySchemes:
+    internal: {type: apiKey, in: header, name: X-Internal-Token}
+    user: {type: apiKey, in: header, name: X-User-Id}
+  parameters:
+    ReviewId: {name: id, in: path, required: true, schema: {type: string}}
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error: {type: object, required: [code, message], properties: {code: {type: string}, message: {type: string}, details: {type: object}}}
+        request_id: {type: string}
+    Depth: {enum: [quick, brief, deep]}
+    State: {enum: [queued, running, paused, stuck, retrying, completed, failed, cancelled]}
+    ReviewCreate:
+      type: object
+      required: [repo_url, depth]
+      properties:
+        repo_url: {type: string, pattern: '^https://github\.com/[^/]+/[^/]+$'}
+        ref: {type: string, default: HEAD}
+        depth: {$ref: '#/components/schemas/Depth'}
+        provider_id: {type: [string, "null"]}
+        ack_cloud: {type: boolean, default: false, description: Required true when provider kind is cloud}
+    Review:
+      type: object
+      required: [id, repo_url, depth, state, attempt, created_at]
+      properties:
+        id: {type: string}
+        repo_url: {type: string}
+        ref: {type: string}
+        commit_sha: {type: [string, "null"]}
+        depth: {$ref: '#/components/schemas/Depth'}
+        state: {$ref: '#/components/schemas/State'}
+        attempt: {type: integer}
+        files_done: {type: integer}
+        files_total: {type: [integer, "null"]}
+        findings_count: {type: integer}
+        failure_reason: {type: [string, "null"]}
+        provider:
+          type: [object, "null"]
+          properties: {id: {type: string}, kind: {enum: [onprem, cloud]}, cloud_warning: {type: boolean}}
+        created_at: {type: string, format: date-time}
+        links: {type: object, properties: {progress: {type: string}}}
+    ReviewList:
+      type: object
+      required: [items, page]
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/Review'}}
+        page: {type: integer}
+        total: {type: integer}
+    Progress:
+      type: object
+      properties:
+        state: {$ref: '#/components/schemas/State'}
+        files_done: {type: integer}
+        files_total: {type: integer}
+        current_file: {type: [string, "null"]}
+        findings: {type: integer}
+        attempt: {type: integer}
+    AIProvider:
+      type: object
+      required: [id, name, kind, model, enabled]
+      properties:
+        id: {type: string}
+        name: {type: string}
+        kind: {enum: [onprem, cloud]}
+        base_url: {type: [string, "null"]}
+        model: {type: string}
+        key_masked: {type: [string, "null"], examples: ['****abcd']}
+        enabled: {type: boolean}
+    AIProviderWrite:
+      type: object
+      required: [name, kind, model]
+      properties:
+        name: {type: string}
+        kind: {enum: [onprem, cloud]}
+        base_url: {type: [string, "null"]}
+        model: {type: string}
+        api_key: {type: [string, "null"], writeOnly: true}
+        enabled: {type: boolean}
+    Settings:
+      type: object
+      properties:
+        default_provider_id: {type: [string, "null"]}
+        max_concurrent_reviews: {type: integer, minimum: 1}
+        max_repo_size_mb: {type: integer, minimum: 1}
+    ProviderPublic:
+      type: object
+      required: [id, name, kind, cloud_warning]
+      properties:
+        id: {type: string}
+        name: {type: string}
+        kind: {enum: [onprem, cloud]}
+        cloud_warning: {type: boolean}
+      additionalProperties: false
+    RepoCheck:
+      type: object
+      required: [accessible, private]
+      properties:
+        accessible: {type: boolean}
+        private: {type: boolean}
+        default_branch: {type: [string, "null"]}
+        size_kb: {type: [integer, "null"]}
+    ReviewFile:
+      type: object
+      required: [path, status, findings_count]
+      properties:
+        path: {type: string}
+        status: {enum: [pending, scanning, done, skipped, error]}
+        findings_count: {type: integer, minimum: 0}
+    ReviewAttempt:
+      type: object
+      required: [id, review_id, n, started_at]
+      properties:
+        id: {type: string}
+        review_id: {type: string}
+        n: {type: integer, minimum: 1, maximum: 5}
+        job_name: {type: [string, "null"]}
+        started_at: {type: string, format: date-time}
+        ended_at: {type: [string, "null"], format: date-time}
+        outcome: {enum: [success, stuck, error, cancelled, null]}
+        error: {type: [string, "null"]}
+  responses:
+    NotFound: {description: Not found, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+    InvalidState: {description: INVALID_STATE, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+    Forbidden: {description: Forbidden, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+    Accepted: {description: Accepted, content: {application/json: {schema: {$ref: '#/components/schemas/Review'}}}}
+paths:
+  /healthz:
+    get: {operationId: healthz, security: [], responses: {'200': {description: OK}}}
+  /readyz:
+    get: {operationId: readyz, security: [], responses: {'200': {description: DB reachable}, '503': {description: Not ready}}}
+  /metrics:
+    get: {operationId: metrics, security: [], responses: {'200': {description: Prometheus metrics, content: {text/plain: {schema: {type: string}}}}}}
+  /reviews:
+    post:
+      operationId: createReview
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ReviewCreate'}}}}
+      responses:
+        '201': {description: Created (Job launched), content: {application/json: {schema: {$ref: '#/components/schemas/Review'}}}}
+        '400': {description: Validation error, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '409': {description: Active review exists for repo+sha, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '429': {description: Rate limited, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+    get:
+      operationId: listReviews
+      parameters:
+        - {name: state, in: query, schema: {$ref: '#/components/schemas/State'}}
+        - {name: page, in: query, schema: {type: integer, minimum: 1, default: 1}}
+      responses: {'200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/ReviewList'}}}}}
+  /reviews/{id}:
+    parameters: [{$ref: '#/components/parameters/ReviewId'}]
+    get:
+      operationId: getReview
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/Review'}}}}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /reviews/{id}/progress:
+    parameters:
+      - {$ref: '#/components/parameters/ReviewId'}
+      - {name: format, in: query, schema: {enum: [json]}, description: Polling fallback}
+    get:
+      operationId: getProgress
+      responses:
+        '200':
+          description: SSE stream (event progress) or JSON snapshot
+          content:
+            text/event-stream: {schema: {type: string}}
+            application/json: {schema: {$ref: '#/components/schemas/Progress'}}
+  /reviews/{id}/pause:
+    parameters: [{$ref: '#/components/parameters/ReviewId'}]
+    post: {operationId: pauseReview, responses: {'202': {$ref: '#/components/responses/Accepted'}, '409': {$ref: '#/components/responses/InvalidState'}}}
+  /reviews/{id}/resume:
+    parameters: [{$ref: '#/components/parameters/ReviewId'}]
+    post: {operationId: resumeReview, responses: {'202': {$ref: '#/components/responses/Accepted'}, '409': {$ref: '#/components/responses/InvalidState'}}}
+  /reviews/{id}/cancel:
+    parameters: [{$ref: '#/components/parameters/ReviewId'}]
+    post: {operationId: cancelReview, responses: {'202': {$ref: '#/components/responses/Accepted'}, '409': {$ref: '#/components/responses/InvalidState'}}}
+  /reviews/{id}/report.json:
+    parameters: [{$ref: '#/components/parameters/ReviewId'}]
+    get:
+      operationId: getReportJson
+      responses:
+        '200': {description: Report, content: {application/json: {schema: {$ref: 'report.schema.json'}}}}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/InvalidState'}
+  /reviews/{id}/report.md:
+    parameters: [{$ref: '#/components/parameters/ReviewId'}]
+    get:
+      operationId: getReportMd
+      responses:
+        '200': {description: Markdown report, content: {text/markdown: {schema: {type: string}}}}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/InvalidState'}
+  /ai-providers:
+    get:
+      operationId: listPublicProviders
+      description: Non-admin list of enabled providers. Never returns keys.
+      responses: {'200': {description: OK, content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/ProviderPublic'}}}}}}
+  /repos/check:
+    get:
+      operationId: checkRepo
+      parameters:
+        - {name: url, in: query, required: true, schema: {type: string, pattern: '^https://github\.com/[^/]+/[^/]+$'}}
+        - {name: ref, in: query, schema: {type: string}}
+      responses:
+        '200': {description: Repo metadata, content: {application/json: {schema: {$ref: '#/components/schemas/RepoCheck'}}}}
+        '401': {description: Login required (private repo), content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /reviews/{id}/files:
+    parameters: [{$ref: '#/components/parameters/ReviewId'}]
+    get:
+      operationId: listReviewFiles
+      responses:
+        '200': {description: Per-file status, content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/ReviewFile'}}}}}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /reviews/{id}/retry:
+    parameters: [{$ref: '#/components/parameters/ReviewId'}]
+    post:
+      operationId: retryReview
+      description: Only for failed reviews. Starts a fresh 5-attempt budget (new Job).
+      responses: {'202': {$ref: '#/components/responses/Accepted'}, '404': {$ref: '#/components/responses/NotFound'}, '409': {$ref: '#/components/responses/InvalidState'}}
+  /reviews/{id}/attempts:
+    parameters: [{$ref: '#/components/parameters/ReviewId'}]
+    get:
+      operationId: listReviewAttempts
+      responses:
+        '200': {description: review_attempts rows, content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/ReviewAttempt'}}}}}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /admin/ai-providers:
+    get:
+      operationId: listProviders
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/AIProvider'}}}}}
+        '403': {$ref: '#/components/responses/Forbidden'}
+    post:
+      operationId: createProvider
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/AIProviderWrite'}}}}
+      responses:
+        '201': {description: Created, content: {application/json: {schema: {$ref: '#/components/schemas/AIProvider'}}}}
+        '400': {description: Invalid, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '403': {$ref: '#/components/responses/Forbidden'}
+  /admin/ai-providers/{id}:
+    parameters: [{$ref: '#/components/parameters/ReviewId'}]
+    patch:
+      operationId: updateProvider
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/AIProviderWrite'}}}}
+      responses: {'200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/AIProvider'}}}}, '404': {$ref: '#/components/responses/NotFound'}}
+    delete:
+      operationId: deleteProvider
+      responses: {'204': {description: Deleted}, '404': {$ref: '#/components/responses/NotFound'}}
+  /admin/ai-providers/{id}/test:
+    parameters: [{$ref: '#/components/parameters/ReviewId'}]
+    post:
+      operationId: testProvider
+      responses: {'200': {description: Reachable}, '502': {description: Provider error, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}}
+  /admin/settings:
+    get:
+      operationId: getSettings
+      responses: {'200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/Settings'}}}}}
+    put:
+      operationId: putSettings
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/Settings'}}}}
+      responses: {'200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/Settings'}}}}, '403': {$ref: '#/components/responses/Forbidden'}}

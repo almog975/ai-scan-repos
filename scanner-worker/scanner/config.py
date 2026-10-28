@@ -13,7 +13,7 @@ class WorkerConfig:
     depth: str = "quick"
     reports_dir: str = field(default_factory=lambda: os.environ.get("REPORTS_DIR", "/reports"))
     work_dir: str = field(default_factory=lambda: os.environ.get("WORK_DIR", "/work"))
-    review_api_url: str = field(default_factory=lambda: os.environ.get("REVIEW_API_URL", "http://review-api:8000"))
+    review_api_url: str = field(default_factory=lambda: os.environ.get("REVIEW_API_URL", "http://review-api:8001"))
     internal_token: str = field(default_factory=lambda: os.environ.get("INTERNAL_API_TOKEN", ""))
     ai_provider: str = field(default_factory=lambda: os.environ.get("AI_PROVIDER", "openai_compatible"))
     ai_model: str = field(default_factory=lambda: os.environ.get("AI_MODEL", "local-model"))

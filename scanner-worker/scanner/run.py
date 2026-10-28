@@ -177,6 +177,8 @@ def main(argv=None) -> int:
     ap.add_argument("--review-id", required=True)
     args = ap.parse_args(argv)
     cfg = WorkerConfig(review_id=args.review_id)
+    from .health import start_health_server
+    start_health_server(int(os.environ.get("HEALTH_PORT", "8002")))
     api = ReviewAPI(cfg.review_api_url, cfg.internal_token)
     rv = api.get_review(cfg.review_id)
     cfg.repo_url, cfg.depth = rv["repo_url"], rv["depth"]

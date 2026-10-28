@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/almog975/FinalProject/ai-scan-repos/contracts/report.schema.json",
+  "title": "report.json (v1)",
+  "type": "object",
+  "required": ["schema", "review_id", "repo", "depth", "summary", "findings"],
+  "properties": {
+    "schema": {"const": "report/v1"},
+    "review_id": {"type": "string"},
+    "repo": {
+      "type": "object", "required": ["url"],
+      "properties": {
+        "url": {"type": "string", "pattern": "^https://github\\.com/[^/]+/[^/]+$"},
+        "commit_sha": {"type": ["string", "null"]},
+        "ref": {"type": ["string", "null"]}
+      }
+    },
+    "depth": {"enum": ["quick", "brief", "deep"]},
+    "provider": {
+      "type": ["object", "null"],
+      "properties": {"name": {"type": "string"}, "model": {"type": "string"}, "kind": {"enum": ["onprem", "cloud"]}}
+    },
+    "started_at": {"type": "string", "format": "date-time"},
+    "finished_at": {"type": "string", "format": "date-time"},
+    "attempts": {"type": "integer", "minimum": 1, "maximum": 5},
+    "summary": {
+      "type": "object",
+      "required": ["critical", "high", "medium", "low", "info"],
+      "properties": {
+        "critical": {"type": "integer", "minimum": 0},
+        "high": {"type": "integer", "minimum": 0},
+        "medium": {"type": "integer", "minimum": 0},
+        "low": {"type": "integer", "minimum": 0},
+        "info": {"type": "integer", "minimum": 0},
+        "files_scanned": {"type": "integer", "minimum": 0}
+      }
+    },
+    "executive_summary": {"type": ["string", "null"]},
+    "findings": {"type": "array", "items": {"$ref": "finding.schema.json"}},
+    "tool_versions": {"type": "object", "additionalProperties": {"type": "string"}}
+  }
+}

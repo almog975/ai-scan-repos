@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     reports_pvc: str = "ai-scan-reports"
     scanner_service_account: str = "scanner-worker"
     scanner_secret_name: str = "scanner-worker-env"
-    review_api_internal_url: str = "http://review-api:8000"
+    review_api_internal_url: str = "http://review-api:8001"
     # Watchdog
     heartbeat_timeout_seconds: int = 900  # 15 minutes
     max_attempts: int = 5
