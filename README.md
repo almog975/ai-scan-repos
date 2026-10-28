@@ -18,7 +18,7 @@ see [`../README.md`](../README.md).
   gateway/         FastAPI, :8000  (/healthz /readyz /metrics)
   review-api/      FastAPI, :8001  (/healthz /readyz /metrics) – Alembic migrations in review-api/alembic/
   scanner-worker/  Python Job image; probe server :8002 (/healthz /readyz /metrics)
-  deploy/k8s/      kustomize base: namespace, Secret placeholder, postgres StatefulSet+PVC+headless svc, deployments+services, Job template
+  deploy/<c>/       per-component Kustomize base + overlays/{local,k3s,eks} (see docs/kustomize-layout.md)
   infra/db/        target PostgreSQL schema v1 (schema.sql, migrations/001_init.sql)
   infra/           other infra-level assets
   docs/            architecture notes, ADRs, runbooks
