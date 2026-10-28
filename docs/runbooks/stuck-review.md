@@ -24,7 +24,7 @@ kubectl -n $NS logs -l app=scanner,review-id=$R --tail=200
 kubectl -n $NS logs deploy/review-api | grep $R
 kubectl -n $NS get events --sort-by=.lastTimestamp | grep scan-$R   # image pull, PVC, quota, scheduling
 ```
-Job name: `scan-<review-id>-b<budget>-a<attempt>`; labels `app=scanner, review-id, attempt, budget-no`.
+Job name: `scan-<review-id>-a<attempt> (attempt unique across budgets: (budget-1)*5+attempt)`; labels `app=scanner, review-id, attempt, budget-no`.
 
 ## 2. What the watchdog does by itself
 Every `WATCHDOG_INTERVAL_SECONDS` (60) it checks reviews in **`running` or `retrying`**. A review is stuck when:

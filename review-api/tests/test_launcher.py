@@ -25,7 +25,7 @@ def env(c):
 def test_manifest_contract(template, tmp_path):
     s = Settings(scanner_job_template=template, scanner_image="reg/ai-scan/scanner-worker:abc123")
     m = build_job_manifest(s, SPEC, ai_secret="scan-x-ai")
-    assert m["metadata"]["name"] == f"scan-{RID}-b3-a2" and len(m["metadata"]["name"]) <= 63
+    assert m["metadata"]["name"] == f"scan-{RID}-a12" and len(m["metadata"]["name"]) <= 63
     assert m["metadata"]["labels"] == {"app": "scanner", "review-id": RID, "attempt": "2", "budget-no": "3"}
     assert m["spec"]["activeDeadlineSeconds"] == 21600 and m["spec"]["backoffLimit"] == 0
     pod = m["spec"]["template"]["spec"]
@@ -194,3 +194,9 @@ def test_k8s_launcher_creates_job_from_configmap_template():
     assert ctr["securityContext"]["allowPrivilegeEscalation"] is False and ctr["securityContext"]["capabilities"] == {"drop": ["ALL"]}
     assert {"name": "reports", "persistentVolumeClaim": {"claimName": "reports"}} in pod["volumes"]
     assert "sk" not in json.dumps(b.created[0])
+
+
+def test_job_attempt_unique_across_budgets():
+    names = [job_name_for(RID, n, b) for b in (1, 2, 3) for n in range(1, 6)]
+    assert len(set(names)) == 15 and names[0] == f"scan-{RID}-a1" and names[5] == f"scan-{RID}-a6"
+    assert all(len(x) <= 63 for x in names)

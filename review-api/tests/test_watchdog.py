@@ -17,7 +17,7 @@ class FakeK8s:
         self.launched, self.deleted, self.cleaned, self.st = [], [], [], {}
 
     def launch(self, r):
-        name = f"scan-{r.id}-b{r.budget_no}-a{r.attempt}"
+        name = f"scan-{r.id}-a{(r.budget_no - 1) * 5 + r.attempt}"
         self.launched.append((r.budget_no, r.attempt))
         self.st[name] = "active"
         return name
@@ -69,7 +69,7 @@ def test_stale_heartbeat_marks_stuck_then_relaunches_next_cycle(client, H, k8s, 
         assert sweep(s, k8s, settings, at=later(21)) == {rid: "relaunched"}
         r = s.get(Review, rid)
         assert r.state == State.retrying and r.attempt == 2 and r.budget_no == 1 and r.stuck_since is None
-    assert k8s.deleted == [f"scan-{rid}-b1-a1"] and k8s.launched[-1] == (1, 2)
+    assert k8s.deleted == [f"scan-{rid}-a1"] and k8s.launched[-1] == (1, 2)
     att = client.get(f"/reviews/{rid}/attempts", headers=H).json()
     assert [(a["n"], a["outcome"]) for a in att] == [(1, "stuck"), (2, None)]
     check({"type": "array", "items": {"$ref": "urn:review-api#/components/schemas/ReviewAttempt"}}, att)
@@ -87,7 +87,7 @@ def test_stuck_not_relaunched_before_next_retry_at(client, H, k8s, settings):
 def test_queued_job_died_before_first_heartbeat(client, H, k8s, settings):
     rid = create(client, H)
     assert client.get(f"/reviews/{rid}", headers=H).json()["state"] == "queued"
-    k8s.st.pop(f"scan-{rid}-b1-a1")  # Job vanished, worker never sent a heartbeat
+    k8s.st.pop(f"scan-{rid}-a1")  # Job vanished, worker never sent a heartbeat
     with db() as s:
         assert sweep(s, k8s, settings) == {rid: "stuck"}
         assert sweep(s, k8s, settings, at=later()) == {rid: "relaunched"}
@@ -103,7 +103,7 @@ def test_queued_no_heartbeat_timeout(client, H, k8s, settings):
 
 def test_failed_job_is_stuck_immediately(client, H, k8s, settings):
     rid = create(client, H)
-    k8s.st[f"scan-{rid}-b1-a1"] = "failed"
+    k8s.st[f"scan-{rid}-a1"] = "failed"
     with db() as s:
         assert sweep(s, k8s, settings) == {rid: "stuck"}
 

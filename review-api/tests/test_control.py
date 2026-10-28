@@ -21,7 +21,7 @@ class FakeK8s:
 
     def launch(self, r):
         self.launched.append((r.budget_no, r.attempt))
-        return f"scan-{r.id}-b{r.budget_no}-a{r.attempt}"
+        return f"scan-{r.id}-a{(r.budget_no - 1) * 5 + r.attempt}"
 
     def delete(self, name):
         self.deleted.append(name)
@@ -155,7 +155,7 @@ def test_pause_resume_cancel(client, H, k8s):
     assert r.status_code == 202 and r.json()["state"] == "paused"
     check("Review", r.json())
     assert r.json()["paused_at"] and r.json()["paused_by"]["login"]
-    assert k8s.deleted == [f"scan-{rid}-b1-a1"]
+    assert k8s.deleted == [f"scan-{rid}-a1"]
     assert client.post(f"/reviews/{rid}/pause", headers=H).status_code == 409
     r = client.post(f"/reviews/{rid}/resume", headers=H)
     assert r.status_code == 202 and r.json()["state"] == "queued" and r.json()["attempt"] == 1

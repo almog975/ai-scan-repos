@@ -2,7 +2,7 @@
 
 Kubernetes: the Job is rendered from Infra's `scanner-job-template` ConfigMap (mounted file
 SCANNER_JOB_TEMPLATE, placeholders ${REVIEW_ID} ${ATTEMPT} ${DEPTH} ${REPO_URL} ${IMAGE}); review-api then
-enforces the contract fields: name scan-<id>-b<budget>-a<attempt>, labels app=scanner/review-id/attempt/budget-no,
+enforces the contract fields: name scan-<id>-a<review-wide attempt>, labels app=scanner/review-id/attempt/budget-no,
 activeDeadlineSeconds 21600, backoffLimit 0, the `reports` PVC, env DEPTH/REVIEW_ID/ATTEMPT/BUDGET_NO/COMMIT_SHA,
 and a pinned image (`:latest` rejected).
 Secrets are never put in args or the Job spec: the per-review AI key goes into a Secret owned by the Job.
@@ -56,9 +56,15 @@ class JobLauncher(Protocol):
     def status(self, job_name: str) -> str: ...  # active | succeeded | failed | missing
 
 
+def job_attempt(attempt: int, budget_no: int = 1) -> int:
+    """Attempt number unique within the review across budgets: budget b holds attempts (b-1)*5+1 .. b*5
+    (a budget only ends after its 5th attempt, so the numbers never collide)."""
+    return (budget_no - 1) * MAX_ATTEMPTS + attempt
+
+
 def job_name_for(review_id: str, attempt: int, budget_no: int = 1) -> str:
-    """Deterministic: scan-<reviewId>-b<budget>-a<attempt> (idempotent create; 47 chars for a uuid, <= 63)."""
-    return f"scan-{review_id}-b{budget_no}-a{attempt}"[:63].rstrip("-")
+    """Deterministic: scan-<reviewId>-a<attempt>, attempt unique across budgets (idempotent create; <= 63 chars)."""
+    return f"scan-{review_id}-a{job_attempt(attempt, budget_no)}"[:63].rstrip("-")
 
 
 def check_image(image: str) -> None:
@@ -78,7 +84,8 @@ def contract_env(spec: JobSpec) -> list[dict]:
 
 def render_template(text: str, s: Settings, spec: JobSpec) -> dict:
     values = {"REVIEW_ID": spec.review_id, "ATTEMPT": str(spec.attempt), "DEPTH": spec.depth,
-              "REPO_URL": spec.repo_url, "IMAGE": s.scanner_image, "BUDGET_NO": str(spec.budget_no)}
+              "REPO_URL": spec.repo_url, "IMAGE": s.scanner_image, "BUDGET_NO": str(spec.budget_no),
+              "JOB_ATTEMPT": str(job_attempt(spec.attempt, spec.budget_no))}
     for k, v in values.items():
         if not _SAFE.match(v):
             raise ValueError(f"unsafe value for ${{{k}}}")
