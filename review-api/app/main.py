@@ -81,4 +81,11 @@ def create_app(settings: Settings | None = None, **deps) -> FastAPI:
 
 
 def get_app():  # uvicorn --factory app.main:get_app
-    return create_app()
+    s = get_settings()
+    logging.basicConfig(level=s.log_level.upper())
+    bad = s.problems()
+    if bad:  # fail fast: the pod crash-loops with a clear message instead of running with dev defaults
+        for m in bad:
+            logging.getLogger("review-api").critical("config: %s", m)
+        raise SystemExit("invalid production config: " + "; ".join(bad))
+    return create_app(s)

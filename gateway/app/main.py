@@ -304,6 +304,13 @@ def create_app(settings: Settings | None = None, transport: httpx.AsyncBaseTrans
     return app
 
 
-def get_app():
-    logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"))
-    return create_app()
+def get_app():  # uvicorn --factory app.main:get_app
+    s = get_settings()
+    logging.basicConfig(level=s.log_level.upper())
+    bad = s.problems()
+    if bad:  # fail fast: the pod crash-loops with a clear message instead of running with dev defaults
+        for m in bad:
+            logging.getLogger("gateway").critical("config: %s", m)
+        raise SystemExit("invalid production config: " + "; ".join(bad))
+    return create_app(s)
+
