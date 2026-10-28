@@ -27,7 +27,6 @@ At **Brief and Deep** depth the AI fills, per finding: `ai_explanation`, `ai_fix
 using the same enum. Code today: only `ai_explanation` is set (`run.py` `_ai_phase`) — **decided, implementation pending (Phase 2)**.
 
 ## Disagreements
-1. **`ai_severity` is not in the contract.** `contracts/finding.schema.json` has `ai_explanation`, `ai_fix`,
-   `confidence` but no `ai_severity`, and `additionalProperties: false`, so adding it without a contract
-   change makes reports fail validation. Contract update needed.
+1. **`ai_severity`** is coming in the contract (owned by Coder) (`contracts/finding.schema.json`, alongside `snippet` and newly required fields);
+   the worker must emit it once the contract lands.
 2. semgrep INFO and the UNKNOWN/unrecognised warning: see table (code pending).
