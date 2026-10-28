@@ -1,0 +1,1 @@
+{"schema":"progress/v1","review_id":"3f1c2a9e-7b4d-4e8a-9c1f-2d5e6a7b8c90","attempt":1,"updated_at":"2026-10-28T10:00:00Z","totals":{"files":2,"done":1,"skipped":0,"error":0},"files":[{"path":"a.py","status":"done","findings_count":1,"started_at":"2026-10-28T10:00:00Z","finished_at":null},{"path":"b.py","status":"pending","findings_count":0}],"budget_no":1}

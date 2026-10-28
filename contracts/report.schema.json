@@ -1,0 +1,143 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/almog975/ai-scan-repos/contracts/report.schema.json",
+  "title": "report.json (v1)",
+  "type": "object",
+  "required": [
+    "schema",
+    "review_id",
+    "repo",
+    "depth",
+    "started_at",
+    "finished_at",
+    "summary",
+    "findings",
+    "attempt",
+    "budget_no"
+  ],
+  "properties": {
+    "schema": {
+      "const": "report/v1"
+    },
+    "review_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "repo": {
+      "type": "object",
+      "required": [
+        "url"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "url": {
+          "$ref": "common.schema.json#/$defs/repo_url"
+        },
+        "commit_sha": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[a-f0-9]{40}$"
+        },
+        "ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "depth": {
+      "$ref": "common.schema.json#/$defs/depth"
+    },
+    "provider": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "common.schema.json#/$defs/provider_kind"
+        }
+      }
+    },
+    "started_at": {
+      "$ref": "common.schema.json#/$defs/timestamp"
+    },
+    "finished_at": {
+      "$ref": "common.schema.json#/$defs/timestamp"
+    },
+    "attempt": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 5
+    },
+    "budget_no": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "retry budget number; starts at 1, +1 per POST /reviews/{id}/retry"
+    },
+    "summary": {
+      "type": "object",
+      "required": [
+        "critical",
+        "high",
+        "medium",
+        "low",
+        "info"
+      ],
+      "properties": {
+        "critical": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "high": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "medium": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "low": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "info": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "files_scanned": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "executive_summary": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "$ref": "finding.schema.json"
+      }
+    },
+    "tool_versions": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    }
+  },
+  "additionalProperties": false
+}

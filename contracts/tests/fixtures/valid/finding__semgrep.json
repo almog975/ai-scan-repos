@@ -1,0 +1,1 @@
+{"id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","tool":"semgrep","category":"sast","rule":"python.lang.eval","severity":"high","file":"app/main.py","line":12,"line_end":14,"title":"eval use","description":"Use of eval","cwe":["CWE-95"]}

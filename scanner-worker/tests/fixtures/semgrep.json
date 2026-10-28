@@ -1,0 +1,5 @@
+{"results": [
+ {"check_id": "python.lang.security.audit.eval-detected", "path": "app.py", "start": {"line": 3},
+  "extra": {"severity": "ERROR", "message": "Detected use of eval | dangerous"}},
+ {"check_id": "python.flask.debug", "path": "app.py", "start": {"line": 9},
+  "extra": {"severity": "WARNING", "message": "Flask debug enabled"}}]}

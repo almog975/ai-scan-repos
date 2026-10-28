@@ -1,0 +1,129 @@
+openapi: 3.1.0
+info:
+  title: AI Scan Repos – gateway
+  version: 0.1.0-rc
+  description: |
+    Public edge. Browser routes authenticate with the `aiscan_session` cookie (HttpOnly; Secure; SameSite=Lax).
+    The internal token is used ONLY on gateway -> review-api calls and is never exposed to browsers.
+    There is no catch-all proxy: only the `/api/*` routes listed below are forwarded (prefix stripped),
+    with X-Internal-Token, X-User-Id and X-User-Role injected; anything else under /api returns 404.
+    Roles: users.role in (user, admin); the first user to log in becomes admin. `/api/admin/*` -> 403 for non-admins.
+servers:
+  - {url: 'http://gateway:8000', description: in-cluster}
+  - {url: 'http://localhost:8000', description: local}
+security: [{session: []}]
+components:
+  securitySchemes:
+    session: {type: apiKey, in: cookie, name: aiscan_session}
+  schemas:
+    Error:
+      type: object
+      additionalProperties: false
+      required: [error, request_id]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message]
+          properties:
+            code: {enum: [INVALID_SIGNATURE, CLOUD_ACK_REQUIRED, UNAUTHORIZED, FORBIDDEN, NOT_FOUND, VALIDATION_ERROR, RATE_LIMITED, CONFLICT, INTERNAL]}
+            message: {type: string}
+            details: {type: object}
+        request_id: {type: string}
+    Me:
+      type: object
+      required: [id, github_login, avatar_url, role]
+      properties:
+        id: {$ref: 'common.schema.json#/$defs/uuid'}
+        github_login: {type: string}
+        avatar_url: {type: [string, 'null'], format: uri}
+        role: {$ref: 'common.schema.json#/$defs/role'}
+  responses:
+    Unauthorized: {description: Not logged in / session expired, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+paths:
+  /healthz:
+    get: {operationId: healthz, security: [], responses: {'200': {description: Process alive}}}
+  /readyz:
+    get: {operationId: readyz, security: [], responses: {'200': {description: DB reachable}, '503': {description: Not ready}}}
+  /metrics:
+    get: {operationId: metrics, security: [], responses: {'200': {description: Prometheus metrics, content: {text/plain: {schema: {type: string}}}}}}
+  /auth/github/login:
+    get:
+      operationId: login
+      security: []
+      description: Redirect to GitHub with CSRF `state` in a cookie (scopes read:user repo).
+      responses:
+        '302': {description: Redirect to GitHub}
+        '429': {description: Rate limited, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+  /auth/github/callback:
+    get:
+      operationId: callback
+      security: []
+      parameters:
+        - {name: code, in: query, required: true, schema: {type: string}}
+        - {name: state, in: query, required: true, schema: {type: string}}
+      responses:
+        '302': {description: 'Session cookie set, redirect to UI. Upserts users row; first user ever gets role admin.'}
+        '400': {description: State mismatch / missing code, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '403': {description: GitHub login not in allow-list, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '502': {description: GitHub error, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+  /auth/logout:
+    post:
+      operationId: logout
+      responses: {'204': {description: Session revoked}, '401': {$ref: '#/components/responses/Unauthorized'}}
+  /me:
+    get:
+      operationId: me
+      responses:
+        '200': {description: Current user, content: {application/json: {schema: {$ref: '#/components/schemas/Me'}}}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+  /webhooks/github:
+    post:
+      operationId: githubWebhook
+      security: []
+      description: Authenticated by HMAC (X-Hub-Signature-256 over the raw body, secret GITHUB_WEBHOOK_SECRET), not by session.
+      parameters:
+        - {name: X-GitHub-Event, in: header, required: true, schema: {type: string}}
+        - {name: X-GitHub-Delivery, in: header, required: true, schema: {type: string}}
+        - {name: X-Hub-Signature-256, in: header, required: true, schema: {type: string, pattern: '^sha256=[0-9a-f]{64}$'}}
+      requestBody: {required: true, content: {application/json: {schema: {type: object}}}}
+      responses:
+        '202': {description: Accepted, content: {application/json: {schema: {type: object, required: [accepted], properties: {accepted: {type: boolean}}}}}}
+        '400': {description: Malformed payload, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '401': {description: INVALID_SIGNATURE, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '409': {description: Duplicate X-GitHub-Delivery, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+  # ---- explicitly proxied review-api routes (session cookie auth; see review-api.openapi.yaml) ----
+  /api/reviews:
+    $ref: 'review-api.openapi.yaml#/paths/~1reviews'
+  /api/reviews/{id}:
+    $ref: 'review-api.openapi.yaml#/paths/~1reviews~1{id}'
+  /api/reviews/{id}/progress:
+    $ref: 'review-api.openapi.yaml#/paths/~1reviews~1{id}~1progress'
+  /api/reviews/{id}/files:
+    $ref: 'review-api.openapi.yaml#/paths/~1reviews~1{id}~1files'
+  /api/reviews/{id}/attempts:
+    $ref: 'review-api.openapi.yaml#/paths/~1reviews~1{id}~1attempts'
+  /api/reviews/{id}/pause:
+    $ref: 'review-api.openapi.yaml#/paths/~1reviews~1{id}~1pause'
+  /api/reviews/{id}/resume:
+    $ref: 'review-api.openapi.yaml#/paths/~1reviews~1{id}~1resume'
+  /api/reviews/{id}/retry:
+    $ref: 'review-api.openapi.yaml#/paths/~1reviews~1{id}~1retry'
+  /api/reviews/{id}/cancel:
+    $ref: 'review-api.openapi.yaml#/paths/~1reviews~1{id}~1cancel'
+  /api/reviews/{id}/report.json:
+    $ref: 'review-api.openapi.yaml#/paths/~1reviews~1{id}~1report.json'
+  /api/reviews/{id}/report.md:
+    $ref: 'review-api.openapi.yaml#/paths/~1reviews~1{id}~1report.md'
+  /api/repos/check:
+    $ref: 'review-api.openapi.yaml#/paths/~1repos~1check'
+  /api/ai-providers:
+    $ref: 'review-api.openapi.yaml#/paths/~1ai-providers'
+  /api/admin/ai-providers:
+    $ref: 'review-api.openapi.yaml#/paths/~1admin~1ai-providers'
+  /api/admin/ai-providers/{id}:
+    $ref: 'review-api.openapi.yaml#/paths/~1admin~1ai-providers~1{id}'
+  /api/admin/ai-providers/{id}/test:
+    $ref: 'review-api.openapi.yaml#/paths/~1admin~1ai-providers~1{id}~1test'
+  /api/admin/settings:
+    $ref: 'review-api.openapi.yaml#/paths/~1admin~1settings'

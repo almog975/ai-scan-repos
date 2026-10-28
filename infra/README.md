@@ -1,0 +1,11 @@
+# infra/
+
+Infra-level assets.
+
+- `db/schema.sql` – target PostgreSQL schema v1 (source-of-truth reference for the data model).
+- `db/migrations/001_init.sql` – same schema wrapped in a transaction for raw `psql` bootstrap.
+
+The running review-api still applies its own Alembic migrations (`review-api/alembic/`); converging Alembic onto `infra/db/schema.sql` is a follow-up.
+
+TODO (per plan, not in repo yet): K3s install notes, kube-prometheus-stack values, installer wizard +
+Terraform (VPC/EKS/EFS/ECR), `create-secrets.sh`. Owner: AI Scan Infra. See [ADR-0001](../docs/adr/0001-repo-layout.md).

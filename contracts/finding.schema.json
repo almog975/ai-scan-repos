@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/almog975/ai-scan-repos/contracts/finding.schema.json",
+  "title": "Finding (normalized, v1)",
+  "description": "id = lowercase hex sha1 of the UTF-8 string tool + '\\n' + rule + '\\n' + file + '\\n' + (line or ''), e.g. sha1('semgrep\\npython.lang.security.audit.eval\\nsrc/app.py\\n12'). Stable across attempts -> used for dedupe on resume.",
+  "type": "object",
+  "required": ["id", "tool", "rule", "severity", "file", "line", "title", "description"],
+  "properties": {
+    "id": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "tool": {"enum": ["semgrep", "gitleaks", "trivy", "ai"]},
+    "category": {"enum": ["sast", "secret", "dependency", "misconfig", "ai_review"]},
+    "rule": {"type": "string"},
+    "severity": {"$ref": "common.schema.json#/$defs/severity"},
+    "file": {"type": "string"},
+    "line": {"type": ["integer", "null"], "minimum": 1, "description": "line_start; null when not line-bound (e.g. dependency findings)"},
+    "line_end": {"type": ["integer", "null"], "minimum": 1},
+    "title": {"type": "string"},
+    "description": {"type": "string"},
+    "cwe": {"type": "array", "items": {"type": "string", "pattern": "^CWE-[0-9]+$"}},
+    "cve": {"type": ["string", "null"]},
+    "package": {"type": ["string", "null"]},
+    "fixed_version": {"type": ["string", "null"]},
+    "secret_redacted": {"type": "boolean"},
+    "ai_explanation": {"type": ["string", "null"]},
+    "ai_fix": {"type": ["string", "null"]},
+    "confidence": {"type": ["number", "null"], "minimum": 0, "maximum": 1}
+  },
+  "additionalProperties": false
+}

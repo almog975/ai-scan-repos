@@ -1,0 +1,14 @@
+<!doctype html><html><head><meta charset="utf-8"><title>AI Scan Repos installer</title>
+<style>body{font-family:sans-serif;max-width:640px;margin:2em auto}fieldset{margin:1em 0}label{display:block;margin:.4em 0}</style></head>
+<body><h1>AI Scan Repos installer</h1>
+<form method="post" action="/plan">
+<fieldset><legend>Target</legend>
+<label><input type="radio" name="target" value="local" checked> Local (Docker / K3s on this machine)</label>
+<label><input type="radio" name="target" value="ssh-k3s"> Remote K3s host over SSH</label>
+<label><input type="radio" name="target" value="eks"> AWS EKS (Terraform)</label></fieldset>
+<label>Base domain <input name="domain" value="ai-scan.local"></label>
+<fieldset><legend>SSH (K3s)</legend><label>Host <input name="ssh_host"></label><label>User <input name="ssh_user" value="ubuntu"></label></fieldset>
+<fieldset><legend>AWS (EKS)</legend><label>Region <input name="aws_region" value="eu-central-1"></label><label>Cluster <input name="cluster_name" value="ai-scan"></label></fieldset>
+<button type="submit">Show install plan</button></form>
+{% if result %}<h2>Plan</h2><pre>{{ result }}</pre>{% endif %}
+</body></html>

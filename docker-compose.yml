@@ -1,0 +1,60 @@
+# Local dev: postgres + review-api (LocalLauncher runs the scanner in-process) + gateway + frontend.
+# Open http://localhost:8080
+# Usage (from the repo root):  cp .env.example .env && docker compose up --build
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: aiscan
+      POSTGRES_USER: aiscan
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-aiscan-dev}
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aiscan -d aiscan"]
+      interval: 5s
+      retries: 10
+
+  review-api:
+    build:
+      context: .
+      dockerfile: review-api/Dockerfile.local
+    depends_on:
+      postgres: {condition: service_healthy}
+    ports: ["127.0.0.1:8001:8001"]   # internal API: localhost only
+    env_file: [.env]
+    environment:
+      DATABASE_URL: postgresql+psycopg://aiscan:${POSTGRES_PASSWORD:-aiscan-dev}@postgres:5432/aiscan
+      JOB_LAUNCHER: local
+      LOCAL_WORKER_CMD: python -m scanner.run
+      LOCAL_WORKER_CWD: /opt/scanner
+      REPORTS_DIR: /reports
+      WORK_DIR: /work
+      REVIEW_API_URL: http://localhost:8001
+    volumes: [reports:/reports]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8001/readyz')"]
+      interval: 5s
+      retries: 20
+
+  gateway:
+    build: gateway
+    depends_on:
+      review-api: {condition: service_healthy}   # review-api runs the Alembic migrations
+    env_file: [.env]
+    environment:
+      DATABASE_URL: postgresql+psycopg://aiscan:${POSTGRES_PASSWORD:-aiscan-dev}@postgres:5432/aiscan
+      REVIEW_API_URL: http://review-api:8001
+      PUBLIC_URL: http://localhost:8080
+      COOKIE_SECURE: "false"   # plain http on localhost only; keep true behind TLS
+    ports: ["127.0.0.1:8000:8000"]   # for `npm run dev` proxy
+
+  frontend:
+    build: frontend
+    depends_on: [gateway]
+    environment:
+      GATEWAY_UPSTREAM: gateway:8000
+    ports: ["8080:8080"]
+
+volumes:
+  pgdata:
+  reports:

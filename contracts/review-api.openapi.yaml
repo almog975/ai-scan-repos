@@ -1,0 +1,384 @@
+openapi: 3.1.0
+info:
+  title: AI Scan Repos – review-api
+  version: 0.1.0-rc
+  description: |
+    Internal API. Only the gateway calls it (in-cluster), authenticating with `X-Internal-Token`
+    and forwarding the logged-in user as `X-User-Id` (uuid) and `X-User-Role` (user|admin).
+    Browsers never talk to review-api directly and never hold the internal token.
+    User routes return 401 when the user headers are missing/invalid; `/admin/*` returns 403 for non-admins.
+    Shared enums live in common.schema.json ($defs). Deferred past v0.1: per-depth time/cost estimates,
+    server-side paging of findings inside report.json.
+servers:
+  - {url: 'http://review-api:8001', description: in-cluster}
+  - {url: 'http://localhost:8001', description: local}
+security: [{internal: [], user: []}]
+components:
+  securitySchemes:
+    internal: {type: apiKey, in: header, name: X-Internal-Token}
+    user: {type: apiKey, in: header, name: X-User-Id}
+  parameters:
+    ReviewId: {name: id, in: path, required: true, schema: {$ref: 'common.schema.json#/$defs/uuid'}}
+    ProviderId: {name: id, in: path, required: true, schema: {$ref: 'common.schema.json#/$defs/uuid'}}
+    Page: {name: page, in: query, schema: {type: integer, minimum: 1, default: 1}}
+    PageSize: {name: page_size, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 20}}
+  schemas:
+    Error:
+      type: object
+      additionalProperties: false
+      required: [error, request_id]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message]
+          properties:
+            code: {enum: [INVALID_SIGNATURE, CLOUD_ACK_REQUIRED, UNAUTHORIZED, FORBIDDEN, NOT_FOUND, VALIDATION_ERROR, RATE_LIMITED, CONFLICT, INTERNAL]}
+            message: {type: string}
+            details: {type: object}
+        request_id: {type: string}
+    ReviewCreate:
+      type: object
+      additionalProperties: false
+      required: [repo_url, depth]
+      properties:
+        repo_url: {$ref: 'common.schema.json#/$defs/repo_url'}
+        ref: {type: string, default: HEAD}
+        depth: {$ref: 'common.schema.json#/$defs/depth'}
+        provider_id: {oneOf: [{$ref: 'common.schema.json#/$defs/uuid'}, {type: 'null'}]}
+        ack_cloud: {type: boolean, default: false, description: 'Must be true when the provider kind is cloud, else 422 CLOUD_ACK_REQUIRED'}
+    ProviderRef:
+      type: object
+      required: [id, kind, cloud_warning]
+      properties:
+        id: {$ref: 'common.schema.json#/$defs/uuid'}
+        kind: {$ref: 'common.schema.json#/$defs/provider_kind'}
+        cloud_warning: {type: boolean}
+    Review:
+      type: object
+      additionalProperties: false
+      required: [id, repo_url, ref, depth, state, attempt, budget_no, created_at, updated_at, started_at, finished_at]
+      properties:
+        id: {type: string, format: uuid}
+        repo_url: {$ref: 'common.schema.json#/$defs/repo_url'}
+        ref: {type: string}
+        commit_sha: {type: [string, 'null'], pattern: '^[a-f0-9]{40}$'}
+        depth: {$ref: 'common.schema.json#/$defs/depth'}
+        state: {$ref: 'common.schema.json#/$defs/state'}
+        attempt: {type: integer, minimum: 1, maximum: 5}
+        budget_no: {type: integer, minimum: 1, description: '+1 per retry; each budget = 5 attempts'}
+        files_done: {type: integer, minimum: 0}
+        files_total: {type: [integer, 'null'], minimum: 0}
+        findings_count: {type: integer, minimum: 0}
+        failure_reason: {type: [string, 'null']}
+        provider: {oneOf: [{$ref: '#/components/schemas/ProviderRef'}, {type: 'null'}]}
+        created_at: {$ref: 'common.schema.json#/$defs/timestamp'}
+        updated_at: {$ref: 'common.schema.json#/$defs/timestamp'}
+        started_at: {$ref: 'common.schema.json#/$defs/nullable_timestamp'}
+        finished_at: {$ref: 'common.schema.json#/$defs/nullable_timestamp'}
+        links: {type: object, properties: {progress: {type: string}, report: {type: string}}}
+    ReviewList:
+      type: object
+      required: [items, page, page_size, total]
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/Review'}}
+        page: {type: integer, minimum: 1}
+        page_size: {type: integer, minimum: 1, maximum: 100}
+        total: {type: integer, minimum: 0}
+    Progress:
+      description: Same shape as progress.schema.json (SSE `progress` event payload / ?format=json snapshot).
+      allOf: [{$ref: 'progress.schema.json'}]
+      properties:
+        attempt: {type: integer, minimum: 1, maximum: 5}
+        budget_no: {type: integer, minimum: 1}
+    ReviewFile:
+      type: object
+      required: [path, status, findings_count]
+      properties:
+        path: {type: string}
+        status: {$ref: 'common.schema.json#/$defs/file_status'}
+        findings_count: {type: integer, minimum: 0}
+    ReviewFilePage:
+      type: object
+      required: [items, page, page_size, total]
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/ReviewFile'}}
+        page: {type: integer, minimum: 1}
+        page_size: {type: integer, minimum: 1, maximum: 100}
+        total: {type: integer, minimum: 0}
+    ReviewAttempt:
+      type: object
+      required: [id, review_id, budget_no, n, started_at, ended_at, outcome]
+      properties:
+        id: {type: string, format: uuid}
+        review_id: {$ref: 'common.schema.json#/$defs/uuid'}
+        budget_no: {type: integer, minimum: 1, description: '+1 per retry; each budget = 5 attempts'}
+        n: {type: integer, minimum: 1, maximum: 5}
+        job_name: {type: [string, 'null']}
+        started_at: {$ref: 'common.schema.json#/$defs/timestamp'}
+        ended_at: {$ref: 'common.schema.json#/$defs/nullable_timestamp'}
+        outcome: {oneOf: [{$ref: 'common.schema.json#/$defs/attempt_outcome'}, {type: 'null'}]}
+        error: {type: [string, 'null']}
+    RepoCheck:
+      type: object
+      required: [accessible, private, ref, default_branch, size_mb]
+      properties:
+        accessible: {type: boolean}
+        private: {type: boolean}
+        ref: {type: string, description: echoed ref (or default branch when omitted)}
+        default_branch: {type: string}
+        size_mb: {type: number, minimum: 0}
+    ProviderPublic:
+      type: object
+      additionalProperties: false
+      required: [id, name, kind, cloud_warning]
+      properties:
+        id: {$ref: 'common.schema.json#/$defs/uuid'}
+        name: {type: string}
+        kind: {$ref: 'common.schema.json#/$defs/provider_kind'}
+        cloud_warning: {type: boolean}
+    AIProvider:
+      type: object
+      required: [id, name, kind, base_url, model, key_masked, enabled, created_at, updated_at]
+      properties:
+        id: {type: string, format: uuid}
+        name: {type: string}
+        kind: {$ref: 'common.schema.json#/$defs/provider_kind'}
+        base_url: {type: [string, 'null'], format: uri}
+        model: {type: string}
+        key_masked: {type: [string, 'null'], examples: ['****abcd']}
+        enabled: {type: boolean}
+        created_at: {$ref: 'common.schema.json#/$defs/timestamp'}
+        updated_at: {$ref: 'common.schema.json#/$defs/timestamp'}
+    AIProviderWrite:
+      type: object
+      additionalProperties: false
+      required: [name, kind, model]
+      properties:
+        name: {type: string, minLength: 1}
+        kind: {$ref: 'common.schema.json#/$defs/provider_kind'}
+        base_url: {type: [string, 'null'], format: uri}
+        model: {type: string, minLength: 1}
+        api_key: {type: [string, 'null'], writeOnly: true}
+        enabled: {type: boolean, default: true}
+    AIProviderPatch:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        name: {type: string, minLength: 1}
+        base_url: {type: [string, 'null'], format: uri}
+        model: {type: string, minLength: 1}
+        api_key: {type: [string, 'null'], writeOnly: true, description: null clears the stored key}
+        enabled: {type: boolean}
+    Settings:
+      type: object
+      additionalProperties: false
+      required: [default_provider_id, max_concurrent_reviews, max_repo_size_mb]
+      properties:
+        default_provider_id: {oneOf: [{$ref: 'common.schema.json#/$defs/uuid'}, {type: 'null'}]}
+        max_concurrent_reviews: {type: integer, minimum: 1}
+        max_repo_size_mb: {type: integer, minimum: 1}
+  responses:
+    BadRequest: {description: Malformed request / validation error, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+    Unauthorized: {description: Missing or invalid user/internal credentials, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+    Forbidden: {description: Not an admin (all /admin/* routes) or no access to the resource, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+    NotFound: {description: Not found, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+    InvalidState: {description: 'Conflict, code CONFLICT', content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+    TooMany: {description: 'Rate limited, code RATE_LIMITED (Retry-After header)', headers: {Retry-After: {schema: {type: integer}}}, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+    Accepted: {description: Accepted, content: {application/json: {schema: {$ref: '#/components/schemas/Review'}}}}
+paths:
+  /healthz:
+    get: {operationId: healthz, security: [], responses: {'200': {description: Process alive}}}
+  /readyz:
+    get: {operationId: readyz, security: [], responses: {'200': {description: DB reachable}, '503': {description: Not ready}}}
+  /metrics:
+    get: {operationId: metrics, security: [], responses: {'200': {description: Prometheus metrics, content: {text/plain: {schema: {type: string}}}}}}
+  /reviews:
+    post:
+      operationId: createReview
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ReviewCreate'}}}}
+      responses:
+        '201': {description: Created (Job launched), content: {application/json: {schema: {$ref: '#/components/schemas/Review'}}}}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {description: Repo or provider not found, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '409': {description: Active review exists for repo+sha, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '422': {description: 'code CLOUD_ACK_REQUIRED: provider kind is cloud and ack_cloud != true', content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '429': {$ref: '#/components/responses/TooMany'}
+    get:
+      operationId: listReviews
+      parameters:
+        - {name: state, in: query, schema: {$ref: 'common.schema.json#/$defs/state'}}
+        - {name: page, in: query, schema: {type: integer, minimum: 1, default: 1}}
+        - {name: page_size, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 20}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/ReviewList'}}}}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+  /reviews/{id}:
+    parameters: [{$ref: '#/components/parameters/ReviewId'}]
+    get:
+      operationId: getReview
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/Review'}}}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /reviews/{id}/progress:
+    parameters:
+      - {$ref: '#/components/parameters/ReviewId'}
+      - {name: format, in: query, schema: {enum: [json]}, description: 'Polling fallback: return one Progress snapshot as JSON'}
+    get:
+      operationId: getProgress
+      description: |
+        Server-Sent Events. Event types:
+        - `event: progress` – data: Progress (progress.schema.json)
+        - `event: state` – data: {"state": <state>, "attempt": n, "budget_no": n}
+        - `event: done` – data: {"state": "completed"|"failed"|"cancelled"}; server closes the stream afterwards.
+      responses:
+        '200':
+          description: SSE stream or JSON snapshot
+          content:
+            text/event-stream: {schema: {type: string}}
+            application/json: {schema: {$ref: '#/components/schemas/Progress'}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /reviews/{id}/files:
+    parameters: [{$ref: '#/components/parameters/ReviewId'}]
+    get:
+      operationId: listReviewFiles
+      parameters:
+        - {name: status, in: query, schema: {$ref: 'common.schema.json#/$defs/file_status'}}
+        - {$ref: '#/components/parameters/Page'}
+        - {$ref: '#/components/parameters/PageSize'}
+      responses:
+        '200': {description: Per-file status (paginated), content: {application/json: {schema: {$ref: '#/components/schemas/ReviewFilePage'}}}}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /reviews/{id}/attempts:
+    parameters: [{$ref: '#/components/parameters/ReviewId'}]
+    get:
+      operationId: listReviewAttempts
+      description: All review_attempts rows across budgets (not paginated; max 5 per budget).
+      parameters:
+        - {name: budget_no, in: query, required: false, schema: {type: integer, minimum: 1}, description: Only attempts of this retry budget}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/ReviewAttempt'}}}}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /reviews/{id}/pause:
+    parameters: [{$ref: '#/components/parameters/ReviewId'}]
+    post:
+      operationId: pauseReview
+      responses: {'202': {$ref: '#/components/responses/Accepted'}, '401': {$ref: '#/components/responses/Unauthorized'}, '404': {$ref: '#/components/responses/NotFound'}, '409': {$ref: '#/components/responses/InvalidState'}}
+  /reviews/{id}/resume:
+    parameters: [{$ref: '#/components/parameters/ReviewId'}]
+    post:
+      operationId: resumeReview
+      description: paused|stuck -> queued (new Job, same budget).
+      responses: {'202': {$ref: '#/components/responses/Accepted'}, '401': {$ref: '#/components/responses/Unauthorized'}, '404': {$ref: '#/components/responses/NotFound'}, '409': {$ref: '#/components/responses/InvalidState'}, '429': {$ref: '#/components/responses/TooMany'}}
+  /reviews/{id}/retry:
+    parameters: [{$ref: '#/components/parameters/ReviewId'}]
+    post:
+      operationId: retryReview
+      description: Only for `failed` reviews (409 CONFLICT otherwise). Starts a fresh 5-attempt budget (budget_no+1, attempt=1) and a new Job.
+      responses: {'202': {$ref: '#/components/responses/Accepted'}, '401': {$ref: '#/components/responses/Unauthorized'}, '404': {$ref: '#/components/responses/NotFound'}, '409': {$ref: '#/components/responses/InvalidState'}, '429': {$ref: '#/components/responses/TooMany'}}
+  /reviews/{id}/cancel:
+    parameters: [{$ref: '#/components/parameters/ReviewId'}]
+    post:
+      operationId: cancelReview
+      responses: {'202': {$ref: '#/components/responses/Accepted'}, '401': {$ref: '#/components/responses/Unauthorized'}, '404': {$ref: '#/components/responses/NotFound'}, '409': {$ref: '#/components/responses/InvalidState'}}
+  /reviews/{id}/report.json:
+    parameters: [{$ref: '#/components/parameters/ReviewId'}]
+    get:
+      operationId: getReportJson
+      responses:
+        '200': {description: Report, content: {application/json: {schema: {$ref: 'report.schema.json'}}}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/InvalidState'}
+  /reviews/{id}/report.md:
+    parameters: [{$ref: '#/components/parameters/ReviewId'}]
+    get:
+      operationId: getReportMd
+      responses:
+        '200': {description: Markdown report, content: {text/markdown: {schema: {type: string}}}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/InvalidState'}
+  /repos/check:
+    get:
+      operationId: checkRepo
+      parameters:
+        - {name: url, in: query, required: true, schema: {$ref: 'common.schema.json#/$defs/repo_url'}}
+        - {name: ref, in: query, schema: {type: string}}
+      responses:
+        '200': {description: Repo metadata, content: {application/json: {schema: {$ref: '#/components/schemas/RepoCheck'}}}}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {description: Login / GitHub authorization required (private repo), content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '404': {description: Repo/ref not found or no access, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '429': {$ref: '#/components/responses/TooMany'}
+  /ai-providers:
+    get:
+      operationId: listPublicProviders
+      description: Enabled providers for the new-review form. Never returns keys or base URLs.
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/ProviderPublic'}}}}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+  /admin/ai-providers:
+    get:
+      operationId: listProviders
+      description: Admin only (users.role = admin, forwarded as X-User-Role); 403 otherwise.
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/AIProvider'}}}}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+    post:
+      operationId: createProvider
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/AIProviderWrite'}}}}
+      responses:
+        '201': {description: Created, content: {application/json: {schema: {$ref: '#/components/schemas/AIProvider'}}}}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+  /admin/ai-providers/{id}:
+    parameters: [{$ref: '#/components/parameters/ProviderId'}]
+    patch:
+      operationId: updateProvider
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/AIProviderPatch'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/AIProvider'}}}}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+    delete:
+      operationId: deleteProvider
+      responses: {'204': {description: Deleted}, '401': {$ref: '#/components/responses/Unauthorized'}, '403': {$ref: '#/components/responses/Forbidden'}, '404': {$ref: '#/components/responses/NotFound'}}
+  /admin/ai-providers/{id}/test:
+    parameters: [{$ref: '#/components/parameters/ProviderId'}]
+    post:
+      operationId: testProvider
+      responses:
+        '200': {description: Reachable}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '502': {description: Provider error, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+  /admin/settings:
+    get:
+      operationId: getSettings
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/Settings'}}}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+    put:
+      operationId: putSettings
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/Settings'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/Settings'}}}}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}

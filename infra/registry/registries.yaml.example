@@ -1,0 +1,13 @@
+# Copy to /etc/rancher/k3s/registries.yaml on every K3s node, then: systemctl restart k3s
+mirrors:
+  "registry.ai-scan.local":
+    endpoint:
+      - "https://registry.ai-scan.local"
+configs:
+  "registry.ai-scan.local":
+    auth:
+      username: REPLACE_ME
+      password: REPLACE_ME
+    tls:
+      ca_file: /etc/rancher/k3s/registry-ca.crt
+      # insecure_skip_verify: true   # lab only

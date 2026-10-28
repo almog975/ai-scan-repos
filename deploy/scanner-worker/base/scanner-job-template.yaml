@@ -1,0 +1,62 @@
+# Placeholders: ${REVIEW_ID} ${ATTEMPT} ${DEPTH} ${REPO_URL} ${IMAGE}
+# ${IMAGE} <- review-api env SCANNER_IMAGE (ConfigMap scanner-image, generated per overlay)
+apiVersion: v1
+kind: ConfigMap
+metadata: {name: scanner-job-template, namespace: ai-scan-repos}
+data:
+  job.yaml: |
+    apiVersion: batch/v1
+    kind: Job
+    metadata:
+      name: scan-${REVIEW_ID}-a${ATTEMPT}
+      namespace: ai-scan-repos
+      labels: {app: scanner, review-id: "${REVIEW_ID}", attempt: "${ATTEMPT}"}
+    spec:
+      backoffLimit: 0
+      ttlSecondsAfterFinished: 3600
+      activeDeadlineSeconds: 21600
+      template:
+        metadata:
+          labels: {app: scanner, review-id: "${REVIEW_ID}", attempt: "${ATTEMPT}"}
+        spec:
+          restartPolicy: Never
+          serviceAccountName: scanner
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            fsGroup: 10001
+            seccompProfile: {type: RuntimeDefault}
+          containers:
+            - name: scanner
+              image: ${IMAGE}
+              args: ["--review-id", "${REVIEW_ID}"]
+              env:
+                - {name: REVIEW_ID, value: "${REVIEW_ID}"}
+                - {name: ATTEMPT, value: "${ATTEMPT}"}
+                - {name: DEPTH, value: "${DEPTH}"}
+                - {name: REPO_URL, value: "${REPO_URL}"}
+                - {name: REPORTS_DIR, value: /reports}
+                - {name: WORK_DIR, value: /work}
+                - {name: HOME, value: /tmp}
+                - {name: REVIEW_API_URL, value: "http://review-api:8001"}
+              envFrom:
+                - secretRef: {name: scanner-secrets}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                runAsNonRoot: true
+                runAsUser: 10001
+                capabilities: {drop: [ALL]}
+              resources:
+                requests: {cpu: 250m, memory: 512Mi}
+                limits: {cpu: "2", memory: 2Gi, ephemeral-storage: 4Gi}
+              volumeMounts:
+                - {name: work, mountPath: /work}
+                - {name: tmp, mountPath: /tmp}
+                - {name: reports, mountPath: /reports}
+          volumes:
+            - {name: work, emptyDir: {sizeLimit: 2Gi}}
+            - {name: tmp, emptyDir: {sizeLimit: 1Gi}}
+            - {name: reports, persistentVolumeClaim: {claimName: reports}}
