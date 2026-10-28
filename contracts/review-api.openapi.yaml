@@ -33,7 +33,7 @@ components:
           additionalProperties: false
           required: [code, message]
           properties:
-            code: {enum: [INVALID_SIGNATURE, CLOUD_ACK_REQUIRED, UNAUTHORIZED, FORBIDDEN, NOT_FOUND, VALIDATION_ERROR, RATE_LIMITED, CONFLICT, REPORT_EXPIRED, INTERNAL]}
+            code: {enum: [INVALID_SIGNATURE, CLOUD_ACK_REQUIRED, UNAUTHORIZED, FORBIDDEN, NOT_FOUND, VALIDATION_ERROR, RATE_LIMITED, CONFLICT, REPORT_EXPIRED, PROVIDER_IN_USE, AI_PROVIDER_UNREACHABLE, AI_PROVIDER_AUTH_FAILED, AI_PROVIDER_BAD_RESPONSE, INTERNAL]}
             message: {type: string}
             details: {type: object}
         request_id: {type: string}
@@ -146,9 +146,31 @@ components:
         name: {type: string}
         kind: {$ref: 'common.schema.json#/$defs/provider_kind'}
         cloud_warning: {type: boolean}
+    CloudAck:
+      type: object
+      additionalProperties: false
+      description: Admin acknowledgement that a cloud provider sends repository code outside the cluster.
+      required: [acknowledged, at, by]
+      properties:
+        acknowledged: {type: boolean}
+        at: {oneOf: [{$ref: 'common.schema.json#/$defs/timestamp'}, {type: 'null'}]}
+        by: {oneOf: [{$ref: 'common.schema.json#/$defs/user_ref'}, {type: 'null'}]}
+    CloudAckWrite:
+      type: object
+      additionalProperties: false
+      required: [acknowledged]
+      properties:
+        acknowledged: {type: boolean}
+    ProviderTestResult:
+      type: object
+      required: [ok, latency_ms, model]
+      properties:
+        ok: {type: boolean, const: true}
+        latency_ms: {type: integer, minimum: 0}
+        model: {type: string}
     AIProvider:
       type: object
-      required: [id, name, kind, base_url, model, key_masked, enabled, created_at, updated_at]
+      required: [id, name, kind, base_url, model, key_masked, enabled, cloud_ack, created_at, updated_at]
       properties:
         id: {type: string, format: uuid}
         name: {type: string}
@@ -157,6 +179,7 @@ components:
         model: {type: string}
         key_masked: {type: [string, 'null'], examples: ['****abcd']}
         enabled: {type: boolean}
+        cloud_ack: {$ref: '#/components/schemas/CloudAck'}
         created_at: {$ref: 'common.schema.json#/$defs/timestamp'}
         updated_at: {$ref: 'common.schema.json#/$defs/timestamp'}
     AIProviderWrite:
@@ -170,6 +193,7 @@ components:
         model: {type: string, minLength: 1}
         api_key: {type: [string, 'null'], writeOnly: true}
         enabled: {type: boolean, default: true}
+        cloud_ack: {$ref: '#/components/schemas/CloudAckWrite'}
     AIProviderPatch:
       type: object
       additionalProperties: false
@@ -180,6 +204,8 @@ components:
         model: {type: string, minLength: 1}
         api_key: {type: [string, 'null'], writeOnly: true, description: null clears the stored key}
         enabled: {type: boolean}
+        kind: {$ref: 'common.schema.json#/$defs/provider_kind'}
+        cloud_ack: {$ref: '#/components/schemas/CloudAckWrite'}
     Settings:
       type: object
       additionalProperties: false
@@ -193,6 +219,7 @@ components:
     Unauthorized: {description: Missing or invalid user/internal credentials, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
     Forbidden: {description: Not an admin (all /admin/* routes) or no access to the resource, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
     NotFound: {description: Not found, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+    ProviderError: {description: 'Provider check failed: AI_PROVIDER_UNREACHABLE, AI_PROVIDER_AUTH_FAILED or AI_PROVIDER_BAD_RESPONSE', content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
     InvalidState: {description: 'Conflict, code CONFLICT', content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
     TooMany: {description: 'Rate limited, code RATE_LIMITED (Retry-After header)', headers: {Retry-After: {schema: {type: integer}}}, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
     Accepted: {description: Accepted, content: {application/json: {schema: {$ref: '#/components/schemas/Review'}}}}
@@ -361,16 +388,30 @@ paths:
         '403': {$ref: '#/components/responses/Forbidden'}
     post:
       operationId: createProvider
+      description: kind=cloud requires cloud_ack {acknowledged:true} (422 CLOUD_ACK_REQUIRED); the server records at/by.
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/AIProviderWrite'}}}}
       responses:
         '201': {description: Created, content: {application/json: {schema: {$ref: '#/components/schemas/AIProvider'}}}}
         '400': {$ref: '#/components/responses/BadRequest'}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '403': {$ref: '#/components/responses/Forbidden'}
+        '422': {description: 'CLOUD_ACK_REQUIRED: kind=cloud needs cloud_ack.acknowledged=true', content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+  /admin/ai-providers/test:
+    post:
+      operationId: testUnsavedProvider
+      description: Test an unsaved provider body (nothing is stored). Same results as testProvider.
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/AIProviderWrite'}}}}
+      responses:
+        '200': {description: Reachable, content: {application/json: {schema: {$ref: '#/components/schemas/ProviderTestResult'}}}}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '502': {$ref: '#/components/responses/ProviderError'}
   /admin/ai-providers/{id}:
     parameters: [{$ref: '#/components/parameters/ProviderId'}]
     patch:
       operationId: updateProvider
+      description: kind may change; switching to cloud requires cloud_ack {acknowledged:true} again (422 CLOUD_ACK_REQUIRED). Switching to onprem clears the ack.
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/AIProviderPatch'}}}}
       responses:
         '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/AIProvider'}}}}
@@ -378,20 +419,22 @@ paths:
         '401': {$ref: '#/components/responses/Unauthorized'}
         '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
+        '422': {description: 'CLOUD_ACK_REQUIRED: kind=cloud needs cloud_ack.acknowledged=true', content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
     delete:
       operationId: deleteProvider
-      responses: {'400': {$ref: '#/components/responses/BadRequest'}, '204': {description: Deleted}, '401': {$ref: '#/components/responses/Unauthorized'}, '403': {$ref: '#/components/responses/Forbidden'}, '404': {$ref: '#/components/responses/NotFound'}}
+      description: 409 PROVIDER_IN_USE if it is the default provider or used by an active review.
+      responses: {'400': {$ref: '#/components/responses/BadRequest'}, '204': {description: Deleted}, '401': {$ref: '#/components/responses/Unauthorized'}, '403': {$ref: '#/components/responses/Forbidden'}, '404': {$ref: '#/components/responses/NotFound'}, '409': {description: PROVIDER_IN_USE, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}}
   /admin/ai-providers/{id}/test:
     parameters: [{$ref: '#/components/parameters/ProviderId'}]
     post:
       operationId: testProvider
       responses:
         '400': {$ref: '#/components/responses/BadRequest'}
-        '200': {description: Reachable}
+        '200': {description: Reachable, content: {application/json: {schema: {$ref: '#/components/schemas/ProviderTestResult'}}}}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
-        '502': {description: Provider error, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '502': {$ref: '#/components/responses/ProviderError'}
   /admin/settings:
     get:
       operationId: getSettings

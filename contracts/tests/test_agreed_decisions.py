@@ -295,3 +295,27 @@ def test_repo_size_in_mb_everywhere():
     rc = comp("RepoCheck")
     assert "size_mb" in rc["required"] and "size_mb" in rc["properties"]
     assert "max_repo_size_mb" in comp("Settings")["properties"]
+
+
+# ---- Phase 4: admin AI providers ----
+def test_p4_provider_cloud_ack():
+    s = API["components"]["schemas"]
+    assert "cloud_ack" in s["AIProvider"]["required"]
+    assert set(s["CloudAck"]["required"]) == {"acknowledged", "at", "by"}
+    assert {"kind", "cloud_ack"} <= set(s["AIProviderPatch"]["properties"])
+    assert "cloud_ack" in s["AIProviderWrite"]["properties"]
+    for op in (API["paths"]["/admin/ai-providers"]["post"], API["paths"]["/admin/ai-providers/{id}"]["patch"]):
+        assert "422" in op["responses"]
+
+
+def test_p4_provider_test_result_and_codes():
+    s = API["components"]["schemas"]
+    assert set(s["ProviderTestResult"]["required"]) == {"ok", "latency_ms", "model"}
+    codes = s["Error"]["properties"]["error"]["properties"]["code"]["enum"]
+    assert {"AI_PROVIDER_UNREACHABLE", "AI_PROVIDER_AUTH_FAILED", "AI_PROVIDER_BAD_RESPONSE", "PROVIDER_IN_USE"} <= set(codes)
+    assert codes == GW["components"]["schemas"]["Error"]["properties"]["error"]["properties"]["code"]["enum"]
+    for p in ("/admin/ai-providers/{id}/test", "/admin/ai-providers/test"):
+        r = API["paths"][p]["post"]["responses"]
+        assert "200" in r and "502" in r
+    assert "/api/admin/ai-providers/test" in GW["paths"]
+    assert "409" in API["paths"]["/admin/ai-providers/{id}"]["delete"]["responses"]
