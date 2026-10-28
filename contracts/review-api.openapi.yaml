@@ -292,10 +292,10 @@ paths:
       description: >-
         paused|stuck -> queued (new Job, same budget). From paused the same attempt continues (a user pause does not
         count as an attempt); from stuck this is the reconciler's retry triggered now (attempt n+1, never a second Job).
-        409 CONFLICT if the review's provider is disabled; 422 CLOUD_ACK_REQUIRED if the provider
+        422 VALIDATION_ERROR if the review's provider is missing or disabled; 422 CLOUD_ACK_REQUIRED if the provider
         is now cloud and the body lacks ack_cloud.
       requestBody: {required: false, content: {application/json: {schema: {type: object, additionalProperties: false, properties: {ack_cloud: {type: boolean, default: false}}}}}}
-      responses: {'422': {description: 'CLOUD_ACK_REQUIRED', content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}, '400': {$ref: '#/components/responses/BadRequest'}, '202': {$ref: '#/components/responses/Accepted'}, '401': {$ref: '#/components/responses/Unauthorized'}, '404': {$ref: '#/components/responses/NotFound'}, '409': {$ref: '#/components/responses/InvalidState'}, '429': {$ref: '#/components/responses/TooMany'}}
+      responses: {'422': {description: 'VALIDATION_ERROR (provider missing or disabled) or CLOUD_ACK_REQUIRED', content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}, '400': {$ref: '#/components/responses/BadRequest'}, '202': {$ref: '#/components/responses/Accepted'}, '401': {$ref: '#/components/responses/Unauthorized'}, '404': {$ref: '#/components/responses/NotFound'}, '409': {$ref: '#/components/responses/InvalidState'}, '429': {$ref: '#/components/responses/TooMany'}}
   /reviews/{id}/retry:
     parameters: [{$ref: '#/components/parameters/ReviewId'}]
     post:
@@ -392,22 +392,6 @@ paths:
         '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
         '502': {description: Provider error, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
-  /admin/reviews/{id}/fail:
-    parameters: [{$ref: '#/components/parameters/ReviewId'}]
-    post:
-      operationId: forceFailReview
-      description: Admin only. Force an active review to failed (Job deleted, partial results kept). Default failure_code INTERNAL.
-      requestBody:
-        required: false
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: false
-              properties:
-                failure_code: {$ref: 'common.schema.json#/$defs/failure_code'}
-                failure_detail: {type: string, maxLength: 2000}
-      responses: {'202': {$ref: '#/components/responses/Accepted'}, '400': {$ref: '#/components/responses/BadRequest'}, '401': {$ref: '#/components/responses/Unauthorized'}, '403': {$ref: '#/components/responses/Forbidden'}, '404': {$ref: '#/components/responses/NotFound'}, '409': {$ref: '#/components/responses/InvalidState'}}
   /admin/settings:
     get:
       operationId: getSettings

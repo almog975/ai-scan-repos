@@ -125,7 +125,5 @@ paths:
     $ref: 'review-api.openapi.yaml#/paths/~1admin~1ai-providers~1{id}'
   /api/admin/ai-providers/{id}/test:
     $ref: 'review-api.openapi.yaml#/paths/~1admin~1ai-providers~1{id}~1test'
-  /api/admin/reviews/{id}/fail:
-    $ref: 'review-api.openapi.yaml#/paths/~1admin~1reviews~1{id}~1fail'
   /api/admin/settings:
     $ref: 'review-api.openapi.yaml#/paths/~1admin~1settings'
