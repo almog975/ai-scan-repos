@@ -1,0 +1,13 @@
+---
+# EKS: replace with the AI provider egress CIDRs (or a VPC endpoint /
+# private link subnet). Must NOT include node/VPC subnets or 172.20.0.1.
+# Placeholder CIDRs are RFC 5737 documentation ranges (not routable).
+# Hostnames cannot be used in NetworkPolicy; list IPs/CIDRs only.
+- op: add
+  path: /spec/egress/-
+  value:
+    to:
+      - ipBlock:
+          cidr: 203.0.113.0/24  # PLACEHOLDER
+    ports:
+      - {protocol: TCP, port: 443}

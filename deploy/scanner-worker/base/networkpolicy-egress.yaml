@@ -1,0 +1,106 @@
+---
+# Egress lockdown for scanner Job pods (label app=scanner).
+# Default deny: once a pod is selected by an Egress policy, only the rules
+# below are allowed. Nothing here may reach the K8s API server, the
+# kubernetes service IP (K3s 10.43.0.1 / EKS 172.20.0.1) or node IPs.
+#
+# NOTE: standard NetworkPolicy can only match IPs/pods/namespaces, NOT
+# hostnames. GitHub and the AI endpoint are therefore expressed as CIDRs.
+# NOTE: on K3s the built-in kube-router network-policy controller enforces
+# this (do not start k3s with --disable-network-policy). On EKS the VPC CNI
+# needs network policy enabled (enableNetworkPolicy=true) or Calico.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: scanner-egress
+  labels:
+    app: scanner
+spec:
+  podSelector:
+    matchLabels:
+      app: scanner
+  policyTypes: [Egress]
+  egress:
+    # [0] DNS to cluster DNS only (kube-dns / coredns in kube-system).
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - {protocol: UDP, port: 53}
+        - {protocol: TCP, port: 53}
+    # [1] GitHub HTTPS. IPv4 CIDRs from https://api.github.com/meta
+    # ('git' + 'web'). Patchable list: refresh with
+    #   curl -s https://api.github.com/meta | jq -r '.git[],.web[]' | grep -v :
+    # and replace /spec/egress/1/to in an overlay patch if needed.
+    - to:
+        - ipBlock: {cidr: 4.208.26.193/32}
+        - ipBlock: {cidr: 4.208.26.197/32}
+        - ipBlock: {cidr: 4.208.26.198/32}
+        - ipBlock: {cidr: 4.225.11.194/32}
+        - ipBlock: {cidr: 4.225.11.199/32}
+        - ipBlock: {cidr: 4.225.11.200/32}
+        - ipBlock: {cidr: 4.228.31.144/32}
+        - ipBlock: {cidr: 4.228.31.145/32}
+        - ipBlock: {cidr: 4.228.31.150/32}
+        - ipBlock: {cidr: 4.237.22.36/32}
+        - ipBlock: {cidr: 4.237.22.38/32}
+        - ipBlock: {cidr: 4.237.22.40/32}
+        - ipBlock: {cidr: 4.249.131.163/32}
+        - ipBlock: {cidr: 4.249.131.164/32}
+        - ipBlock: {cidr: 20.26.156.213/32}
+        - ipBlock: {cidr: 20.26.156.214/32}
+        - ipBlock: {cidr: 20.26.156.215/32}
+        - ipBlock: {cidr: 20.27.177.113/32}
+        - ipBlock: {cidr: 20.27.177.118/32}
+        - ipBlock: {cidr: 20.27.177.119/32}
+        - ipBlock: {cidr: 20.29.134.19/32}
+        - ipBlock: {cidr: 20.29.134.22/32}
+        - ipBlock: {cidr: 20.29.134.23/32}
+        - ipBlock: {cidr: 20.87.245.0/32}
+        - ipBlock: {cidr: 20.87.245.2/32}
+        - ipBlock: {cidr: 20.87.245.4/32}
+        - ipBlock: {cidr: 20.175.192.146/32}
+        - ipBlock: {cidr: 20.175.192.147/32}
+        - ipBlock: {cidr: 20.199.39.227/32}
+        - ipBlock: {cidr: 20.199.39.232/32}
+        - ipBlock: {cidr: 20.200.245.244/32}
+        - ipBlock: {cidr: 20.200.245.247/32}
+        - ipBlock: {cidr: 20.200.245.248/32}
+        - ipBlock: {cidr: 20.201.28.151/32}
+        - ipBlock: {cidr: 20.201.28.152/32}
+        - ipBlock: {cidr: 20.205.243.160/32}
+        - ipBlock: {cidr: 20.205.243.161/32}
+        - ipBlock: {cidr: 20.205.243.166/32}
+        - ipBlock: {cidr: 20.207.73.81/32}
+        - ipBlock: {cidr: 20.207.73.82/32}
+        - ipBlock: {cidr: 20.207.73.83/32}
+        - ipBlock: {cidr: 20.217.135.1/32}
+        - ipBlock: {cidr: 20.217.135.4/32}
+        - ipBlock: {cidr: 20.217.135.5/32}
+        - ipBlock: {cidr: 20.233.83.145/32}
+        - ipBlock: {cidr: 20.233.83.148/32}
+        - ipBlock: {cidr: 20.233.83.149/32}
+        - ipBlock: {cidr: 20.250.119.67/32}
+        - ipBlock: {cidr: 20.250.119.68/32}
+        - ipBlock: {cidr: 48.202.248.38/32}
+        - ipBlock: {cidr: 48.202.248.40/32}
+        - ipBlock: {cidr: 48.204.201.5/32}
+        - ipBlock: {cidr: 48.204.201.6/32}
+        - ipBlock: {cidr: 140.82.112.0/20}
+        - ipBlock: {cidr: 143.55.64.0/20}
+        - ipBlock: {cidr: 172.182.252.130/32}
+        - ipBlock: {cidr: 172.182.252.133/32}
+        - ipBlock: {cidr: 172.182.252.135/32}
+        - ipBlock: {cidr: 185.199.108.0/22}
+        - ipBlock: {cidr: 192.30.252.0/22}
+      ports:
+        - {protocol: TCP, port: 443}
+    # No rule uses 0.0.0.0/0 or a range covering node/pod/service CIDRs, so
+    # no except: is needed. If you ever add a broad ipBlock, add except:
+    # for node IPs, 10.42.0.0/16, 10.43.0.0/16 (K3s) / 172.20.0.0/16 (EKS).
+    # [2+] AI endpoint rule(s) are appended per overlay
+    # (overlays/<env>/networkpolicy-ai-egress.yaml).

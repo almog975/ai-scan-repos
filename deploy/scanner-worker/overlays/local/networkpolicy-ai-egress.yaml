@@ -1,0 +1,13 @@
+---
+# Local (kind/docker-desktop): replace with the AI endpoint IP(s)
+# reachable from the cluster (e.g. host LAN IP of an Ollama/vLLM box).
+# Placeholder CIDRs are RFC 5737 documentation ranges (not routable).
+# Hostnames cannot be used in NetworkPolicy; list IPs/CIDRs only.
+- op: add
+  path: /spec/egress/-
+  value:
+    to:
+      - ipBlock:
+          cidr: 198.51.100.10/32  # PLACEHOLDER
+    ports:
+      - {protocol: TCP, port: 443}
