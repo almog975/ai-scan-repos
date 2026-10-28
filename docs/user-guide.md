@@ -72,20 +72,20 @@ The API also has detailed progress endpoints the UI doesn't use yet (UI TBD):
 
 | State | Meaning | What you can do |
 |---|---|---|
-| `queued` | Created. Waiting for the scanner Job to send its first heartbeat | Pause |
-| `running` | The scanner is working. Progress goes up | Pause |
+| `queued` | Created. Waiting for the scanner Job to send its first heartbeat | Cancel |
+| `running` | The scanner is working. Progress goes up | Pause, Cancel |
 | `paused` | You paused it. The checkpoint is kept | Resume |
 | `stuck` | No heartbeat for 2 checks in a row past the threshold | Resume (retries now) or wait for the automatic retry |
-| `retrying` | A new attempt is starting. At most 5 attempts per budget | Pause |
+| `retrying` | A new attempt is starting. At most 5 attempts per budget | Cancel |
 | `completed` | Finished | Report |
-| `failed` | The attempts ran out, or there was a fatal error. The reason is shown next to the badge | Retry via API (UI TBD) |
+| `failed` | The attempts ran out, or there was a fatal error. The reason is shown next to the badge | Retry |
 | `cancelled` | Cancelled by the user | — |
 
 The full diagram is in [review-state-machine.md](diagrams/review-state-machine.md).
 
 ## 5. Pause and resume
 
-- **Pause** (`POST /api/reviews/{id}/pause`) works on queued, running and retrying reviews. The scanner saves a checkpoint after every file, so no finished work is lost.
+- **Pause** (`POST /api/reviews/{id}/pause`) works only on running reviews. The scanner saves a checkpoint after every file, so no finished work is lost.
 - **Resume** (`POST /api/reviews/{id}/resume`) shows up for paused and stuck reviews.
   - A paused review goes back to `queued` and continues from its checkpoint. This doesn't use up an attempt.
   - A stuck review goes to `retrying` right away, which starts a new attempt.
