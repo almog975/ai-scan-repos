@@ -19,22 +19,24 @@ components:
     user: {type: apiKey, in: header, name: X-User-Id}
   parameters:
     ReviewId: {name: id, in: path, required: true, schema: {$ref: 'common.schema.json#/$defs/uuid'}}
-    ProviderId: {name: provider_id, in: path, required: true, schema: {$ref: 'common.schema.json#/$defs/uuid'}}
+    ProviderId: {name: id, in: path, required: true, schema: {$ref: 'common.schema.json#/$defs/uuid'}}
     Page: {name: page, in: query, schema: {type: integer, minimum: 1, default: 1}}
     PageSize: {name: page_size, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 20}}
   schemas:
     Error:
       type: object
-      required: [error]
+      additionalProperties: false
+      required: [error, request_id]
       properties:
         error:
           type: object
-          required: [code, message, request_id]
+          additionalProperties: false
+          required: [code, message]
           properties:
             code: {type: string, examples: [INVALID_STATE, cloud_ack_required, NOT_FOUND, RATE_LIMITED]}
             message: {type: string}
-            request_id: {type: string}
             details: {type: object}
+        request_id: {type: string}
     ReviewCreate:
       type: object
       additionalProperties: false
@@ -54,16 +56,17 @@ components:
         cloud_warning: {type: boolean}
     Review:
       type: object
+      additionalProperties: false
       required: [id, repo_url, ref, depth, state, attempt, budget_no, created_at, updated_at, started_at, finished_at]
       properties:
-        id: {$ref: 'common.schema.json#/$defs/uuid'}
+        id: {type: string, format: uuid}
         repo_url: {$ref: 'common.schema.json#/$defs/repo_url'}
         ref: {type: string}
-        commit_sha: {oneOf: [{$ref: 'common.schema.json#/$defs/commit_sha'}, {type: 'null'}]}
+        commit_sha: {type: [string, 'null'], pattern: '^[a-f0-9]{40}$'}
         depth: {$ref: 'common.schema.json#/$defs/depth'}
         state: {$ref: 'common.schema.json#/$defs/state'}
-        attempt: {$ref: 'common.schema.json#/$defs/attempt'}
-        budget_no: {$ref: 'common.schema.json#/$defs/budget_no'}
+        attempt: {type: integer, minimum: 1, maximum: 5}
+        budget_no: {type: integer, minimum: 1, description: '+1 per retry; each budget = 5 attempts'}
         files_done: {type: integer, minimum: 0}
         files_total: {type: [integer, 'null'], minimum: 0}
         findings_count: {type: integer, minimum: 0}
@@ -74,7 +77,7 @@ components:
         started_at: {$ref: 'common.schema.json#/$defs/nullable_timestamp'}
         finished_at: {$ref: 'common.schema.json#/$defs/nullable_timestamp'}
         links: {type: object, properties: {progress: {type: string}, report: {type: string}}}
-    ReviewPage:
+    ReviewList:
       type: object
       required: [items, page, page_size, total]
       properties:
@@ -82,7 +85,12 @@ components:
         page: {type: integer, minimum: 1}
         page_size: {type: integer, minimum: 1, maximum: 100}
         total: {type: integer, minimum: 0}
-    Progress: {$ref: 'progress.schema.json'}
+    Progress:
+      description: Same shape as progress.schema.json (SSE `progress` event payload / ?format=json snapshot).
+      allOf: [{$ref: 'progress.schema.json'}]
+      properties:
+        attempt: {type: integer, minimum: 1, maximum: 5}
+        budget_no: {type: integer, minimum: 1}
     ReviewFile:
       type: object
       required: [path, status, findings_count]
@@ -102,10 +110,10 @@ components:
       type: object
       required: [id, review_id, budget_no, n, started_at, ended_at, outcome]
       properties:
-        id: {$ref: 'common.schema.json#/$defs/uuid'}
+        id: {type: string, format: uuid}
         review_id: {$ref: 'common.schema.json#/$defs/uuid'}
-        budget_no: {$ref: 'common.schema.json#/$defs/budget_no'}
-        n: {$ref: 'common.schema.json#/$defs/attempt'}
+        budget_no: {type: integer, minimum: 1, description: '+1 per retry; each budget = 5 attempts'}
+        n: {type: integer, minimum: 1, maximum: 5}
         job_name: {type: [string, 'null']}
         started_at: {$ref: 'common.schema.json#/$defs/timestamp'}
         ended_at: {$ref: 'common.schema.json#/$defs/nullable_timestamp'}
@@ -133,7 +141,7 @@ components:
       type: object
       required: [id, name, kind, base_url, model, key_masked, enabled, created_at, updated_at]
       properties:
-        id: {$ref: 'common.schema.json#/$defs/uuid'}
+        id: {type: string, format: uuid}
         name: {type: string}
         kind: {$ref: 'common.schema.json#/$defs/provider_kind'}
         base_url: {type: [string, 'null'], format: uri}
@@ -142,7 +150,7 @@ components:
         enabled: {type: boolean}
         created_at: {$ref: 'common.schema.json#/$defs/timestamp'}
         updated_at: {$ref: 'common.schema.json#/$defs/timestamp'}
-    AIProviderCreate:
+    AIProviderWrite:
       type: object
       additionalProperties: false
       required: [name, kind, model]
@@ -203,10 +211,10 @@ paths:
       operationId: listReviews
       parameters:
         - {name: state, in: query, schema: {$ref: 'common.schema.json#/$defs/state'}}
-        - {$ref: '#/components/parameters/Page'}
-        - {$ref: '#/components/parameters/PageSize'}
+        - {name: page, in: query, schema: {type: integer, minimum: 1, default: 1}}
+        - {name: page_size, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 20}}
       responses:
-        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/ReviewPage'}}}}
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/ReviewList'}}}}
         '400': {$ref: '#/components/responses/BadRequest'}
         '401': {$ref: '#/components/responses/Unauthorized'}
   /reviews/{id}:
@@ -225,9 +233,9 @@ paths:
       operationId: getProgress
       description: |
         Server-Sent Events. Event types:
-        - `progress` – data: Progress (progress.schema.json)
-        - `state` – data: {"state": <state>, "attempt": n, "budget_no": n}
-        - `done` – data: {"state": "completed"|"failed"|"cancelled"}; server closes the stream afterwards.
+        - `event: progress` – data: Progress (progress.schema.json)
+        - `event: state` – data: {"state": <state>, "attempt": n, "budget_no": n}
+        - `event: done` – data: {"state": "completed"|"failed"|"cancelled"}; server closes the stream afterwards.
       responses:
         '200':
           description: SSE stream or JSON snapshot
@@ -320,19 +328,20 @@ paths:
   /admin/ai-providers:
     get:
       operationId: listProviders
+      description: Admin only (users.role = admin, forwarded as X-User-Role); 403 otherwise.
       responses:
         '200': {description: OK, content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/AIProvider'}}}}}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '403': {$ref: '#/components/responses/Forbidden'}
     post:
       operationId: createProvider
-      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/AIProviderCreate'}}}}
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/AIProviderWrite'}}}}
       responses:
         '201': {description: Created, content: {application/json: {schema: {$ref: '#/components/schemas/AIProvider'}}}}
         '400': {$ref: '#/components/responses/BadRequest'}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '403': {$ref: '#/components/responses/Forbidden'}
-  /admin/ai-providers/{provider_id}:
+  /admin/ai-providers/{id}:
     parameters: [{$ref: '#/components/parameters/ProviderId'}]
     patch:
       operationId: updateProvider
@@ -346,7 +355,7 @@ paths:
     delete:
       operationId: deleteProvider
       responses: {'204': {description: Deleted}, '401': {$ref: '#/components/responses/Unauthorized'}, '403': {$ref: '#/components/responses/Forbidden'}, '404': {$ref: '#/components/responses/NotFound'}}
-  /admin/ai-providers/{provider_id}/test:
+  /admin/ai-providers/{id}/test:
     parameters: [{$ref: '#/components/parameters/ProviderId'}]
     post:
       operationId: testProvider
