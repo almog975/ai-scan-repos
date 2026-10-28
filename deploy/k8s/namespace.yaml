@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ai-scan
+  labels:
+    app.kubernetes.io/part-of: ai-scan-repos
+    pod-security.kubernetes.io/enforce: restricted

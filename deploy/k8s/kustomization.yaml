@@ -1,0 +1,13 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: ai-scan
+labels:
+  - pairs: {app.kubernetes.io/part-of: ai-scan-repos}
+resources:
+  - namespace.yaml
+  - secrets.example.yaml   # placeholder; replace via overlay / out-of-band Secret
+  - postgres.yaml
+  - review-api.yaml
+  - gateway.yaml
+  - frontend.yaml
+  - scanner-worker-job-template.yaml

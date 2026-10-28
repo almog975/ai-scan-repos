@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: review-api
+  labels: {app.kubernetes.io/name: review-api}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app.kubernetes.io/name: review-api}}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: review-api}
+      annotations: {prometheus.io/scrape: "true", prometheus.io/port: "8001", prometheus.io/path: /metrics}
+    spec:
+      automountServiceAccountToken: false
+      securityContext: {runAsNonRoot: true, runAsUser: 10001, runAsGroup: 10001, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: review-api
+          image: ai-scan-repos/review-api:dev
+          ports: [{name: http, containerPort: 8001}]
+          env:
+            - {name: DATABASE_URL, value: "postgresql+psycopg://aiscan@postgres:5432/aiscan"}
+            - {name: REPORTS_DIR, value: /reports}
+            - {name: REVIEW_API_INTERNAL_URL, value: "http://review-api:8001"}
+          envFrom: [{secretRef: {name: ai-scan-secrets}}]
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+          readinessProbe: {httpGet: {path: /readyz, port: http}, periodSeconds: 10}
+          livenessProbe: {httpGet: {path: /healthz, port: http}, initialDelaySeconds: 10, periodSeconds: 20}
+          resources: {requests: {cpu: 50m, memory: 128Mi}, limits: {cpu: 500m, memory: 512Mi}}
+          volumeMounts: [{name: tmp, mountPath: /tmp}]
+      volumes: [{name: tmp, emptyDir: {}}]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: review-api
+  labels: {app.kubernetes.io/name: review-api}
+spec:
+  selector: {app.kubernetes.io/name: review-api}
+  ports: [{name: http, port: 8001, targetPort: http}]
