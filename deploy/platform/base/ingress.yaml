@@ -8,11 +8,11 @@ kind: Middleware
 metadata: {name: security-headers, namespace: ai-scan-repos}
 spec:
   headers:
-    # Previously: frameDeny, nosniff, browserXssFilter, referrerPolicy, stsSeconds. Added: CSP, HSTS subdomains.
-    contentSecurityPolicy: "default-src 'self'; connect-src 'self'; img-src 'self' data:; object-src 'none'; frame-ancestors 'none'; base-uri 'self'"
+    # Same values as frontend/nginx.conf. browserXssFilter removed (X-XSS-Protection is deprecated; CSP covers it).
+    contentSecurityPolicy: "default-src 'self'; connect-src 'self'; img-src 'self' data:; style-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+    permissionsPolicy: "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
     frameDeny: true                       # X-Frame-Options: DENY
     contentTypeNosniff: true              # X-Content-Type-Options: nosniff
-    browserXssFilter: true
     referrerPolicy: strict-origin-when-cross-origin
     stsSeconds: 31536000
     stsIncludeSubdomains: true
@@ -78,6 +78,6 @@ spec:
   routes:
     - match: Host(`ai-scan.local`)
       kind: Rule
-      middlewares: [{name: redirect-https}]
+      middlewares: [{name: security-headers}, {name: redirect-https}]
       services: [{name: frontend, port: 8080}]   # never reached; redirect answers first
 # review-api is intentionally NOT routed.
