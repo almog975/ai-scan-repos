@@ -8,7 +8,7 @@ CREATE TYPE user_role       AS ENUM ('user', 'admin');
 CREATE TYPE review_depth    AS ENUM ('quick', 'brief', 'deep');
 CREATE TYPE review_state    AS ENUM ('queued','running','paused','stuck','retrying','completed','failed','cancelled');
 CREATE TYPE provider_kind   AS ENUM ('onprem', 'cloud');
-CREATE TYPE attempt_outcome AS ENUM ('success', 'stuck', 'error', 'cancelled');
+CREATE TYPE attempt_outcome AS ENUM ('success', 'stuck', 'error', 'failed', 'cancelled');
 
 CREATE TABLE users (
     id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -55,11 +55,12 @@ CREATE TABLE reviews (
     repo_url       text         NOT NULL CHECK (repo_url ~ '^https://github\.com/[^/]+/[^/]+$'),
     repo_private   boolean      NOT NULL DEFAULT false,
     ref            text         NOT NULL DEFAULT 'HEAD',
-    commit_sha     text,
+    commit_sha     text CHECK (commit_sha ~ '^[0-9a-f]{40}$'),
     depth          review_depth NOT NULL,
     provider_id    uuid REFERENCES ai_providers(id) ON DELETE SET NULL,
     state          review_state NOT NULL DEFAULT 'queued',
-    attempt        int          NOT NULL DEFAULT 0 CHECK (attempt BETWEEN 0 AND 5),
+    attempt        int          NOT NULL DEFAULT 1 CHECK (attempt BETWEEN 1 AND 5),
+    budget_no      int          NOT NULL DEFAULT 1 CHECK (budget_no >= 1),  -- +1 per POST /reviews/{id}/retry
     files_done     int          NOT NULL DEFAULT 0,
     files_total    int,
     findings_count int          NOT NULL DEFAULT 0,
@@ -83,13 +84,14 @@ CREATE UNIQUE INDEX reviews_active_uniq ON reviews(repo_url, commit_sha)
 CREATE TABLE review_attempts (
     id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     review_id  uuid NOT NULL REFERENCES reviews(id) ON DELETE CASCADE,
+    budget_no  int  NOT NULL DEFAULT 1 CHECK (budget_no >= 1),
     n          int  NOT NULL CHECK (n BETWEEN 1 AND 5),
     job_name   text,
     started_at timestamptz NOT NULL DEFAULT now(),
     ended_at   timestamptz,
     outcome    attempt_outcome,
     error      text,
-    UNIQUE (review_id, n)
+    UNIQUE (review_id, budget_no, n)
 );
 
 CREATE TABLE settings (
@@ -112,4 +114,12 @@ CREATE TRIGGER users_updated        BEFORE UPDATE ON users        FOR EACH ROW E
 CREATE TRIGGER reviews_updated      BEFORE UPDATE ON reviews      FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER ai_providers_updated BEFORE UPDATE ON ai_providers FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER settings_updated     BEFORE UPDATE ON settings     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+-- First user ever becomes admin (role in user|admin is enforced by the user_role enum).
+CREATE OR REPLACE FUNCTION first_user_admin() RETURNS trigger AS $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM users) THEN NEW.role = 'admin'; END IF;
+  RETURN NEW;
+END $$ LANGUAGE plpgsql;
+CREATE TRIGGER users_first_admin BEFORE INSERT ON users FOR EACH ROW EXECUTE FUNCTION first_user_admin();
 COMMIT;

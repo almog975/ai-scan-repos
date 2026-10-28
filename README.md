@@ -5,13 +5,29 @@ depth; the **review-api** launches a short-lived **scanner-worker** run that clo
 **Semgrep, Gitleaks and Trivy**, optionally asks an AI model for a risk explanation + fixes, and
 writes `report.json` / `report.md` to a shared reports volume.
 
-Part of the Technion DevOps final project (monorepo `FinalProject`, branch `ai-scan-phase-1-backend`).
+Part of the Technion DevOps final project (monorepo `FinalProject`).
 The sibling project `devsecops-shop-*` holds the existing Jenkins / Helm / Argo CD / monitoring work;
 see [`../README.md`](../README.md).
 
-> Status: **Phase 1 – backend only.** No gateway, UI app, Helm chart, K8s manifests or CI pipeline
-> exist for AI Scan Repos yet (see [Gaps](#gaps--todo)). HTML mockups of the UI live outside the repo
-> at `/workspace/ai-scan-ui/` (login, new scan, depth, progress, results, settings).
+## Layout (Phase 0 / Foundation)
+
+```
+ai-scan-repos/
+  contracts/       OpenAPI 3.1 (gateway, review-api) + JSON Schema 2020-12 (common, finding, report, checkpoint, progress)
+  frontend/        React/Vite -> nginx-unprivileged, :8080
+  gateway/         FastAPI, :8000  (/healthz /readyz /metrics)
+  review-api/      FastAPI, :8001  (/healthz /readyz /metrics) – Alembic migrations in review-api/alembic/
+  scanner-worker/  Python Job image; probe server :8002 (/healthz /readyz /metrics)
+  deploy/k8s/      kustomize base: namespace, Secret placeholder, postgres StatefulSet+PVC+headless svc, deployments+services, Job template
+  infra/db/        target PostgreSQL schema v1 (schema.sql, migrations/001_init.sql)
+  infra/           other infra-level assets
+  docs/            architecture notes, ADRs, runbooks
+  Makefile         `make test` runs every service's `make test` (passes when a suite is empty); `make contracts` validates contracts
+```
+
+Fixed ports: frontend 8080, gateway 8000, review-api 8001, scanner-worker probes 8002.
+Deferred past v0.1: per-depth estimates and server-side findings paging (see contracts/README.md).
+
 
 ## Components
 

@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/almog975/FinalProject/ai-scan-repos/contracts/common.schema.json",
+  "title": "Shared definitions (v1)",
+  "$defs": {
+    "uuid": {"type": "string", "format": "uuid"},
+    "commit_sha": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "repo_url": {"type": "string", "pattern": "^https://github\\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"},
+    "state": {"enum": ["queued", "running", "paused", "stuck", "retrying", "completed", "failed", "cancelled"]},
+    "depth": {"enum": ["quick", "brief", "deep"]},
+    "provider_kind": {"enum": ["onprem", "cloud"]},
+    "role": {"enum": ["user", "admin"]},
+    "stage": {"enum": ["clone", "semgrep", "gitleaks", "trivy", "ai", "report"]},
+    "severity": {"enum": ["critical", "high", "medium", "low", "info"]},
+    "file_status": {"enum": ["pending", "scanning", "done", "skipped", "error"]},
+    "attempt_outcome": {"enum": ["success", "stuck", "error", "failed", "cancelled"]},
+    "attempt": {"type": "integer", "minimum": 1, "maximum": 5, "description": "attempt number within the current budget"},
+    "budget_no": {"type": "integer", "minimum": 1, "description": "retry budget number; starts at 1, +1 per POST /reviews/{id}/retry (each budget = 5 attempts)"},
+    "timestamp": {"type": "string", "format": "date-time"},
+    "nullable_timestamp": {"type": ["string", "null"], "format": "date-time"}
+  }
+}

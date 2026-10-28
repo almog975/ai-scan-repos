@@ -3,36 +3,34 @@
   "$id": "https://github.com/almog975/FinalProject/ai-scan-repos/contracts/report.schema.json",
   "title": "report.json (v1)",
   "type": "object",
-  "required": ["schema", "review_id", "repo", "depth", "summary", "findings"],
+  "required": ["schema", "review_id", "repo", "depth", "started_at", "finished_at", "summary", "findings"],
   "properties": {
     "schema": {"const": "report/v1"},
-    "review_id": {"type": "string"},
+    "review_id": {"$ref": "common.schema.json#/$defs/uuid"},
     "repo": {
-      "type": "object", "required": ["url"],
+      "type": "object", "required": ["url"], "additionalProperties": false,
       "properties": {
-        "url": {"type": "string", "pattern": "^https://github\\.com/[^/]+/[^/]+$"},
-        "commit_sha": {"type": ["string", "null"]},
+        "url": {"$ref": "common.schema.json#/$defs/repo_url"},
+        "commit_sha": {"$ref": "common.schema.json#/$defs/commit_sha"},
         "ref": {"type": ["string", "null"]}
       }
     },
-    "depth": {"enum": ["quick", "brief", "deep"]},
+    "depth": {"$ref": "common.schema.json#/$defs/depth"},
     "provider": {
       "type": ["object", "null"],
-      "properties": {"name": {"type": "string"}, "model": {"type": "string"}, "kind": {"enum": ["onprem", "cloud"]}}
+      "properties": {"name": {"type": "string"}, "model": {"type": "string"}, "kind": {"$ref": "common.schema.json#/$defs/provider_kind"}}
     },
-    "started_at": {"type": "string", "format": "date-time"},
-    "finished_at": {"type": "string", "format": "date-time"},
-    "attempts": {"type": "integer", "minimum": 1, "maximum": 5},
+    "started_at": {"$ref": "common.schema.json#/$defs/timestamp"},
+    "finished_at": {"$ref": "common.schema.json#/$defs/timestamp"},
+    "attempt": {"$ref": "common.schema.json#/$defs/attempt"},
+    "budget_no": {"$ref": "common.schema.json#/$defs/budget_no"},
     "summary": {
       "type": "object",
       "required": ["critical", "high", "medium", "low", "info"],
       "properties": {
-        "critical": {"type": "integer", "minimum": 0},
-        "high": {"type": "integer", "minimum": 0},
-        "medium": {"type": "integer", "minimum": 0},
-        "low": {"type": "integer", "minimum": 0},
-        "info": {"type": "integer", "minimum": 0},
-        "files_scanned": {"type": "integer", "minimum": 0}
+        "critical": {"type": "integer", "minimum": 0}, "high": {"type": "integer", "minimum": 0},
+        "medium": {"type": "integer", "minimum": 0}, "low": {"type": "integer", "minimum": 0},
+        "info": {"type": "integer", "minimum": 0}, "files_scanned": {"type": "integer", "minimum": 0}
       }
     },
     "executive_summary": {"type": ["string", "null"]},
