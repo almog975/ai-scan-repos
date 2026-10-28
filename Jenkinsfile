@@ -61,11 +61,11 @@ pipeline {
     stage('Trivy scan') { when { expression { !skipBuild && (changed - ['scanner-worker']) } } steps { script {
       (changed - ['scanner-worker']).each { s -> sh "trivy image --exit-code 1 --severity HIGH,CRITICAL --no-progress ${env.REGISTRY}/ai-scan/${s}:${env.GIT_SHA}" }
     } } }
-    // Phase 2: scanner-worker image (scanner-worker/Dockerfile, context scanner-worker/). Gated on the
-    // changeset AND the git-diff based 'changed' list (changeset is empty on a branch's first build).
+    // Phase 2: scanner-worker image (scanner-worker/Dockerfile, context scanner-worker/). Path filter = the
+    // git-diff based 'changed' list only: `changeset` is empty on a branch's first build and would skip the image.
     // Deploy (below) writes SCANNER_IMAGE into the scanner-image configMapGenerator.
     stage('Scanner worker image') {
-      when { allOf { expression { !skipBuild && changed.contains('scanner-worker') }; changeset 'scanner-worker/**' } }
+      when { expression { !skipBuild && changed.contains('scanner-worker') } }
       steps { script {
         def img = "${env.REGISTRY}/ai-scan/scanner-worker:${env.GIT_SHA}"
         sh "docker build -t ${img} -f scanner-worker/Dockerfile scanner-worker"
