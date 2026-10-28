@@ -54,7 +54,7 @@ file → line → id (`sev_key`). Columns ← finding fields:
 | Description | `description` | truncated to 300 chars |
 | AI severity | `ai_severity` | rendered |
 | Confidence | `confidence` | 0–1, shown as % |
-| AI fix | `ai_fix` | first line, truncated |
+| AI fix | `ai_fix` | `yes` when present; full text in section 7 |
 
 Not rendered (spec-optional): `category`, `line_end`, `cwe`, `cve`, `package`, `fixed_version`.
 
