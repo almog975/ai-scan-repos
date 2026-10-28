@@ -47,10 +47,13 @@ def test_kubernetes_launcher_ready_gets_a_job():
 
 
 def test_review_counters_move(client, H):
-    before = _val("reviews_total", state="queued")
-    assert client.post("/reviews", json={"repo_url": "https://github.com/a/b", "depth": "quick"}, headers=H).status_code == 201
+    from tests.test_control import beat
+    before, run_before = _val("reviews_total", state="queued"), _val("reviews_total", state="running")
+    r = client.post("/reviews", json={"repo_url": "https://github.com/a/b", "depth": "quick"}, headers=H)
+    assert r.status_code == 201
     assert _val("reviews_total", state="queued") == before + 1
-    assert _val("reviews_total", state="running") >= 1
+    beat(client, r.json()["id"])  # first heartbeat: queued -> running (test no longer depends on test order)
+    assert _val("reviews_total", state="running") == run_before + 1
 
 
 def test_launch_error_counted():
