@@ -16,6 +16,8 @@
     configMapGenerator via `kustomize edit set configmap` (fallback yq, then sed). If the overlay has no such
     generator yet, it falls back to `kustomize edit set image`.
   - Commits with `[skip ci]`; push is a TODO stub (`github-bot` credential).
-- Argo CD: `deploy/argocd-app.yaml` — 6 Applications for frontend, gateway, review-api, postgres, platform, scanner-worker →
-  `deploy/<name>/overlays/k3s`, namespace ai-scan-repos, auto-sync prune + selfHeal.
+- Argo CD (app-of-apps): bootstrap once with `kubectl apply -n argocd -f deploy/argocd/root-app.yaml`.
+  Root `ai-scan-root` syncs `deploy/argocd/apps/`, which holds 6 child Applications (frontend, gateway, review-api,
+  postgres, platform, scanner-worker) → `deploy/<name>/overlays/k3s` on `main`, namespace ai-scan-repos, auto-sync
+  prune + selfHeal. Sync waves: platform 0, postgres 1, review-api 2, gateway/frontend/scanner-worker 3.
   review-api reads `SCANNER_IMAGE` via `configMapKeyRef` on ConfigMap `scanner-image` (generated in the scanner-worker overlay).
