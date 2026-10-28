@@ -15,6 +15,7 @@ ROUTES: dict[str, tuple[str, ...]] = {
     "/api/repos/check": ("GET",),
     "/api/ai-providers": ("GET",),
     "/api/admin/ai-providers": ("GET", "POST"),
+    "/api/admin/ai-providers/test": ("POST",),
     "/api/admin/ai-providers/{id}": ("PATCH", "DELETE"),
     "/api/admin/ai-providers/{id}/test": ("POST",),
     "/api/admin/settings": ("GET", "PUT"),
