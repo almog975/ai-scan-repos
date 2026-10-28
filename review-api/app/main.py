@@ -15,7 +15,7 @@ from .errors import ApiError
 from .github import HttpGitHub
 from .launcher import make_launcher
 from .crypto import parse_key
-from .routers import providers, reviews
+from .routers import misc, providers, reviews
 
 
 class ReviewLauncher:
@@ -67,6 +67,7 @@ def create_app(settings: Settings | None = None, **deps) -> FastAPI:
 
     app.include_router(reviews.router)
     app.include_router(providers.router)
+    app.include_router(misc.router)
     return app
 
 
