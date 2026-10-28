@@ -29,7 +29,9 @@ Contract fields `ai_severity`, `snippet`, `repo.private` and the required `provi
 If `provider.kind == "cloud"` (the DB provider `kind`, passed as `AI_KIND`): a standalone blockquote line directly
 under the title — `CLOUD_BANNER` = **`> ⚠️ cloud AI — code/findings were sent outside your network`**, or when
 `repo.private` is true `CLOUD_BANNER_PRIVATE` = `> ⚠️ cloud AI — code/findings from this private repository were sent outside your network`
-(wording kept in one constant in `scanner/report.py`; private wording awaiting Planner confirmation).
+(wording kept in one constant in `scanner/report.py`). Private wording: **confirmed (Planner)** — already implemented in `render_markdown()` (`report.py` L46/L61), so no implementation is pending.
+Grok (x.ai) runs as `openai_compatible` with `kind: cloud`, so it gets the cloud banner (see
+[admin-ai-providers.md](runbooks/admin-ai-providers.md)).
 On-prem: the provider bullet ends with `ONPREM_NOTE` = `(on-prem / no code left the network)`.
 
 ### 4. Summary ✅
@@ -62,6 +64,7 @@ Not rendered (spec-optional): `category`, `line_end`, `cwe`, `cve`, `package`, `
 For each scanner finding with `ai_explanation`: `### <severity>: <title> (<file>)`, a line
 `AI severity: <ai_severity> · confidence: <confidence %>`, `ai_explanation`, a fenced code block ← `snippet`
 (≤ 10 lines; Gitleaks secrets masked `********`) and a `**Suggested fix**` block ← `ai_fix`. Filled at Brief and Deep.
+Snippet code block next to `ai_fix`: **confirmed (Planner)** — already implemented in `render_markdown()` (`report.py` L90–95).
 
 ### 8. AI file reviews (Deep) ✅
 For each `tool == "ai"` finding: `### AI review: <file>` then `description`.

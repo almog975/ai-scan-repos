@@ -14,7 +14,8 @@
     "summary",
     "findings",
     "attempt",
-    "budget_no"
+    "budget_no",
+    "partial"
   ],
   "properties": {
     "schema": {
@@ -147,6 +148,10 @@
       "additionalProperties": {
         "type": "string"
       }
+    },
+    "partial": {
+      "type": "boolean",
+      "description": "true when the review failed or was cancelled and this report holds the results up to that point (summary.files_scanned = files scanned so far)"
     }
   },
   "additionalProperties": false

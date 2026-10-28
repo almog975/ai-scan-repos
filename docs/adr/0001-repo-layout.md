@@ -45,7 +45,7 @@ Rules:
 - − Jenkins needs write access to this repo (limited by convention + CODEOWNERS to `deploy/` tag bumps);
   Argo CD Applications are path-scoped so commits outside `deploy/` don't trigger syncs.
 - − Pipelines must use path filters to avoid rebuilding every component.
-- Done: manifests live in `deploy/<component>/{base,overlays/{local,k3s,eks}}`, matching `deploy/argocd-app.yaml`, the Jenkinsfile and [docs/ci.md](../ci.md).
+- Done: manifests live in `deploy/<component>/{base,overlays/{local,k3s,eks}}`, matching `deploy/argocd/apps/`, the Jenkinsfile and [docs/ci.md](../ci.md).
 
 ## Alternatives
 | Option | Pros | Cons | Why not chosen |

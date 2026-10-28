@@ -39,7 +39,7 @@ flowchart LR
    with `status=running, attempts=1`, and calls the launcher.
 2. Launcher (`JOB_LAUNCHER`):
    - `local` – `subprocess.Popen("python -m scanner.run --review-id X")` (dev/tests).
-   - `kubernetes` – in-cluster `BatchV1Api.create_namespaced_job`; Job `scan-<id>-a<attempt>-<rand>`,
+   - `kubernetes` – in-cluster `BatchV1Api.create_namespaced_job`; Job `scan-<id>-a<attempt>` (attempt unique across budgets),
      `backoffLimit: 0`, `ttlSecondsAfterFinished: 3600`, non-root UID 10001, read-only rootfs,
      drop ALL caps, no SA token, `emptyDir` `/work` (2Gi) and `/tmp`, PVC `/reports`, secrets via
      `envFrom` Secret `scanner-secrets`. Requests 250m/512Mi, limits 2 CPU/2Gi.

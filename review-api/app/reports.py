@@ -31,10 +31,22 @@ def progress(settings, r: Review) -> dict:
     return doc
 
 
-def report_json(settings, r: Review):
-    return _read_json(review_dir(settings, r.id) / "report.json")
+FULL = ("report.json", "report.md")
+PARTIAL = ("report.partial.json", "report.partial.md")  # written by the worker on error/SIGTERM/pause
 
 
-def report_md(settings, r: Review) -> str | None:
-    p = review_dir(settings, r.id) / "report.md"
+def report_json(settings, r: Review, partial: bool = False):
+    return _read_json(review_dir(settings, r.id) / (PARTIAL if partial else FULL)[0])
+
+
+def report_md(settings, r: Review, partial: bool = False) -> str | None:
+    p = review_dir(settings, r.id) / (PARTIAL if partial else FULL)[1]
     return p.read_text() if p.is_file() else None
+
+
+def has_partial(settings, r: Review) -> bool:
+    return (review_dir(settings, r.id) / PARTIAL[0]).is_file()
+
+
+def dir_exists(settings, r: Review) -> bool:
+    return review_dir(settings, r.id).is_dir()

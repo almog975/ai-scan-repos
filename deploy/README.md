@@ -7,7 +7,8 @@ Argo CD (GitOps). See the [top-level README](../README.md) and [ADR-0001](../doc
 ```
 deploy/<component>/base/                    # Infra-owned
 deploy/<component>/overlays/{local,k3s,eks} # Infra-owned; Jenkins only rewrites image tags here
-deploy/argocd-app.yaml                      # Pipelines-owned
+deploy/argocd/root-app.yaml                 # Pipelines-owned: app-of-apps root
+deploy/argocd/apps/<component>.yaml         # Pipelines-owned: one child Application per component
 ```
 Components: `frontend`, `gateway`, `review-api`, `postgres`, `scanner-worker`, `platform` (6 × 3 = 18 overlays).
 Everything deploys to the single namespace `ai-scan-repos`.
@@ -20,9 +21,19 @@ Everything deploys to the single namespace `ai-scan-repos`.
 
 Images are always `<host>/ai-scan/<svc>:<git-sha>`, never `latest`. Overlays ship with `GIT_SHA_PLACEHOLDER`.
 
-## Argo CD (6 Applications)
-`argocd-app.yaml` defines `ai-scan-<component>-k3s` for all 6 components, each tracking
-`deploy/<component>/overlays/k3s` on `main`, namespace `ai-scan-repos`, auto-sync with prune + selfHeal.
+## Argo CD (app-of-apps, 6 child Applications)
+Bootstrap once (Argo CD installed in namespace `argocd`). First apply the Infra-owned AppProject `ai-scan`
+from `infra/argocd/` (all child apps use `project: ai-scan` and will not sync without it), then:
+```
+kubectl apply -n argocd -f deploy/argocd/root-app.yaml
+```
+The root Application `ai-scan-root` tracks `deploy/argocd/apps` on `main` (auto-sync, prune + selfHeal) and
+creates one child `ai-scan-<component>-k3s` per file there. Each child tracks `deploy/<component>/overlays/k3s`
+on `main`, namespace `ai-scan-repos`, project `ai-scan`, auto-sync with prune + selfHeal and `CreateNamespace=true`,
+with `resources-finalizer.argocd.argoproj.io` (deleting a child deletes its resources). The root stays in project `default`.
+
+Sync waves (`argocd.argoproj.io/sync-wave`): `platform` 0 → `postgres` 1 → `review-api` 2 →
+`gateway`, `frontend`, `scanner-worker` 3. To add a component, add `deploy/argocd/apps/<component>.yaml`.
 For another target, swap `k3s` in the name and path.
 
 ## Tag flow
@@ -44,4 +55,4 @@ For another target, swap `k3s` in the name and path.
 No Secret YAML in git; create secrets from the CLI.
 
 ## Owners
-Infra: `base/` and `overlays/` content. Pipelines: image tags, `argocd-app.yaml`, `Jenkinsfile`. See `.github/CODEOWNERS`.
+Infra: `base/` and `overlays/` content. Pipelines: image tags, `argocd/`, `Jenkinsfile`. See `.github/CODEOWNERS`.

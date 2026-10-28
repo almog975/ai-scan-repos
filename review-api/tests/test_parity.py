@@ -44,6 +44,8 @@ def test_schema_sql_tables_columns_match_migrations(tmp_path, monkeypatch):
             if m and m.group(1).upper() not in ("PRIMARY", "UNIQUE", "CONSTRAINT", "FOREIGN", "CHECK", "EXCLUDE"):
                 cols.add(m.group(1))
         want[name] = cols
+    for t, c in re.findall(r"ALTER TABLE\s+(\w+)\s+ADD COLUMN\s+(\w+)", sql, re.I):
+        want[t].add(c)
     assert want, "no tables parsed from schema.sql"
     for t, cols in want.items():
         assert {c["name"] for c in insp.get_columns(t)} == cols, t

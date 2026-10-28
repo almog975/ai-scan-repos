@@ -84,7 +84,7 @@ def create_review(body: ReviewCreate, request: Request, user: User = Depends(cur
     db.add(r)
     db.flush()
     REVIEWS.labels(State.queued.value).inc()
-    start_attempt(db, r, deps["launcher"])
+    start_attempt(db, r, deps["launcher"], mark_running=False)  # queued until the worker's first heartbeat
     db.commit()
     return JSONResponse(out(db, r), 201, headers={"Location": f"/reviews/{r.id}"})
 

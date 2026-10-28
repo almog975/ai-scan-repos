@@ -1,3 +1,4 @@
+# Applied by installer (kubectl apply -k infra/bootstrap/overlays/k3s), not Argo CD.
 # Static local PV for reports. Host prep (done by infra/installer/scripts/install-ssh-k3s.sh):
 #   /srv/ai-scan/reports mounted with noexec,nosuid,nodev (see docs/storage-plan.md)
 apiVersion: v1

@@ -1,12 +1,21 @@
-"""Watchdog: detect stuck attempts and relaunch (max 5 attempts per budget).
+"""Reconciler (every WATCHDOG_INTERVAL_SECONDS, default 60): detect stuck attempts and relaunch them.
 
-A running/retrying review is stuck when
-  * its heartbeat is older than HEARTBEAT_TIMEOUT_SECONDS, or
-  * its Job failed / disappeared (backoffLimit 0, activeDeadlineSeconds 21600), or
-  * the worker reported outcome=error for the current attempt.
-Then: attempt row ends (stuck|error), the old Job is deleted (propagationPolicy Background) and attempt n+1
-of the same budget is launched (review -> retrying until the worker's first heartbeat). After attempt 5 the
-review is `failed`; POST /reviews/{id}/retry opens a new budget.
+Two phases, so `stuck` is visible for at least one cycle:
+
+0. queued|retrying (waiting for the first heartbeat) whose Job is missing for more than QUEUED_JOB_TIMEOUT_SECONDS
+   (15 min) since launch: the Job is created again for the SAME attempt (no attempt consumed) -> 'requeued'.
+1. queued|running|retrying -> stuck when
+     * the worker reported outcome=error for the current attempt, or
+     * its Job failed (backoffLimit 0, activeDeadlineSeconds 21600) or a running review's Job disappeared, or
+     * the heartbeat (for queued/retrying: the launch time) is older than HEARTBEAT_TIMEOUT_SECONDS on TWO
+       consecutive passes: the first pass only records overdue_since ('overdue'); a heartbeat in between resets it.
+   The attempt row ends (stuck|error), the Job is deleted (propagationPolicy Background), stuck_since=now and
+   next_retry_at=now+interval.
+2. stuck with next_retry_at <= now -> attempt n+1 of the same budget (review `retrying` until the worker's first
+   heartbeat), or, after attempt MAX_ATTEMPTS, `failed` with failure_code MAX_ATTEMPTS_EXCEEDED and an honest
+   failure_detail. POST /reviews/{id}/retry then opens a new budget.
+
+An attempt is only consumed when a new Job starts after a failure/stuck; resuming a user pause reuses it.
 """
 from __future__ import annotations
 
@@ -16,10 +25,10 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
 
-from .models import Outcome, Review, ReviewAttempt, State
 from .metrics import SCAN_ATTEMPTS
+from .models import FailureCode, Outcome, Review, ReviewAttempt, State
 from .service import current_attempt, end_attempt, now, start_attempt
-from .state import next_attempt, transition
+from .state import MAX_ATTEMPTS, classify, next_attempt, transition
 
 log = logging.getLogger(__name__)
 
@@ -41,47 +50,90 @@ def stuck_reason(r: Review, attempt, job_status: str, now: datetime, timeout: in
     return None
 
 
-def relaunch(db, r: Review, jobs, reason: str) -> str:
-    """stuck handling for one review; returns 'relaunched' or 'failed'."""
+def _last_error(db, r: Review) -> str:
+    a = current_attempt(db, r)
+    return (a.error if a is not None and a.error else None) or "stuck"
+
+
+def mark_stuck(db, r: Review, jobs, reason: str, interval: int, at: datetime | None = None) -> None:
     a = current_attempt(db, r)
     if a is not None and a.ended_at is None:
         end_attempt(db, r, Outcome.stuck, reason)
     if a is not None and a.job_name:
         try:
             jobs.delete(a.job_name)
-        except Exception:  # noqa: BLE001 - relaunch anyway; the launcher replaces a lingering Job
+        except Exception:  # noqa: BLE001 - the launcher replaces a lingering Job on relaunch
             log.exception("could not delete job %s", a.job_name)
-    if State(r.state) == State.running:
-        transition(r, State.stuck, reason=reason)
+    transition(r, State.stuck)
+    r.stuck_since = at or now()
+    r.next_retry_at = r.stuck_since + timedelta(seconds=interval)
+
+
+def relaunch(db, r: Review, jobs) -> str:
+    """stuck -> retrying with attempt n+1 (or failed after MAX_ATTEMPTS). Returns 'relaunched' or 'failed'."""
+    last = _last_error(db, r)
     n = next_attempt(r)
     if not n:
-        transition(r, State.failed, reason=f"{r.attempt} attempts exhausted in budget {r.budget_no}: {reason}")
-        jobs.cleanup(r.id)
+        transition(r, State.failed, code=FailureCode.MAX_ATTEMPTS_EXCEEDED,
+                   reason=f"{r.attempt} attempts exhausted in budget {r.budget_no}; last error "
+                          f"({classify(last).value}): {last}"[:2000])
+        jobs.cleanup(r.id, r.budget_no)
         return "failed"
-    if State(r.state) == State.stuck:
-        transition(r, State.retrying)
+    transition(r, State.retrying)
     r.attempt = n
     try:
         start_attempt(db, r, jobs, mark_running=False)
-    except Exception as exc:  # noqa: BLE001 - next sweep sees a missing Job and moves on to n+1
+    except Exception as exc:  # noqa: BLE001 - next sweep sees the errored attempt and moves on to n+1
         log.exception("relaunch of %s attempt %d failed", r.id, n)
-        db.add(ReviewAttempt(review_id=r.id, budget_no=r.budget_no, n=n, started_at=now(), ended_at=now(),
+        db.add(ReviewAttempt(review_id=r.id, budget_no=r.budget_no, n=n, started_at=now(), ended_at=None,
                              outcome=Outcome.error, error=f"launch failed: {exc}"[:500]))
         SCAN_ATTEMPTS.labels("error").inc()
     return "relaunched"
 
 
+def _launched_at(r: Review, a) -> datetime | None:
+    return _aware(a.started_at if a is not None and a.started_at else None) or _aware(r.last_heartbeat) \
+        or _aware(r.created_at)
+
+
 def sweep(db, jobs, settings, at: datetime | None = None) -> dict[str, str]:
+    """One reconciler pass. Returns {review_id: requeued|overdue|stuck|relaunched|failed} for reviews acted on."""
     at = at or datetime.now(timezone.utc)
     acted: dict[str, str] = {}
-    rows = db.scalars(select(Review).where(Review.state.in_([State.running, State.retrying]))).all()
+    rows = db.scalars(select(Review).where(Review.state.in_(
+        [State.queued, State.running, State.retrying, State.stuck])).with_for_update(skip_locked=True)).all()
     for r in rows:
+        st = State(r.state)
+        if st == State.stuck:
+            due = _aware(r.next_retry_at)
+            if due is None or due <= at:
+                acted[r.id] = relaunch(db, r, jobs)
+            continue
         a = current_attempt(db, r)
         status = jobs.status(a.job_name) if a is not None and a.job_name else "missing"
+        errored = a is not None and a.outcome == Outcome.error
+        if st in (State.queued, State.retrying) and status == "missing" and not errored:
+            launched = _launched_at(r, a)
+            if launched is None or at - launched > timedelta(seconds=settings.queued_job_timeout_seconds):
+                log.warning("review %s %s without a Job: recreating attempt %d-%d", r.id, st.value, r.budget_no, r.attempt)
+                try:
+                    start_attempt(db, r, jobs, mark_running=False)  # same (budget, attempt): not counted
+                    acted[r.id] = "requeued"
+                except Exception:  # noqa: BLE001 - try again next pass
+                    log.exception("recreating the Job of %s failed", r.id)
+            continue
         reason = stuck_reason(r, a, status, at, settings.heartbeat_timeout_seconds)
+        if not (errored or status in ("failed", "missing")):  # heartbeat threshold: two consecutive passes
+            if reason is None:
+                r.overdue_since = None
+            elif r.overdue_since is None:  # first pass over the threshold: wait for a second one
+                r.overdue_since = at
+                acted[r.id] = "overdue"
+                continue
         if reason:
             log.warning("review %s attempt %d-%d stuck: %s", r.id, r.budget_no, r.attempt, reason)
-            acted[r.id] = relaunch(db, r, jobs, reason)
+            mark_stuck(db, r, jobs, reason, settings.watchdog_interval_seconds, at)
+            acted[r.id] = "stuck"
     db.commit()
     return acted
 

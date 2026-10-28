@@ -104,6 +104,35 @@
         "null"
       ],
       "format": "date-time"
+    },
+    "failure_code": {
+      "enum": [
+        "CLONE_FAILED",
+        "REPO_TOO_LARGE",
+        "SCANNER_ERROR",
+        "AI_PROVIDER_ERROR",
+        "AI_RATE_LIMITED",
+        "TIMEOUT",
+        "MAX_ATTEMPTS_EXCEEDED",
+        "INTERNAL"
+      ],
+      "description": "Why a review is failed (Phase 3). Free-text detail is in failure_detail."
+    },
+    "user_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "login"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "login": {
+          "type": "string"
+        }
+      }
     }
   }
 }

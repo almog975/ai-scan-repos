@@ -16,6 +16,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 from pathlib import Path
 
 from .ai_client import DEFAULT_MODELS, AIClient, parse_ai_json
@@ -24,7 +25,7 @@ from .api_client import ReviewAPI, Superseded
 from .checkpoint import (Checkpoint, atomic_write_json, atomic_write_text, attempt_dir, now, previous_attempts,
                          review_dir)
 from .config import WorkerConfig
-from .report import build_report, top_findings, write_report
+from .report import build_report, top_findings, write_partial_report, write_report
 from .tools import SCANNERS, SEV_ORDER, make_finding, run_scanner, tool_versions
 
 log = logging.getLogger("scanner")
@@ -146,6 +147,24 @@ class Worker:
         self.files: list[str] = []
         self.started_at = now()
         self._ai_degraded = False
+        self._superseded: str | None = None
+        self._stop = threading.Event()
+
+    # ---- heartbeat -----------------------------------------------------------------------
+    def _heartbeat_loop(self) -> None:
+        """Background heartbeat while a long unit of work runs (clone, a scanner, an AI call):
+        review-api's reconciler marks an attempt stuck after HEARTBEAT_TIMEOUT_SECONDS of silence."""
+        while not self._stop.wait(self.cfg.heartbeat_seconds):
+            st = self.cp.state
+            try:
+                self.api.report(self.cfg.review_id, {"attempt": self.cfg.attempt, "budget_no": self.cfg.budget_no,
+                                                     "stage": st["stage"], "progress": st["progress"],
+                                                     "commit_sha": st["commit_sha"]})
+            except Superseded as exc:
+                self._superseded = str(exc) or "superseded"
+                return
+            except Exception:  # noqa: BLE001 - a heartbeat blip must not kill the scan
+                log.warning("heartbeat failed", exc_info=True)
 
     # ---- progress ------------------------------------------------------------------------
     def _progress_doc(self, current=None, state="running") -> dict:
@@ -170,6 +189,8 @@ class Worker:
                 "files": files}
 
     def _beat(self, stage: str, pct: int | None = None, current=None, outcome=None, error=None):
+        if self._superseded and not outcome:
+            raise Superseded(self._superseded)
         st = self.cp.state
         st["stage"] = stage
         for name in STAGE_PCT:
@@ -197,6 +218,9 @@ class Worker:
                  cfg.depth, resumed, self.cp.state["stage"])
         Path(cfg.work_dir).mkdir(parents=True, exist_ok=True)
         tmp = Path(tempfile.mkdtemp(prefix=f"src-{cfg.review_id[:12]}-", dir=cfg.work_dir))
+        hb = threading.Thread(target=self._heartbeat_loop, name="heartbeat", daemon=True)
+        if cfg.heartbeat_seconds > 0:
+            hb.start()
         try:
             src = tmp / "repo"
             sha = self.clone_fn(cfg.repo_url, src, cfg.clone_timeout, cfg.ref, self.cp.state["commit_sha"] or "")
@@ -225,11 +249,16 @@ class Worker:
             return "completed"
         except Paused:
             log.info("paused — checkpoint saved")
+            self._partial()
             return "paused"
         except Superseded as exc:
             log.info("attempt superseded (%s) — stopping", exc)
             return "superseded"
+        except BaseException:  # error, SIGTERM (cancel / force-fail / pause), kill by the watchdog
+            self._partial()
+            raise
         finally:
+            self._stop.set()
             shutil.rmtree(tmp, ignore_errors=True)  # source code never outlives the job
 
     # ---- AI --------------------------------------------------------------------------------
@@ -282,6 +311,19 @@ class Worker:
             if ans:
                 atomic_write_text(self.cp.summary_path, ans)
         self._beat("ai")
+
+    def _partial(self) -> None:
+        """Keep results so far (Phase 3: partial reports on failed/cancelled). Never masks the original error."""
+        if not self.cp.state.get("commit_sha") or not self.files:
+            return  # nothing scanned yet (e.g. clone failed): no partial report
+        try:
+            rep = self._report()
+            # scanners run over the whole tree: files count as scanned once every scanner finished
+            scanned = len(self.cp.cursor["scanners_done"]) == len(SCANNERS)
+            rep["summary"]["files_scanned"] = len(self.files) if scanned else 0
+            write_partial_report(self.rdir, rep)
+        except Exception:  # noqa: BLE001
+            log.warning("could not write partial report", exc_info=True)
 
     def _report(self) -> dict:
         prov = None

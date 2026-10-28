@@ -51,8 +51,8 @@ class ReviewJobs:
     def delete(self, job_name: str) -> None:
         self.inner.delete(job_name)
 
-    def cleanup(self, review_id: str) -> None:
-        self.inner.cleanup(review_id)
+    def cleanup(self, review_id: str, budget_no: int = 1) -> None:
+        self.inner.cleanup(review_id, budget_no)
 
     def status(self, job_name: str) -> str:
         return self.inner.status(job_name) if hasattr(self.inner, "status") else "active"

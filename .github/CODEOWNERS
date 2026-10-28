@@ -8,4 +8,4 @@
 # --- Pipelines-owned: CI and Argo CD apps. Jenkins also commits image tags / SCANNER_IMAGE
 #     into deploy/<svc>/overlays/<target>/kustomization.yaml (tagged [skip ci]) ---
 /Jenkinsfile @almog975
-/deploy/argocd-app.yaml @almog975
+/deploy/argocd/ @almog975

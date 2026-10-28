@@ -67,6 +67,11 @@ error envelope. In tests the transport is mocked (`tests/conftest.py` `ai_http`)
 | `.openai.azure.com` | `azure_openai` | cloud | `https://<resource>.openai.azure.com` (required; `api-key` header, `api-version` query, model = deployment) |
 | anything else (vLLM, LM Studio, **x.ai**) | `openai_compatible` | on-prem or cloud (x.ai = `cloud` → `ack_cloud` required) | `http://<host>:<port>/v1` |
 
+> **Grok (x.ai):** there is no dedicated adapter. Create it with `base_url: https://api.x.ai/v1` and
+> **`kind: cloud`**; it runs as the `openai_compatible` adapter. Because the DB `kind` decides cloud vs on-prem,
+> `ack_cloud` (422 `CLOUD_ACK_REQUIRED` without it) and the report's cloud banner apply exactly as for the other
+> cloud providers. Never create it as `kind: onprem` — that would hide the warning.
+
 ## 3. On-prem provider over Tailscale (recommended)
 
 An OpenAI-compatible server (Ollama, vLLM, LM Studio) on a GPU machine reached privately over Tailscale —

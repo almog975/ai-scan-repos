@@ -20,7 +20,7 @@ Technion DevOps final project. Standalone repo `almog975/ai-scan-repos`; all pat
   deploy/<c>/       per-component Kustomize base + overlays/{local,k3s,eks} (see docs/kustomize-layout.md)
   infra/db/        target PostgreSQL schema v1 (schema.sql, migrations/001_init.sql)
   infra/           other infra-level assets
-  deploy/argocd-app.yaml  Argo CD Applications → deploy/<component>/overlays/<target> (target layout, see deploy/README.md)
+  deploy/argocd/          Argo CD app-of-apps: root-app.yaml + apps/<component>.yaml (see deploy/README.md)
   docs/            adr/, diagrams/, runbooks/, ci.md
   Jenkinsfile      CI: detect changes → test → build → Trivy → push → deploy (tag bump)
   Makefile         `make test` runs every service's `make test` (passes when a suite is empty); `make contracts` validates contracts
