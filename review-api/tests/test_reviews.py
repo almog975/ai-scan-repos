@@ -76,5 +76,5 @@ def test_404_409_429(client, H, A):
     r = client.post("/reviews", json={"repo_url": URL, "depth": "quick"}, headers=H)
     assert r.status_code == 429 and r.json()["error"]["code"] == "RATE_LIMITED" and r.headers["retry-after"]
     assert client.get("/reviews/00000000-0000-0000-0000-000000000000", headers=H).status_code == 404
-    assert client.get("/reviews/not-a-uuid", headers=H).status_code == 400
+    assert client.get("/reviews/not-a-uuid", headers=H).status_code == 404  # contract: only 404 documented
     assert client.get("/reviews", headers={}).status_code == 401

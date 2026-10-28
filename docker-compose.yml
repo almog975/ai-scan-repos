@@ -14,12 +14,24 @@ services:
       interval: 5s
       retries: 10
 
+  migrate:   # alembic upgrade head, once, before review-api starts
+    build:
+      context: .
+      dockerfile: review-api/Dockerfile.local
+    depends_on:
+      postgres: {condition: service_healthy}
+    environment:
+      DATABASE_URL: postgresql+psycopg://aiscan:${POSTGRES_PASSWORD:-aiscan-dev}@postgres:5432/aiscan
+    command: ["alembic", "upgrade", "head"]
+    restart: "no"
+
   review-api:
     build:
       context: .
       dockerfile: review-api/Dockerfile.local
     depends_on:
       postgres: {condition: service_healthy}
+      migrate: {condition: service_completed_successfully}
     ports: ["127.0.0.1:8001:8001"]   # internal API: localhost only
     env_file: [.env]
     environment:
@@ -39,7 +51,7 @@ services:
   gateway:
     build: gateway
     depends_on:
-      review-api: {condition: service_healthy}   # review-api runs the Alembic migrations
+      review-api: {condition: service_healthy}   # migrations ran in `migrate` first
     env_file: [.env]
     environment:
       DATABASE_URL: postgresql+psycopg://aiscan:${POSTGRES_PASSWORD:-aiscan-dev}@postgres:5432/aiscan

@@ -46,7 +46,7 @@ Don't commit these manual edits on `main` — in normal operation Jenkins sets t
 
 What the code expects at runtime (defaults in `review-api/app/config.py`; check against the manifests):
 - Namespace `ai-scan-repos`; review-api `JOB_LAUNCHER=kubernetes` with RBAC to create `batch/jobs` there.
-- Postgres reachable via `DATABASE_URL` (from `db-secrets`); review-api runs `alembic upgrade head` on start.
+- Postgres reachable via `DATABASE_URL` (from `db-secrets`); migrations run in Job `review-api-migrate` (Argo CD PreSync hook) before review-api rolls.
 - Reports PVC mounted at `REPORTS_DIR` in review-api **and** at `/reports` in every scanner Job → must be
   shared (`ReadWriteMany`, or co-located pods with RWO); see [storage-plan.md](../storage-plan.md).
 - ServiceAccount `scanner-worker` (token not mounted); scanner Jobs get env via `envFrom` Secret
@@ -88,7 +88,7 @@ cleaned up — TODO retention policy.
 | `401/403` on any endpoint | Missing/wrong `X-Internal-Token`, or missing `X-User-Id` (see `app/auth.py`) |
 | `422` on POST /reviews | URL not `https://github.com/<owner>/<repo>` |
 | `/readyz` 503 | DB unreachable / bad `DATABASE_URL` |
-| Startup crash in container | `alembic upgrade head` failed — check DB connectivity |
+| Sync stuck at PreSync | Job `review-api-migrate` failed — `kubectl -n ai-scan-repos logs job/review-api-migrate`; check DB connectivity |
 | Review stuck `running`, attempts climbing | Worker crashing or no heartbeat; check job logs; watchdog relaunches every 15 min, fails after 5 attempts |
 | Review `failed` "no progress for 900s after N attempts" | Max attempts reached; fix cause then create a new review |
 | Job never appears (k8s) | review-api RBAC to create Jobs, `SCANNER_IMAGE` pull errors, Secret `scanner-secrets` missing |

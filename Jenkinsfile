@@ -43,9 +43,18 @@ pipeline {
       changed = SERVICES.keySet().findAll { s -> files.any { it.startsWith("${SERVICES[s][0]}/") } } as List
       echo "Changed services: ${changed}"
     } } }
+    stage('Contracts') { when { expression { !skipBuild } } steps {
+      sh 'make contracts && python3 -m pytest -q contracts/tests'
+    } }
     stage('Test') { when { expression { !skipBuild && changed } } steps { script {
       changed.each { s -> dir(SERVICES[s][0]) { sh 'make test' } }
     } } }
+    stage('DB parity (Postgres)') { when { expression { !skipBuild } } steps {
+      sh 'ci/db-parity.sh'   // alembic head == infra/db/schema.sql via pg_dump, plus downgrade/upgrade round trip
+    } }
+    stage('Schemathesis') { when { expression { !skipBuild } } steps {
+      sh 'ci/schemathesis.sh 50'   // review-api vs contracts/review-api.openapi.yaml
+    } }
     stage('Build') { when { expression { !skipBuild && changed } } steps { script {
       changed.each { s -> sh "docker build -t ${env.REGISTRY}/ai-scan/${s}:${env.GIT_SHA} ${SERVICES[s][0]}" }
     } } }

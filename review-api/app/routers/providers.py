@@ -83,8 +83,8 @@ def decrypt_key(p: AIProvider, c: KeyCipher) -> str | None:
 def _get(db, id: str) -> AIProvider:
     try:
         uuid.UUID(id)
-    except ValueError:
-        raise validation("id must be a uuid")
+    except ValueError:  # contract documents only 404 for an unknown id
+        raise not_found("provider")
     p = db.get(AIProvider, id)
     if p is None:
         raise not_found("provider")

@@ -115,7 +115,8 @@ def test_retry_only_from_failed(client, H, A, k8s):
     check("Error", r.json())
     other = client.post("/reviews/00000000-0000-0000-0000-000000000000/retry", headers=H)
     assert other.status_code == 404
-    assert client.get(f"/reviews/{rid}/attempts?budget_no=0", headers=H).status_code == 400
+    r = client.get(f"/reviews/{rid}/attempts?budget_no=0", headers=H)  # contract documents no 400 here
+    assert r.status_code == 200 and r.json() == []
 
 
 def test_relaunch_launch_error_recorded(client, H, k8s, settings):

@@ -1,0 +1,31 @@
+# Schema migrations: `alembic upgrade head` once per sync, before the review-api Deployment rolls.
+# Argo CD runs it as a PreSync hook and deletes the previous one first; plain `kubectl apply -k` users run it once by hand.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: review-api-migrate
+  namespace: ai-scan-repos
+  labels: {app: review-api-migrate}
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  backoffLimit: 2
+  activeDeadlineSeconds: 600
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata: {labels: {app: review-api-migrate}}
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext: {runAsNonRoot: true, runAsUser: 10001, runAsGroup: 10001, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: migrate
+          image: ai-scan/review-api:GIT_SHA   # same image as the Deployment (overlay images: rewrites both)
+          args: [alembic, upgrade, head]
+          envFrom:
+            - secretRef: {name: db-secrets}   # DATABASE_URL
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+          resources: {requests: {cpu: 50m, memory: 128Mi}, limits: {cpu: 500m, memory: 256Mi}}
+          volumeMounts: [{name: tmp, mountPath: /tmp}]
+      volumes: [{name: tmp, emptyDir: {}}]

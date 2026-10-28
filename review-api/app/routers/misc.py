@@ -52,5 +52,5 @@ def put_settings(body: SettingsBody, admin: User = Depends(require_admin), db=De
         except ValueError:
             raise validation("default_provider_id must be a uuid")
         if db.get(AIProvider, body.default_provider_id) is None:
-            raise not_found("provider")
+            raise validation("default_provider_id: provider not found")  # contract: 400, not 404
     return settings_store.save(db, body.model_dump(), admin.id)

@@ -2,6 +2,7 @@
 import enum
 from datetime import datetime, timezone
 
+from sqlalchemy.dialects.postgresql import INET
 from sqlalchemy import BigInteger, Boolean, DateTime, Enum, ForeignKey, Integer, LargeBinary, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -73,6 +74,8 @@ class Session(Base):
     id: Mapped[str] = mapped_column(Text, primary_key=True)  # sha256(cookie token)
     user_id: Mapped[str] = mapped_column(GUID, ForeignKey("users.id", ondelete="CASCADE"), index=True)
     expires_at: Mapped[datetime] = mapped_column(TZ)
+    ip: Mapped[str | None] = mapped_column(Text().with_variant(INET(), "postgresql"), nullable=True)
+    user_agent: Mapped[str | None] = mapped_column(Text, nullable=True)
     revoked_at: Mapped[datetime | None] = mapped_column(TZ, nullable=True)
     created_at: Mapped[datetime] = mapped_column(TZ, default=utcnow)
 

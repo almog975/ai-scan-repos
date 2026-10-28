@@ -98,3 +98,21 @@ def test_overlay_probe_paths(svc, port, overlay):
     assert deps
     for d in deps:
         _check(d["spec"]["template"]["spec"]["containers"][0], port)
+
+
+@pytest.mark.skipif(not shutil.which("kustomize"), reason="kustomize not installed")
+@pytest.mark.parametrize("overlay", ["local", "k3s", "eks"])
+def test_migrations_job_uses_deployment_image(overlay):
+    out = subprocess.run(["kustomize", "build", str(DEPLOY / "review-api" / "overlays" / overlay)],
+                         capture_output=True, text=True, check=True).stdout
+    docs = {d["kind"]: d for d in yaml.safe_load_all(out) if d}
+    job, dep = docs["Job"], docs["Deployment"]
+    assert job["metadata"]["annotations"]["argocd.argoproj.io/hook"] == "PreSync"
+    (jc,), (dc,) = job["spec"]["template"]["spec"]["containers"], dep["spec"]["template"]["spec"]["containers"]
+    assert jc["image"] == dc["image"] and jc["args"] == ["alembic", "upgrade", "head"]
+    assert "alembic" not in " ".join(dc.get("args", []))
+
+
+def test_dockerfile_does_not_migrate():
+    cmd = [l for l in (DEPLOY.parent / "review-api" / "Dockerfile").read_text().splitlines() if l.startswith("CMD")]
+    assert cmd and "alembic" not in cmd[0]

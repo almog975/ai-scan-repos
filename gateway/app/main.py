@@ -175,6 +175,7 @@ def create_app(settings: Settings | None = None, transport: httpx.AsyncBaseTrans
                 u.role = "admin"
             db.flush()
             db.add(Session(id=hash_token(tok), user_id=u.id, user_agent=(request.headers.get("user-agent") or "")[:300],
+                           ip=request.client.host if request.client else None,
                            expires_at=datetime.now(timezone.utc) + timedelta(hours=s.session_ttl_hours)))
             db.commit()
         # The GitHub token is not persisted (users.gh_token_enc stays NULL in Phase 1).

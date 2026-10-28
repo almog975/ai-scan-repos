@@ -28,7 +28,7 @@ def test_settings(client, A, H):
         r = client.put("/admin/settings", json=bad, headers=A)
         assert r.status_code == 400 and r.json()["error"]["code"] == "VALIDATION_ERROR"
     r = client.put("/admin/settings", json={**new, "default_provider_id": "00000000-0000-0000-0000-000000000000"}, headers=A)
-    assert r.status_code == 404
+    assert r.status_code == 400 and r.json()["error"]["code"] == "VALIDATION_ERROR"  # contract: 400
     assert client.get("/admin/settings", headers=H).status_code == 403
     assert client.put("/admin/settings", json=new, headers=H).status_code == 403
     # max_concurrent_reviews=1 is enforced by POST /reviews

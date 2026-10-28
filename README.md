@@ -84,7 +84,7 @@ cd scanner-worker && pytest -q    # parsers/report (fixtures), AI client (mock t
 docker build -t ai-scan-repos/review-api:dev review-api
 docker build -t ai-scan-repos/scanner-worker:dev scanner-worker
 ```
-Both run as UID 10001. review-api runs `alembic upgrade head` then uvicorn on :8001.
+Both run as UID 10001. review-api serves uvicorn on :8001; migrations run separately (K8s Job `review-api-migrate`, Argo CD PreSync; compose service `migrate`).
 
 ## API summary
 

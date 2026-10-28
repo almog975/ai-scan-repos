@@ -25,8 +25,8 @@ router = APIRouter()
 def get_review(db, review_id: str, user: User) -> Review:
     try:
         uuid.UUID(review_id)
-    except ValueError:
-        raise validation("id must be a uuid")
+    except ValueError:  # contract documents only 404 for an unknown id
+        raise not_found("review")
     r = db.get(Review, review_id)
     if r is None or (r.user_id != user.id and getattr(user.role, "value", user.role) != "admin"):
         raise not_found("review")
@@ -96,7 +96,8 @@ def list_reviews(state: State | None = None, page: int = Query(1, ge=1), page_si
     if state:
         q = q.where(Review.state == state)
     total = db.scalar(select(func.count()).select_from(q.subquery())) or 0
-    rows = db.scalars(q.order_by(Review.created_at.desc()).offset((page - 1) * page_size).limit(page_size)).all()
+    offset = (page - 1) * page_size
+    rows = [] if offset >= total else db.scalars(q.order_by(Review.created_at.desc()).offset(offset).limit(page_size)).all()
     return {"items": [out(db, r) for r in rows], "page": page, "page_size": page_size, "total": total}
 
 
@@ -106,7 +107,7 @@ def read_review(id: str, user: User = Depends(current_user), db=Depends(get_db))
 
 
 @router.get("/reviews/{id}/attempts")
-def list_attempts(id: str, budget_no: int | None = Query(None, ge=1), user: User = Depends(current_user),
+def list_attempts(id: str, budget_no: int | None = Query(None), user: User = Depends(current_user),
                   db=Depends(get_db)):
     r = get_review(db, id, user)
     q = select(ReviewAttempt).where(ReviewAttempt.review_id == r.id)
