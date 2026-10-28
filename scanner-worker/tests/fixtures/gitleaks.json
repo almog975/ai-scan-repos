@@ -1,0 +1,1 @@
+[{"RuleID": "aws-access-token", "Description": "AWS Access Key", "File": "config.py", "StartLine": 2, "Secret": "REDACTED"}]

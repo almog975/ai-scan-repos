@@ -1,0 +1,36 @@
+# Phase 1 local dev: postgres + review-api (LocalLauncher runs the scanner in-process).
+# Usage (from ai-scan-repos/):  cp .env.example .env && docker compose up --build
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: aiscan
+      POSTGRES_USER: aiscan
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-aiscan-dev}
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aiscan -d aiscan"]
+      interval: 5s
+      retries: 10
+
+  review-api:
+    build:
+      context: .
+      dockerfile: review-api/Dockerfile.local
+    depends_on:
+      postgres: {condition: service_healthy}
+    ports: ["8000:8000"]
+    env_file: [.env]
+    environment:
+      DATABASE_URL: postgresql+psycopg://aiscan:${POSTGRES_PASSWORD:-aiscan-dev}@postgres:5432/aiscan
+      JOB_LAUNCHER: local
+      LOCAL_WORKER_CMD: python -m scanner.run
+      LOCAL_WORKER_CWD: /opt/scanner
+      REPORTS_DIR: /reports
+      WORK_DIR: /work
+      REVIEW_API_URL: http://localhost:8000
+    volumes: [reports:/reports]
+
+volumes:
+  pgdata:
+  reports:
