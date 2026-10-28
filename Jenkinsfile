@@ -97,7 +97,8 @@ pipeline {
         dir('frontend') {
           sh 'node --version && npm --version'
           sh 'CI=true npm ci --no-audit --no-fund'
-          sh 'CI=true npm test'
+          try { sh 'CI=true npm test -- --reporter=default --reporter=junit --outputFile.junit=reports/vitest-junit.xml' }
+          finally { junit allowEmptyResults: false, testResults: 'reports/vitest-junit.xml' }
           sh 'CI=true npm run build'
         }
         sh "docker build -t ${img} -f frontend/Dockerfile frontend"

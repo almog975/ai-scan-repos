@@ -3,7 +3,8 @@ WORKDIR /src
 COPY package.json package-lock.json ./
 RUN npm ci --no-audit --no-fund
 COPY . .
-RUN npm test && npm run build
+# Unit tests run in Jenkins (vitest JUnit report); the image only builds.
+RUN npm run build
 
 FROM nginxinc/nginx-unprivileged:1.27-alpine
 USER 0
