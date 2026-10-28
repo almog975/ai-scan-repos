@@ -26,7 +26,7 @@ components:
           additionalProperties: false
           required: [code, message]
           properties:
-            code: {enum: [INVALID_SIGNATURE, CLOUD_ACK_REQUIRED, UNAUTHORIZED, FORBIDDEN, NOT_FOUND, VALIDATION_ERROR, RATE_LIMITED, CONFLICT, REPORT_EXPIRED, INTERNAL]}
+            code: {enum: [INVALID_SIGNATURE, CLOUD_ACK_REQUIRED, UNAUTHORIZED, FORBIDDEN, NOT_FOUND, VALIDATION_ERROR, RATE_LIMITED, CONFLICT, REPORT_EXPIRED, PROVIDER_IN_USE, AI_PROVIDER_UNREACHABLE, AI_PROVIDER_AUTH_FAILED, AI_PROVIDER_BAD_RESPONSE, INTERNAL]}
             message: {type: string}
             details: {type: object}
         request_id: {type: string}
@@ -121,6 +121,8 @@ paths:
     $ref: 'review-api.openapi.yaml#/paths/~1ai-providers'
   /api/admin/ai-providers:
     $ref: 'review-api.openapi.yaml#/paths/~1admin~1ai-providers'
+  /api/admin/ai-providers/test:
+    $ref: 'review-api.openapi.yaml#/paths/~1admin~1ai-providers~1test'
   /api/admin/ai-providers/{id}:
     $ref: 'review-api.openapi.yaml#/paths/~1admin~1ai-providers~1{id}'
   /api/admin/ai-providers/{id}/test:
