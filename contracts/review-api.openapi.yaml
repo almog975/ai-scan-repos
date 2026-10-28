@@ -33,7 +33,7 @@ components:
           additionalProperties: false
           required: [code, message]
           properties:
-            code: {type: string, examples: [INVALID_STATE, cloud_ack_required, NOT_FOUND, RATE_LIMITED]}
+            code: {enum: [INVALID_SIGNATURE, CLOUD_ACK_REQUIRED, UNAUTHORIZED, FORBIDDEN, NOT_FOUND, VALIDATION_ERROR, RATE_LIMITED, CONFLICT, INTERNAL]}
             message: {type: string}
             details: {type: object}
         request_id: {type: string}
@@ -46,7 +46,7 @@ components:
         ref: {type: string, default: HEAD}
         depth: {$ref: 'common.schema.json#/$defs/depth'}
         provider_id: {oneOf: [{$ref: 'common.schema.json#/$defs/uuid'}, {type: 'null'}]}
-        ack_cloud: {type: boolean, default: false, description: 'Must be true when the provider kind is cloud, else 422 cloud_ack_required'}
+        ack_cloud: {type: boolean, default: false, description: 'Must be true when the provider kind is cloud, else 422 CLOUD_ACK_REQUIRED'}
     ProviderRef:
       type: object
       required: [id, kind, cloud_warning]
@@ -184,7 +184,7 @@ components:
     Unauthorized: {description: Missing or invalid user/internal credentials, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
     Forbidden: {description: Not an admin (all /admin/* routes) or no access to the resource, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
     NotFound: {description: Not found, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
-    InvalidState: {description: 'Conflict, code INVALID_STATE', content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+    InvalidState: {description: 'Conflict, code CONFLICT', content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
     TooMany: {description: 'Rate limited, code RATE_LIMITED (Retry-After header)', headers: {Retry-After: {schema: {type: integer}}}, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
     Accepted: {description: Accepted, content: {application/json: {schema: {$ref: '#/components/schemas/Review'}}}}
 paths:
@@ -205,7 +205,7 @@ paths:
         '403': {$ref: '#/components/responses/Forbidden'}
         '404': {description: Repo or provider not found, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
         '409': {description: Active review exists for repo+sha, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
-        '422': {description: 'code cloud_ack_required: provider kind is cloud and ack_cloud != true', content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '422': {description: 'code CLOUD_ACK_REQUIRED: provider kind is cloud and ack_cloud != true', content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
         '429': {$ref: '#/components/responses/TooMany'}
     get:
       operationId: listReviews
@@ -281,7 +281,7 @@ paths:
     parameters: [{$ref: '#/components/parameters/ReviewId'}]
     post:
       operationId: retryReview
-      description: Only for `failed` reviews (409 INVALID_STATE otherwise). Starts a fresh 5-attempt budget (budget_no+1, attempt=1) and a new Job.
+      description: Only for `failed` reviews (409 CONFLICT otherwise). Starts a fresh 5-attempt budget (budget_no+1, attempt=1) and a new Job.
       responses: {'202': {$ref: '#/components/responses/Accepted'}, '401': {$ref: '#/components/responses/Unauthorized'}, '404': {$ref: '#/components/responses/NotFound'}, '409': {$ref: '#/components/responses/InvalidState'}, '429': {$ref: '#/components/responses/TooMany'}}
   /reviews/{id}/cancel:
     parameters: [{$ref: '#/components/parameters/ReviewId'}]

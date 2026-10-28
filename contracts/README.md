@@ -13,9 +13,9 @@ Source of truth for APIs and data shapes in AI Scan Repos. Change only via PR; c
 | `progress.schema.json` | `progress.json` per-file live progress; also SSE `progress` payload. |
 
 Conventions: ids are UUIDs; `commit_sha` = 40 hex; `attempt` 1–5 within a budget, `budget_no` ≥1 and +1 per
-`POST /reviews/{id}/retry` (only from `failed`); errors are `{error:{code,message,request_id}}`; list endpoints use
+`POST /reviews/{id}/retry` (only from `failed`); errors are `{error:{code,message}, request_id}` with `code` ∈ INVALID_SIGNATURE, CLOUD_ACK_REQUIRED, UNAUTHORIZED, FORBIDDEN, NOT_FOUND, VALIDATION_ERROR, RATE_LIMITED, CONFLICT, INTERNAL; list endpoints use
 `page`/`page_size` (max 100) and return `total`; `/reviews/{id}/attempts` is not paginated. `POST /reviews` with a
-cloud provider requires `ack_cloud: true`, else 422 `cloud_ack_required`. User routes → 401 when unauthenticated;
+cloud provider requires `ack_cloud: true`, else 422 `CLOUD_ACK_REQUIRED`. User routes → 401 when unauthenticated;
 `/admin/*` → 403 for non-admins. `users.role ∈ {user, admin}`; the first user to log in becomes admin.
 
 **Deferred past v0.1:** per-depth time/cost estimates; server-side paging of findings inside reports.

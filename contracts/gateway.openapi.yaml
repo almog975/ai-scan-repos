@@ -26,7 +26,7 @@ components:
           additionalProperties: false
           required: [code, message]
           properties:
-            code: {type: string}
+            code: {enum: [INVALID_SIGNATURE, CLOUD_ACK_REQUIRED, UNAUTHORIZED, FORBIDDEN, NOT_FOUND, VALIDATION_ERROR, RATE_LIMITED, CONFLICT, INTERNAL]}
             message: {type: string}
             details: {type: object}
         request_id: {type: string}
