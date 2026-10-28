@@ -38,7 +38,6 @@ def schema_of(name):
 
 
 # ---------- JSON Schema fixtures that must be rejected once decisions land ----------
-@PENDING
 @pytest.mark.parametrize("path", sorted((FIXTURES_DIR / "pending_invalid").glob("*.json")), ids=lambda p: p.stem)
 def test_pending_invalid_fixture_rejected(path, validator_for):
     v = validator_for(f"{path.name.split('__')[0]}.schema.json")
@@ -46,38 +45,32 @@ def test_pending_invalid_fixture_rejected(path, validator_for):
 
 
 # ---------- additionalProperties:false ----------
-@PENDING
 @pytest.mark.parametrize("name", ["report.schema.json", "checkpoint.schema.json", "progress.schema.json"])
 def test_schema_closed(name):
     assert load_schema(name).get("additionalProperties") is False
 
 
-@PENDING
 @pytest.mark.parametrize("name", ["ReviewCreate", "AIProviderWrite", "Settings", "Review", "Error"])
 def test_api_schema_closed(name):
     assert schema_of(name).get("additionalProperties") is False
 
 
 # ---------- uuid / sha formats ----------
-@PENDING
 @pytest.mark.parametrize("name", ["report.schema.json", "checkpoint.schema.json", "progress.schema.json"])
 def test_review_id_uuid(name):
     assert load_schema(name)["properties"]["review_id"].get("format") == "uuid"
 
 
-@PENDING
 @pytest.mark.parametrize("name", ["Review", "AIProvider", "ReviewAttempt"])
 def test_api_ids_uuid(name):
     assert schema_of(name)["properties"]["id"].get("format") == "uuid"
 
 
-@PENDING
 def test_commit_sha_pattern():
     assert schema_of("Review")["properties"]["commit_sha"].get("pattern") == "^[a-f0-9]{40}$"
 
 
 # ---------- budget_no + attempt 1-5 ----------
-@PENDING
 @pytest.mark.parametrize("name", ["checkpoint.schema.json", "progress.schema.json", "report.schema.json"])
 def test_budget_no_in_schema(name):
     s = load_schema(name)
@@ -85,7 +78,6 @@ def test_budget_no_in_schema(name):
     assert s["properties"]["budget_no"].get("minimum") == 1
 
 
-@PENDING
 @pytest.mark.parametrize("name", ["Review", "ReviewAttempt", "Progress"])
 def test_budget_no_and_attempt_bounds_in_api(name):
     p = schema_of(name)["properties"]
@@ -95,18 +87,15 @@ def test_budget_no_and_attempt_bounds_in_api(name):
 
 
 # ---------- required timestamps / error fields ----------
-@PENDING
 def test_report_timestamps_required():
     assert {"started_at", "finished_at"} <= set(load_schema("report.schema.json")["required"])
 
 
-@PENDING
 def test_review_timestamps():
     s = schema_of("Review")
     assert {"created_at", "updated_at"} <= set(s["required"])
 
 
-@PENDING
 @pytest.mark.parametrize("spec", [API, GW], ids=["review-api", "gateway"])
 def test_error_fields_required(spec):
     err = spec["components"]["schemas"]["Error"]
@@ -115,7 +104,6 @@ def test_error_fields_required(spec):
 
 
 # ---------- ack_cloud -> 422 cloud_ack_required ----------
-@PENDING
 def test_create_review_documents_422():
     resp = API["paths"]["/reviews"]["post"]["responses"]
     assert "422" in resp
@@ -127,26 +115,22 @@ def _non_public(spec):
     return [(p, m, o) for p, m, o in ops(spec) if o.get("operationId") not in PUBLIC and o.get("security") != []]
 
 
-@PENDING
 def test_every_protected_route_has_401():
     missing = [f"{m.upper()} {p}" for p, m, o in _non_public(API) if "401" not in o["responses"]]
     assert not missing, missing
 
 
-@PENDING
 def test_admin_routes_have_403():
     missing = [f"{m.upper()} {p}" for p, m, o in ops(API) if p.startswith("/admin") and "403" not in o["responses"]]
     assert not missing, missing
 
 
-@PENDING
 def test_admin_role_documented():
     text = json.dumps({p: i for p, i in API["paths"].items() if p.startswith("/admin")}).lower()
     assert "users.role" in text or "admin" in json.dumps(API["components"].get("securitySchemes", {})).lower()
 
 
 # ---------- ProviderId param ----------
-@PENDING
 @pytest.mark.parametrize("path", ["/admin/ai-providers/{id}", "/admin/ai-providers/{id}/test"])
 def test_provider_routes_use_provider_id(path):
     refs = [x.get("$ref", "") for x in API["paths"][path].get("parameters", [])]
@@ -154,7 +138,6 @@ def test_provider_routes_use_provider_id(path):
 
 
 # ---------- PATCH schema ----------
-@PENDING
 def test_patch_provider_uses_patch_schema():
     body = API["paths"]["/admin/ai-providers/{id}"]["patch"]["requestBody"]["content"]["application/json"]["schema"]
     assert body["$ref"] != "#/components/schemas/AIProviderWrite"
@@ -162,15 +145,13 @@ def test_patch_provider_uses_patch_schema():
 
 
 # ---------- pagination ----------
-@PENDING
 def test_list_reviews_page_size_and_total():
     names = {x.get("name") for x in API["paths"]["/reviews"]["get"]["parameters"]}
     assert {"page", "page_size"} <= names or {"page", "limit"} <= names
     assert "total" in schema_of("ReviewList")["required"]
 
 
-@PENDING
-@pytest.mark.parametrize("path", ["/reviews/{id}/files", "/reviews/{id}/attempts"])
+@pytest.mark.parametrize("path", ["/reviews/{id}/files", pytest.param("/reviews/{id}/attempts", marks=pytest.mark.xfail(strict=True, reason="decision: /attempts is NOT paginated (max 5 rows per budget)"))])
 def test_subresource_lists_paginated(path):
     names = {resolve(API, x).get("name") for x in API["paths"][path]["get"].get("parameters", [])}
     names |= {resolve(API, x).get("name") for x in API["paths"][path].get("parameters", [])}
@@ -178,7 +159,6 @@ def test_subresource_lists_paginated(path):
 
 
 # ---------- SSE events ----------
-@PENDING
 def test_sse_events_documented():
     text = json.dumps(API["paths"]["/reviews/{id}/progress"]).lower()
     for ev in ("progress", "state", "done"):
