@@ -24,6 +24,8 @@ spec:
             - name: SCANNER_IMAGE   # substituted into scanner-job-template ${IMAGE}
               valueFrom: {configMapKeyRef: {name: scanner-image, key: SCANNER_IMAGE}}
             - {name: REVIEW_API_INTERNAL_URL, value: "http://review-api:8001"}
+            - {name: SCANNER_JOB_TEMPLATE, value: /etc/scanner-job/job.yaml}   # ConfigMap scanner-job-template
+            - {name: SCANNER_ACTIVE_DEADLINE_SECONDS, value: "21600"}
           envFrom:
             - secretRef: {name: db-secrets}        # DATABASE_URL
             - secretRef: {name: ai-keys-master}    # AI_KEYS_ENCRYPTION_KEY
@@ -35,6 +37,8 @@ spec:
           volumeMounts:
             - {name: tmp, mountPath: /tmp}
             - {name: reports, mountPath: /reports}
+            - {name: scanner-job-template, mountPath: /etc/scanner-job, readOnly: true}
       volumes:
         - {name: tmp, emptyDir: {}}
         - {name: reports, persistentVolumeClaim: {claimName: reports}}
+        - {name: scanner-job-template, configMap: {name: scanner-job-template}}

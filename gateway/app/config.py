@@ -21,8 +21,11 @@ class Settings(BaseSettings):
     webhook_review_depth: str = "quick"
     session_ttl_hours: int = 12
     cookie_secure: bool = True
-    session_cookie: str = "aisr_session"
-    csrf_cookie: str = "aisr_csrf"
+    session_cookie: str = "aiscan_session"
+    csrf_cookie: str = "aiscan_csrf"
+    # 429 RATE_LIMITED: requests/minute per client IP on /auth/* + /webhooks/*, per user on /api/*
+    rate_limit_auth_per_minute: int = 30
+    rate_limit_api_per_minute: int = 300
 
     def logins(self, raw: str) -> set[str]:
         return {x.strip().lower() for x in raw.split(",") if x.strip()}

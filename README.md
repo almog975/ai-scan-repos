@@ -84,7 +84,7 @@ cd scanner-worker && pytest -q    # parsers/report (fixtures), AI client (mock t
 docker build -t ai-scan-repos/review-api:dev review-api
 docker build -t ai-scan-repos/scanner-worker:dev scanner-worker
 ```
-Both run as UID 10001. review-api runs `alembic upgrade head` then uvicorn on :8001.
+Both run as UID 10001. review-api serves uvicorn on :8001; migrations run separately (K8s Job `review-api-migrate`, Argo CD PreSync; compose service `migrate`).
 
 ## API summary
 
@@ -97,7 +97,7 @@ All non-probe endpoints require `X-Internal-Token`; user endpoints also take `X-
 | POST/GET | `/reviews`, `/reviews/{id}` | create (launches job) / list / get |
 | POST | `/reviews/{id}/pause`, `/resume` | pause via `PAUSE` file, resume relaunches |
 | GET | `/reviews/{id}/report`, `/report.md` | report when `completed` |
-| PUT/GET | `/ai-keys` | store (Fernet-encrypted) / list per-user AI keys |
+| GET/POST/PATCH/DELETE | `/admin/ai-providers` | admin-managed AI providers (AES-256-GCM keys); `GET /ai-providers` lists them without keys |
 | GET/POST | `/internal/reviews/{id}`, `/internal/reviews/{id}/progress` | worker heartbeat/progress |
 
 ## Folder READMEs

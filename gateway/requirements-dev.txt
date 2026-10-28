@@ -2,3 +2,6 @@
 pytest==8.3.4
 pytest-cov==6.0.0
 respx==0.22.0
+PyYAML>=6
+jsonschema[format]>=4.23
+referencing>=0.35

@@ -10,9 +10,11 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./review-api.db"
     # Shared secret between gateway/worker and review-api. Required in prod.
     internal_api_token: str = "change-me-dev-only"
-    # Fernet key (urlsafe base64, 32 bytes). Generate: python -c "from cryptography.fernet import Fernet;print(Fernet.generate_key().decode())"
+    # AES-256-GCM master key from Secret ai-keys-master: 32 bytes, hex or base64. Generate: openssl rand -hex 32
     ai_keys_encryption_key: str = ""
     # local | kubernetes
+    # Optional GitHub token for API calls (repo metadata / ref resolution)
+    github_token: str = ""
     job_launcher: str = "local"
     reports_dir: str = "./reports"
     # Kubernetes Job settings
@@ -30,6 +32,9 @@ class Settings(BaseSettings):
     max_attempts: int = 5
     watchdog_interval_seconds: int = 60
     watchdog_enabled: bool = True
+    # SSE /reviews/{id}/progress poll interval of the reports volume; optional max stream length
+    sse_interval_seconds: float = 1.0
+    sse_max_seconds: float | None = None
     # Local launcher command (dev)
     local_worker_cmd: str = "python -m scanner.run"
     local_worker_cwd: str = ""

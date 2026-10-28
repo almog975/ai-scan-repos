@@ -2,9 +2,12 @@
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
+from prometheus_client import CONTENT_TYPE_LATEST, CollectorRegistry, Counter, Gauge, generate_latest
 
 READY = threading.Event()
+REGISTRY = CollectorRegistry()  # own registry: the worker may run in-process with review-api (tests)
+SCAN_ATTEMPTS = Counter("scan_attempts_total", "Scanner attempts finished by this pod", ["outcome"], registry=REGISTRY)
+STAGE = Gauge("scan_stage", "1 for the stage the worker is in", ["stage"], registry=REGISTRY)
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -15,7 +18,7 @@ class _Handler(BaseHTTPRequestHandler):
             ok = READY.is_set()
             self._send(200 if ok else 503, b'{"status":"ready"}' if ok else b'{"status":"starting"}', "application/json")
         elif self.path == "/metrics":
-            self._send(200, generate_latest(), CONTENT_TYPE_LATEST)
+            self._send(200, generate_latest(REGISTRY), CONTENT_TYPE_LATEST)
         else:
             self._send(404, b"", "text/plain")
 

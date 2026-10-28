@@ -17,8 +17,15 @@ CLOUD_BASES = {
     "grok": "https://api.x.ai/v1",
     "anthropic": "https://api.anthropic.com/v1",
     "gemini": "https://generativelanguage.googleapis.com/v1beta",
+    "groq": "https://api.groq.com/openai/v1",
+    "mistral": "https://api.mistral.ai/v1",
 }
-PROVIDERS = {"openai_compatible", *CLOUD_BASES}
+# review-api adapter names (app/providers) that speak OpenAI chat-completions at a caller-given base URL.
+# bedrock needs AWS SigV4 and is not supported by this httpx client: AI is skipped (scanners still run).
+BASE_URL_REQUIRED = {"openai_compatible", "ollama", "azure_openai"}
+OPENAI_STYLE = {"openai", "grok", "groq", "mistral", *BASE_URL_REQUIRED}
+ONPREM = {"openai_compatible", "ollama"}
+PROVIDERS = {*CLOUD_BASES, *BASE_URL_REQUIRED}
 # Used when AI_MODEL is left at its on-prem default but a cloud provider is selected per review.
 DEFAULT_MODELS = {"openai": "gpt-4o-mini", "grok": "grok-2-latest", "anthropic": "claude-3-5-sonnet-latest",
                   "gemini": "gemini-1.5-pro"}
@@ -39,18 +46,18 @@ class AIClient:
     def __post_init__(self):
         if self.provider not in PROVIDERS:
             raise ValueError(f"unknown AI provider {self.provider!r}")
-        if self.provider == "openai_compatible" and not self.base_url:
-            raise ValueError("AI_BASE_URL is required for openai_compatible")
+        if self.provider in BASE_URL_REQUIRED and not self.base_url:
+            raise ValueError(f"AI_BASE_URL is required for {self.provider}")
         self.base_url = (self.base_url or CLOUD_BASES[self.provider]).rstrip("/")
 
     @property
     def is_cloud(self) -> bool:
         """True when code/findings leave the private network."""
-        return self.provider != "openai_compatible"
+        return self.provider not in ONPREM
 
     def build_request(self, prompt: str) -> httpx.Request:
         p = self.provider
-        if p in ("openai_compatible", "openai", "grok"):
+        if p in OPENAI_STYLE:
             headers = {"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}
             return httpx.Request("POST", f"{self.base_url}/chat/completions", headers=headers, json={
                 "model": self.model, "temperature": 0.2,
@@ -68,7 +75,7 @@ class AIClient:
 
     @staticmethod
     def parse_response(provider: str, data: dict) -> str:
-        if provider in ("openai_compatible", "openai", "grok"):
+        if provider in OPENAI_STYLE:
             return data["choices"][0]["message"]["content"]
         if provider == "anthropic":
             return "".join(b.get("text", "") for b in data.get("content", []) if b.get("type") == "text")
