@@ -46,3 +46,25 @@ def test_cloud_warning_in_public_provider_list(client, H):
     assert rows[onprem]["cloud_warning"] is False
     r = client.post("/reviews", json={"repo_url": URL, "depth": "brief", "provider_id": onprem}, headers=H)
     assert r.status_code == 201 and r.json()["provider"]["cloud_warning"] is False
+
+
+def test_grok_xai_is_cloud_from_db_row_and_needs_ack(client, A, H, launcher, monkeypatch):
+    """Grok (x.ai) has no dedicated adapter: openai_compatible, but kind=cloud comes from the DB row."""
+    from app.providers.ai_adapters import normalize_base_url
+    xai = "https://api.x.ai/v1"
+    assert adapter_name(xai, "cloud") == "openai_compatible"
+    assert normalize_base_url("openai_compatible", "https://api.x.ai") == xai
+    got = {}
+    orig = launcher.launch
+    monkeypatch.setattr(launcher, "launch", lambda spec, secret_env=None: got.update(env=secret_env) or orig(spec, secret_env))
+    p = client.post("/admin/ai-providers", json={"name": "grok", "kind": "cloud", "base_url": xai,
+                                                 "model": "grok-4", "api_key": "xai-123456"}, headers=A)
+    assert p.status_code == 201, p.text
+    pid = p.json()["id"]
+    r = client.post("/reviews", json={"repo_url": URL, "depth": "brief", "provider_id": pid}, headers=H)
+    assert r.status_code == 422 and r.json()["error"]["code"] == "CLOUD_ACK_REQUIRED"
+    assert not got
+    r = client.post("/reviews", json={"repo_url": URL, "depth": "brief", "provider_id": pid, "ack_cloud": True}, headers=H)
+    assert r.status_code == 201 and r.json()["provider"] == {"id": pid, "kind": "cloud", "cloud_warning": True}
+    assert got["env"]["AI_PROVIDER"] == "openai_compatible" and got["env"]["AI_KIND"] == "cloud"
+    assert got["env"]["AI_BASE_URL"] == xai

@@ -251,3 +251,17 @@ def test_no_ai_provider_same_scanner_output_any_depth(tmp_path, depth):
     rep = report(c)
     assert out == "completed" and rep["executive_summary"] is None
     assert not any(f["tool"] == "ai" or f.get("ai_explanation") for f in rep["findings"])
+
+
+def test_grok_openai_compatible_cloud_kind_from_db_row(tmp_path):
+    """Grok/x.ai: adapter openai_compatible, but AI_KIND=cloud (DB row) -> report kind cloud + cloud banner."""
+    with MockAI() as m:
+        c, api = ai_cfg(tmp_path, m, "openai_compatible", ai_kind="cloud", ai_provider_name="grok"), FakeAPI()
+        _, out = run(c, api=api)
+    assert out == "completed" and m.requests[0]["path"].endswith("/chat/completions")
+    assert m.requests[0]["headers"].get("authorization") == f"Bearer {KEY}"
+    rep = report(c)
+    check("report.schema.json", rep)
+    assert rep["provider"]["kind"] == "cloud" and rep["provider"]["name"] == "grok"
+    assert "⚠️ cloud AI" in (rdir(c) / "report.md").read_text()
+    assert_no_key(c, api)
