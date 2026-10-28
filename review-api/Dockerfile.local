@@ -1,6 +1,6 @@
 # Dev-only image for docker compose: review-api + scanner-worker in one container
 # so LocalLauncher can run the worker as a subprocess. Production uses two images
-# and KubernetesJobLauncher. Build context: ai-scan-repos/
+# and KubernetesJobLauncher. Build context: repo root
 FROM python:3.12-slim
 ARG GITLEAKS_VERSION=8.21.2
 ARG TRIVY_VERSION=0.58.1

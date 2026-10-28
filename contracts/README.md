@@ -20,4 +20,4 @@ cloud provider requires `ack_cloud: true`, else 422 `CLOUD_ACK_REQUIRED`. User r
 
 **Deferred past v0.1:** per-depth time/cost estimates; server-side paging of findings inside reports.
 
-Validate: `make contracts` (from `ai-scan-repos/`): openapi-spec-validator + JSON Schema 2020-12 meta-validation.
+Validate: `make contracts` (from the repo root): openapi-spec-validator + JSON Schema 2020-12 meta-validation.

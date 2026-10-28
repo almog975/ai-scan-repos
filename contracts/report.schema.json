@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/almog975/FinalProject/ai-scan-repos/contracts/report.schema.json",
+  "$id": "https://github.com/almog975/ai-scan-repos/contracts/report.schema.json",
   "title": "report.json (v1)",
   "type": "object",
   "required": [

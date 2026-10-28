@@ -5,14 +5,14 @@ depth; the **review-api** launches a short-lived **scanner-worker** run that clo
 **Semgrep, Gitleaks and Trivy**, optionally asks an AI model for a risk explanation + fixes, and
 writes `report.json` / `report.md` to a shared reports volume.
 
-Part of the Technion DevOps final project (monorepo `FinalProject`).
+Standalone repository (extracted from the `FinalProject` monorepo with history).
 The sibling project `devsecops-shop-*` holds the existing Jenkins / Helm / Argo CD / monitoring work;
 see [`../README.md`](../README.md).
 
 ## Layout (Phase 0 / Foundation)
 
 ```
-ai-scan-repos/
+./  (repo root)
   contracts/       OpenAPI 3.1 (gateway, review-api) + JSON Schema 2020-12 (common, finding, report, checkpoint, progress)
   frontend/        React/Vite -> nginx-unprivileged, :8080
   gateway/         FastAPI, :8000  (/healthz /readyz /metrics)

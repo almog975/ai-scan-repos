@@ -1,6 +1,6 @@
 # Local dev: postgres + review-api (LocalLauncher runs the scanner in-process) + gateway + frontend.
 # Open http://localhost:8080
-# Usage (from ai-scan-repos/):  cp .env.example .env && docker compose up --build
+# Usage (from the repo root):  cp .env.example .env && docker compose up --build
 services:
   postgres:
     image: postgres:16-alpine
