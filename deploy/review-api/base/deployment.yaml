@@ -15,6 +15,7 @@ spec:
           ports: [{name: http, containerPort: 8001}]
           args: [uvicorn, --factory, app.main:get_app, --host, 0.0.0.0, --port, "8001"]
           env:
+            - {name: APP_ENV, value: production}   # refuses dev defaults at startup (app/config.py problems())
             - {name: JOB_LAUNCHER, value: kubernetes}
             - {name: K8S_NAMESPACE, value: ai-scan-repos}
             - {name: REPORTS_DIR, value: /reports}
@@ -26,14 +27,16 @@ spec:
             - {name: REVIEW_API_INTERNAL_URL, value: "http://review-api:8001"}
             - {name: SCANNER_JOB_TEMPLATE, value: /etc/scanner-job/job.yaml}   # ConfigMap scanner-job-template
             - {name: SCANNER_ACTIVE_DEADLINE_SECONDS, value: "21600"}
+            - name: INTERNAL_API_TOKEN   # only this key: the AI_* defaults in scanner-secrets are for scanner Jobs
+              valueFrom: {secretKeyRef: {name: scanner-secrets, key: INTERNAL_API_TOKEN}}
           envFrom:
             - secretRef: {name: db-secrets}        # DATABASE_URL
             - secretRef: {name: ai-keys-master}    # AI_KEYS_ENCRYPTION_KEY
-            - secretRef: {name: scanner-secrets}   # INTERNAL_API_TOKEN
           securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
           resources: {requests: {cpu: 100m, memory: 128Mi}, limits: {cpu: 500m, memory: 512Mi}}
-          livenessProbe: {httpGet: {path: /healthz, port: http}, periodSeconds: 20}
-          readinessProbe: {httpGet: {path: /readyz, port: http}, periodSeconds: 10}
+          startupProbe: {httpGet: {path: /healthz, port: http}, periodSeconds: 2, failureThreshold: 30}   # 60 s to boot before liveness counts
+          livenessProbe: {httpGet: {path: /healthz, port: http}, periodSeconds: 20, timeoutSeconds: 3}
+          readinessProbe: {httpGet: {path: /readyz, port: http}, periodSeconds: 10, timeoutSeconds: 5, failureThreshold: 3}
           volumeMounts:
             - {name: tmp, mountPath: /tmp}
             - {name: reports, mountPath: /reports}
