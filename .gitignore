@@ -7,3 +7,4 @@ reports/
 .venv/
 venv/
 node_modules/
+.schemathesis/
