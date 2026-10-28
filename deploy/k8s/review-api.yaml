@@ -15,19 +15,34 @@ spec:
       securityContext: {runAsNonRoot: true, runAsUser: 10001, runAsGroup: 10001, seccompProfile: {type: RuntimeDefault}}
       containers:
         - name: review-api
-          image: ai-scan-repos/review-api:dev
+          image: ai-scan-repos/review-api:0.1.0
           ports: [{name: http, containerPort: 8001}]
           env:
             - {name: DATABASE_URL, value: "postgresql+psycopg://aiscan@postgres:5432/aiscan"}
             - {name: REPORTS_DIR, value: /reports}
             - {name: REVIEW_API_INTERNAL_URL, value: "http://review-api:8001"}
+            - {name: JOB_LAUNCHER, value: kubernetes}
+            - {name: K8S_NAMESPACE, value: ai-scan}
+            - {name: SCANNER_IMAGE, value: "ai-scan-repos/scanner-worker:0.1.0"}
+            - {name: SCANNER_JOB_TEMPLATE, value: /etc/scanner-job-template/job.yaml}
+            - {name: REPORTS_PVC, value: reports}
+            - {name: SCANNER_SECRET_NAME, value: scanner-secrets}
+            - {name: SCANNER_SERVICE_ACCOUNT, value: scanner}
+            - name: AI_KEYS_ENCRYPTION_KEY
+              valueFrom: {secretKeyRef: {name: ai-keys-master, key: AI_KEYS_ENCRYPTION_KEY}}
           envFrom: [{secretRef: {name: ai-scan-secrets}}]
           securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
           readinessProbe: {httpGet: {path: /readyz, port: http}, periodSeconds: 10}
           livenessProbe: {httpGet: {path: /healthz, port: http}, initialDelaySeconds: 10, periodSeconds: 20}
           resources: {requests: {cpu: 50m, memory: 128Mi}, limits: {cpu: 500m, memory: 512Mi}}
-          volumeMounts: [{name: tmp, mountPath: /tmp}]
-      volumes: [{name: tmp, emptyDir: {}}]
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}
+            - {name: reports, mountPath: /reports}
+            - {name: job-template, mountPath: /etc/scanner-job-template, readOnly: true}
+      volumes:
+        - {name: tmp, emptyDir: {}}
+        - {name: reports, persistentVolumeClaim: {claimName: reports}}
+        - {name: job-template, configMap: {name: scanner-job-template}}
 ---
 apiVersion: v1
 kind: Service

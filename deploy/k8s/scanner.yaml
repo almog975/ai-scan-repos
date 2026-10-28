@@ -1,0 +1,48 @@
+# scanner-job-template ConfigMap (mounted into review-api; Jobs are built from it), SA 'scanner', reports PVC
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: scanner-job-template
+data:
+  job.yaml: "apiVersion: batch/v1\nkind: Job\nmetadata:\n  name: scan-template\n \
+    \ labels:\n    app: scanner\nspec:\n  backoffLimit: 0\n  ttlSecondsAfterFinished:\
+    \ 600\n  template:\n    metadata:\n      labels:\n        app: scanner\n     \
+    \ annotations:\n        prometheus.io/scrape: 'true'\n        prometheus.io/port:\
+    \ '8002'\n        prometheus.io/path: /metrics\n    spec:\n      restartPolicy:\
+    \ Never\n      automountServiceAccountToken: false\n      securityContext:\n \
+    \       runAsNonRoot: true\n        runAsUser: 10001\n        runAsGroup: 10001\n\
+    \        fsGroup: 10001\n        seccompProfile:\n          type: RuntimeDefault\n\
+    \      containers:\n      - name: scanner-worker\n        image: ai-scan-repos/scanner-worker:0.1.0\n\
+    \        args:\n        - --review-id\n        - PLACEHOLDER\n        ports:\n\
+    \        - name: http\n          containerPort: 8002\n        env:\n        -\
+    \ name: REVIEW_API_URL\n          value: http://review-api:8001\n        - name:\
+    \ HEALTH_PORT\n          value: '8002'\n        securityContext:\n          allowPrivilegeEscalation:\
+    \ false\n          capabilities:\n            drop:\n            - ALL\n     \
+    \   readinessProbe:\n          httpGet:\n            path: /readyz\n         \
+    \   port: http\n          periodSeconds: 10\n        livenessProbe:\n        \
+    \  httpGet:\n            path: /healthz\n            port: http\n          initialDelaySeconds:\
+    \ 10\n          periodSeconds: 30\n        resources:\n          requests:\n \
+    \           cpu: 250m\n            memory: 512Mi\n          limits:\n        \
+    \    cpu: '2'\n            memory: 2Gi\n        volumeMounts:\n        - name:\
+    \ work\n          mountPath: /work\n        - name: reports\n          mountPath:\
+    \ /reports\n        envFrom:\n        - secretRef:\n            name: scanner-secrets\n\
+    \      volumes:\n      - name: work\n        emptyDir:\n          sizeLimit: 2Gi\n\
+    \      - name: reports\n        persistentVolumeClaim:\n          claimName: reports\n\
+    \      serviceAccountName: scanner\n  activeDeadlineSeconds: 21600\n"
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: scanner
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: reports
+spec:
+  accessModes:
+  - ReadWriteMany
+  resources:
+    requests:
+      storage: 5Gi

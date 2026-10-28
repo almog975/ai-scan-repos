@@ -15,7 +15,7 @@ spec:
       securityContext: {runAsNonRoot: true, runAsUser: 10001, runAsGroup: 10001, seccompProfile: {type: RuntimeDefault}}
       containers:
         - name: gateway
-          image: ai-scan-repos/gateway:dev
+          image: ai-scan-repos/gateway:0.1.0
           ports: [{name: http, containerPort: 8000}]
           env:
             - {name: REVIEW_API_URL, value: "http://review-api:8001"}

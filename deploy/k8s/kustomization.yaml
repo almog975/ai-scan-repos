@@ -10,4 +10,4 @@ resources:
   - review-api.yaml
   - gateway.yaml
   - frontend.yaml
-  - scanner-worker-job-template.yaml
+  - scanner.yaml
