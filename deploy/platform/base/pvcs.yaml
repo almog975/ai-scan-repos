@@ -1,0 +1,10 @@
+# Default: local-path RWO (local overlay). k3s overlay -> static PV reports-local (noexec,nosuid,nodev);
+# eks overlay -> EFS RWX. See docs/storage-plan.md
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata: {name: reports, namespace: ai-scan-repos, labels: {app: review-api}}
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: local-path
+  resources: {requests: {storage: 5Gi}}

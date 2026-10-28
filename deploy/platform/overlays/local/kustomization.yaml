@@ -1,0 +1,5 @@
+# Single-node local (Docker Desktop / k3d / K3s on laptop): local-path, ai-scan.local host.
+# noexec on reports is NOT enforced here (local-path ignores mountOptions) - dev only.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources: [../../base]

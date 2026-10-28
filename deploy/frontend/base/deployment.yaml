@@ -1,0 +1,23 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: frontend, namespace: ai-scan-repos, labels: {app: frontend}}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: frontend}}
+  template:
+    metadata: {labels: {app: frontend}}
+    spec:
+      securityContext: {runAsNonRoot: true, runAsUser: 101, runAsGroup: 101, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: frontend
+          image: ai-scan/frontend:GIT_SHA   # rewritten by overlay images:, never latest
+          ports: [{name: http, containerPort: 8080}]
+          env: [{name: GATEWAY_UPSTREAM, value: "gateway:8000"}]
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+          resources: {requests: {cpu: 100m, memory: 128Mi}, limits: {cpu: 500m, memory: 512Mi}}
+          livenessProbe: {httpGet: {path: /, port: http}, periodSeconds: 20}
+          readinessProbe: {httpGet: {path: /, port: http}, periodSeconds: 10}
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - {name: tmp, emptyDir: {}}

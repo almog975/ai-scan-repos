@@ -1,0 +1,44 @@
+# kube-prometheus-stack values for K3s (Traefik ingress, local-path storage).
+prometheus:
+  prometheusSpec:
+    retention: 7d
+    retentionSize: 8GB
+    # pick up ServiceMonitors labelled release=kube-prometheus-stack in any namespace
+    serviceMonitorSelector:
+      matchLabels: {release: kube-prometheus-stack}
+    serviceMonitorNamespaceSelector: {}
+    resources: {requests: {cpu: 200m, memory: 512Mi}, limits: {memory: 2Gi}}
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: local-path
+          accessModes: [ReadWriteOnce]
+          resources: {requests: {storage: 10Gi}}
+alertmanager:
+  alertmanagerSpec:
+    storage:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: local-path
+          accessModes: [ReadWriteOnce]
+          resources: {requests: {storage: 1Gi}}
+grafana:
+  admin:
+    existingSecret: grafana-admin   # keys: admin-user, admin-password
+  persistence:
+    enabled: true
+    storageClassName: local-path
+    size: 2Gi
+  ingress:
+    enabled: true
+    ingressClassName: traefik
+    annotations:
+      traefik.ingress.kubernetes.io/router.entrypoints: websecure
+      traefik.ingress.kubernetes.io/router.tls: "true"
+    hosts: [grafana.ai-scan.local]
+# K3s: these control-plane components are not scrapeable as separate pods
+kubeEtcd: {enabled: false}
+kubeControllerManager: {enabled: false}
+kubeScheduler: {enabled: false}
+kubeProxy: {enabled: false}
+# App ServiceMonitors (review-api :8001, gateway :8000) live in deploy/base/servicemonitors.yaml
