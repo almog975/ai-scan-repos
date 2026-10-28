@@ -24,3 +24,9 @@
   Replace `REPLACE_NODE_NAME` in the PV's nodeAffinity. RWO with a single node means the
   scanner Jobs and review-api must schedule on that node, which the nodeAffinity enforces.
 * **eks**: EFS CSI StorageClass with `mountOptions: [noexec, nosuid, nodev]`, access point uid/gid 10001.
+
+## Retention (CronJob `reports-cleanup`)
+`deploy/platform/base/reports-cleanup.yaml` runs daily at 03:00 Asia/Jerusalem and deletes top-level report
+directories on the `reports` PVC older than `REPORT_RETENTION_DAYS` (ConfigMap `reports-retention`, default 30).
+It runs as uid/gid 10001 with no SA token and a deny-all NetworkPolicy (no egress). Once a report is pruned,
+review-api returns **410 Gone** for it (the review row still exists, the artifact doesn't), not 404.

@@ -1,0 +1,76 @@
+# Nightly prune of report dirs older than REPORT_RETENTION_DAYS on the reports PVC.
+# Dedicated SA (SA "scanner" belongs to the review-api app, not platform); no token, no egress.
+apiVersion: v1
+kind: ServiceAccount
+metadata: {name: reports-cleanup, namespace: ai-scan-repos, labels: {app: reports-cleanup}}
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: ConfigMap
+metadata: {name: reports-retention, namespace: ai-scan-repos, labels: {app: reports-cleanup}}
+data:
+  REPORT_RETENTION_DAYS: "30"
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata: {name: reports-cleanup, namespace: ai-scan-repos, labels: {app: reports-cleanup}}
+spec:
+  schedule: "0 3 * * *"
+  timeZone: Asia/Jerusalem
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: 1800
+      ttlSecondsAfterFinished: 3600
+      template:
+        metadata:
+          labels: {app: reports-cleanup}
+        spec:
+          restartPolicy: Never
+          serviceAccountName: reports-cleanup
+          automountServiceAccountToken: false
+          securityContext:
+            runAsUser: 10001
+            runAsGroup: 10001
+            fsGroup: 10001
+            runAsNonRoot: true
+            seccompProfile: {type: RuntimeDefault}
+          containers:
+            - name: cleanup
+              image: busybox:1.36.1
+              env:
+                - name: REPORT_RETENTION_DAYS
+                  valueFrom:
+                    configMapKeyRef: {name: reports-retention, key: REPORT_RETENTION_DAYS, optional: true}
+              command: ["/bin/sh", "-c"]
+              args:
+                - |
+                  set -eu
+                  DAYS="${REPORT_RETENTION_DAYS:-30}"
+                  case "$DAYS" in ''|*[!0-9]*|0*) echo "invalid REPORT_RETENTION_DAYS='$DAYS' (positive integer required)" >&2; exit 2;; esac
+                  OUT=$(find /reports -mindepth 1 -maxdepth 1 -type d -mtime +"$DAYS" -print -exec rm -rf {} +)
+                  [ -n "$OUT" ] && echo "$OUT"
+                  N=$(printf '%s' "$OUT" | grep -c . || true)
+                  echo "reports-cleanup: deleted $N directories older than $DAYS days"
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: [ALL]}
+              resources:
+                requests: {cpu: 10m, memory: 16Mi}
+                limits: {cpu: 100m, memory: 64Mi}
+              volumeMounts:
+                - {name: reports, mountPath: /reports}
+          volumes:
+            - name: reports
+              persistentVolumeClaim: {claimName: reports}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: reports-cleanup-deny-all, namespace: ai-scan-repos}
+spec:
+  podSelector: {matchLabels: {app: reports-cleanup}}
+  policyTypes: [Ingress, Egress]
