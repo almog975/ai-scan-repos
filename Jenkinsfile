@@ -14,6 +14,8 @@ def REGISTRY_HOSTS = [
   'eks'  : 'registry.ai-scan.example.com',
 ]
 def changed = []
+// Services with their own image stage (build+Trivy+push); excluded from the generic Build/Trivy/Push stages.
+def OWN_STAGE = ['scanner-worker', 'frontend']
 def skipBuild = false
 pipeline {
   agent any
@@ -52,8 +54,8 @@ pipeline {
     stage('Contracts') { when { expression { !skipBuild } } steps {
       sh 'export PATH="$PWD/.ci-venv/bin:$PATH" && make contracts && python3 -m pytest -q contracts/tests'
     } }
-    stage('Test') { when { expression { !skipBuild && changed } } steps { script {
-      changed.each { s -> dir(SERVICES[s][0]) { sh "export AISCAN_WORKER_PYTHON=\$WORKSPACE/.ci-venv-worker/bin/python PATH=\"\$WORKSPACE/${s == 'scanner-worker' ? '.ci-venv-worker' : '.ci-venv'}/bin:\$PATH\" && make test" } }
+    stage('Test') { when { expression { !skipBuild && (changed - ['frontend']) } } steps { script {
+      (changed - ['frontend']).each { s -> dir(SERVICES[s][0]) { sh "export AISCAN_WORKER_PYTHON=\$WORKSPACE/.ci-venv-worker/bin/python PATH=\"\$WORKSPACE/${s == 'scanner-worker' ? '.ci-venv-worker' : '.ci-venv'}/bin:\$PATH\" && make test" } }
     } } }
     stage('DB parity (Postgres)') { when { expression { !skipBuild } } steps {
       sh 'export PATH="$PWD/.ci-venv/bin:$PATH" && ci/db-parity.sh'   // alembic head == infra/db/schema.sql via pg_dump, plus downgrade/upgrade round trip
@@ -61,11 +63,11 @@ pipeline {
     stage('Schemathesis') { when { expression { !skipBuild } } steps {
       sh 'export PATH="$PWD/.ci-venv/bin:$PATH" && ci/schemathesis.sh 50'   // review-api vs contracts/review-api.openapi.yaml
     } }
-    stage('Build') { when { expression { !skipBuild && (changed - ['scanner-worker']) } } steps { script {
-      (changed - ['scanner-worker']).each { s -> sh "docker build -t ${env.REGISTRY}/ai-scan/${s}:${env.GIT_SHA} ${SERVICES[s][0]}" }
+    stage('Build') { when { expression { !skipBuild && (changed - OWN_STAGE) } } steps { script {
+      (changed - OWN_STAGE).each { s -> sh "docker build -t ${env.REGISTRY}/ai-scan/${s}:${env.GIT_SHA} ${SERVICES[s][0]}" }
     } } }
-    stage('Trivy scan') { when { expression { !skipBuild && (changed - ['scanner-worker']) } } steps { script {
-      (changed - ['scanner-worker']).each { s -> sh "trivy image --exit-code 1 --severity HIGH,CRITICAL --no-progress ${env.REGISTRY}/ai-scan/${s}:${env.GIT_SHA}" }
+    stage('Trivy scan') { when { expression { !skipBuild && (changed - OWN_STAGE) } } steps { script {
+      (changed - OWN_STAGE).each { s -> sh "trivy image --exit-code 1 --severity HIGH,CRITICAL --no-progress ${env.REGISTRY}/ai-scan/${s}:${env.GIT_SHA}" }
     } } }
     // Phase 2: scanner-worker image (scanner-worker/Dockerfile, context scanner-worker/). Path filter = the
     // git-diff based 'changed' list only: `changeset` is empty on a branch's first build and would skip the image.
@@ -84,10 +86,34 @@ pipeline {
         }
       } }
     }
-    stage('Push') { when { allOf { branch 'main'; expression { !skipBuild && (changed - ['scanner-worker']) } } } steps {
+    // Phase 4: frontend (frontend/Dockerfile: node:20 build -> nginxinc/nginx-unprivileged, port 8080).
+    // Same 'changed'-list path filter as the scanner-worker stage. npm ci needs frontend/package-lock.json.
+    // Agent needs node >= 20 + npm; vitest uses jsdom (no browser). CI=true keeps vitest/npm non-interactive.
+    // Deploy (below) runs kustomize edit set image ai-scan/frontend=... as before.
+    stage('Frontend image') {
+      when { expression { !skipBuild && changed.contains('frontend') } }
+      steps { script {
+        def img = "${env.REGISTRY}/ai-scan/frontend:${env.GIT_SHA}"
+        dir('frontend') {
+          sh 'node --version && npm --version'
+          sh 'CI=true npm ci --no-audit --no-fund'
+          sh 'CI=true npm test'
+          sh 'CI=true npm run build'
+        }
+        sh "docker build -t ${img} -f frontend/Dockerfile frontend"
+        sh "trivy image --exit-code 1 --severity HIGH,CRITICAL --no-progress ${img}"
+        if (env.BRANCH_NAME == 'main') {
+          withCredentials([usernamePassword(credentialsId: 'registry-creds', usernameVariable: 'U', passwordVariable: 'P')]) {
+            sh 'echo "$P" | docker login "$REGISTRY" -u "$U" --password-stdin'
+            sh "docker push ${img}"
+          }
+        }
+      } }
+    }
+    stage('Push') { when { allOf { branch 'main'; expression { !skipBuild && (changed - OWN_STAGE) } } } steps {
       withCredentials([usernamePassword(credentialsId: 'registry-creds', usernameVariable: 'U', passwordVariable: 'P')]) { script {
         sh 'echo "$P" | docker login "$REGISTRY" -u "$U" --password-stdin'
-        (changed - ['scanner-worker']).each { s -> sh "docker push ${env.REGISTRY}/ai-scan/${s}:${env.GIT_SHA}" }
+        (changed - OWN_STAGE).each { s -> sh "docker push ${env.REGISTRY}/ai-scan/${s}:${env.GIT_SHA}" }
       } }
     } }
     stage('Deploy') { when { allOf { branch 'main'; expression { !skipBuild && changed } } } steps { script {
