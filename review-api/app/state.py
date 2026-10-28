@@ -4,6 +4,7 @@ attempt = 1..MAX_ATTEMPTS within a budget; POST /retry (only from failed) opens 
 Illegal transitions raise 409 CONFLICT.
 """
 from __future__ import annotations
+from .metrics import REVIEWS
 
 from datetime import datetime, timezone
 
@@ -36,6 +37,7 @@ def transition(r: Review, dst: State, *, reason: str | None = None) -> Review:
         raise conflict(f"cannot move review from {src.value} to {dst.value}", state=src.value)
     now = datetime.now(timezone.utc)
     r.state = dst
+    REVIEWS.labels(dst.value).inc()
     if dst == State.running and r.started_at is None:
         r.started_at = now
     if dst == State.paused:

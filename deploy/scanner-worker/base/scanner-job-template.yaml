@@ -32,6 +32,9 @@ data:
             - name: scanner
               image: ${IMAGE}
               args: ["--review-id", "${REVIEW_ID}"]
+              ports: [{name: health, containerPort: 8002}]
+              livenessProbe: {httpGet: {path: /healthz, port: health}, periodSeconds: 30, failureThreshold: 4}
+              readinessProbe: {httpGet: {path: /readyz, port: health}, periodSeconds: 15}
               env:
                 - {name: REVIEW_ID, value: "${REVIEW_ID}"}
                 - {name: ATTEMPT, value: "${ATTEMPT}"}

@@ -251,3 +251,9 @@ def test_webhook_push_creates_review():
     assert req.headers["x-internal-token"] == "itok" and json.loads(req.content)["ref"] == "a" * 40
     unknown = json.dumps({"sender": {"id": 999}, "repository": {"html_url": "https://github.com/a/b"}}).encode()
     assert wh(c, unknown, delivery="d2").status_code == 202 and route.call_count == 1
+
+
+def test_request_histogram():
+    c, _ = make_client()
+    c.get("/healthz")
+    assert 'http_request_duration_seconds_count{method="GET",route="/healthz",status="200"}' in c.get("/metrics").text

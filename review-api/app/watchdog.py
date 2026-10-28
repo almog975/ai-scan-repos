@@ -17,6 +17,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import select
 
 from .models import Outcome, Review, ReviewAttempt, State
+from .metrics import SCAN_ATTEMPTS
 from .service import current_attempt, end_attempt, now, start_attempt
 from .state import next_attempt, transition
 
@@ -66,6 +67,7 @@ def relaunch(db, r: Review, jobs, reason: str) -> str:
         log.exception("relaunch of %s attempt %d failed", r.id, n)
         db.add(ReviewAttempt(review_id=r.id, budget_no=r.budget_no, n=n, started_at=now(), ended_at=now(),
                              outcome=Outcome.error, error=f"launch failed: {exc}"[:500]))
+        SCAN_ATTEMPTS.labels("error").inc()
     return "relaunched"
 
 

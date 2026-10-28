@@ -8,6 +8,7 @@ deduped by X-GitHub-Delivery (409).
 from __future__ import annotations
 
 import hmac
+import time
 import json
 import logging
 import os
@@ -17,7 +18,7 @@ from urllib.parse import urlencode
 import httpx
 from fastapi import Depends, FastAPI, Query, Request, Response
 from fastapi.responses import JSONResponse, RedirectResponse, StreamingResponse
-from prometheus_client import CONTENT_TYPE_LATEST, Counter, generate_latest
+from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
 from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
 
@@ -32,6 +33,7 @@ from .security import hash_token, new_token, verify_github_signature
 log = logging.getLogger("gateway")
 LOGINS = Counter("ai_scan_gateway_logins_total", "OAuth logins", ["result"])
 WEBHOOKS = Counter("ai_scan_gateway_webhooks_total", "Webhook deliveries", ["result"])
+REQUESTS = Histogram("http_request_duration_seconds", "HTTP request latency", ["method", "route", "status"])
 PROXIED = Counter("ai_scan_gateway_proxied_total", "Proxied API requests", ["status"])
 
 UNSAFE = {"POST", "PUT", "PATCH", "DELETE"}
@@ -91,6 +93,18 @@ def create_app(settings: Settings | None = None, transport: httpx.AsyncBaseTrans
             if not u or (allowed and u.login.lower() not in allowed):
                 raise ApiError(403, "FORBIDDEN", "not allowed")
             return u
+
+    @app.middleware("http")
+    async def _timed(request, call_next):
+        t0, status = time.perf_counter(), 500
+        try:
+            resp = await call_next(request)
+            status = resp.status_code
+            return resp
+        finally:
+            route = request.scope.get("route")
+            REQUESTS.labels(request.method, getattr(route, "path", "unmatched"), str(status)).observe(
+                time.perf_counter() - t0)
 
     # ---------- probes ----------
     @app.get("/healthz")

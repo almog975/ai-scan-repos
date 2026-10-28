@@ -7,6 +7,7 @@ from sqlalchemy.orm import object_session
 
 from .crypto import KeyCipher
 from .launcher import JobSpec
+from .metrics import JOB_LAUNCH_ERRORS
 from .models import AIProvider
 from .providers import adapter_name
 
@@ -34,7 +35,16 @@ class ReviewJobs:
         return env
 
     def launch(self, r) -> str:
-        return self.inner.launch(JobSpec.of(r), secret_env=self.secret_env(r))
+        try:
+            return self.inner.launch(JobSpec.of(r), secret_env=self.secret_env(r))
+        except Exception:
+            JOB_LAUNCH_ERRORS.inc()
+            raise
+
+    def ready(self) -> None:
+        """Raise if the launcher backend (k8s API) is unreachable."""
+        if hasattr(self.inner, "ready"):
+            self.inner.ready()
 
     def delete(self, job_name: str) -> None:
         self.inner.delete(job_name)

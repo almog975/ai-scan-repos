@@ -13,6 +13,7 @@ from ..auth import current_user
 from ..db import get_db
 from ..errors import ApiError, conflict, not_found, validation
 from ..github import split
+from ..metrics import REVIEWS
 from ..models import AIProvider, ProviderKind, Review, ReviewAttempt, State, User
 from ..schemas import ReviewCreate
 from ..service import start_attempt
@@ -82,6 +83,7 @@ def create_review(body: ReviewCreate, request: Request, user: User = Depends(cur
                attempt=1, budget_no=1)
     db.add(r)
     db.flush()
+    REVIEWS.labels(State.queued.value).inc()
     start_attempt(db, r, deps["launcher"])
     db.commit()
     return JSONResponse(out(db, r), 201, headers={"Location": f"/reviews/{r.id}"})

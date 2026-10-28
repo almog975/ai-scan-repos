@@ -18,6 +18,7 @@ from .github import HttpGitHub
 from .jobs import ReviewJobs
 from .launcher import make_launcher
 from .crypto import parse_key
+from .metrics import install_request_metrics
 from .routers import control, misc, providers, reviews
 
 
@@ -46,6 +47,7 @@ def create_app(settings: Settings | None = None, **deps) -> FastAPI:
     app.state.deps = deps
     app.dependency_overrides[get_settings] = lambda: settings
     errors.install(app)
+    install_request_metrics(app)
 
     @app.get("/healthz")
     def healthz():
@@ -61,6 +63,10 @@ def create_app(settings: Settings | None = None, **deps) -> FastAPI:
             parse_key(settings.ai_keys_encryption_key)
         except ValueError as e:
             raise ApiError(503, "INTERNAL", f"not ready: {e}")
+        try:
+            deps["launcher"].ready()
+        except Exception:  # noqa: BLE001
+            raise ApiError(503, "INTERNAL", "job launcher (kubernetes API) not ready")
         return {"status": "ready"}
 
     @app.get("/metrics")

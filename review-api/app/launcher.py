@@ -242,6 +242,10 @@ class KubernetesJobLauncher:
             log.warning("could not delete per-review secrets for %s", review_id)
 
 
+    def ready(self) -> None:
+        """readyz: the k8s API answers for our namespace (RBAC allows list jobs)."""
+        self.api.list_namespaced_job(namespace=self.s.k8s_namespace, limit=1)
+
     def status(self, job_name: str) -> str:
         try:
             st = self.api.read_namespaced_job_status(name=job_name, namespace=self.s.k8s_namespace).status

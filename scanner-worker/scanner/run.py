@@ -19,6 +19,7 @@ import tempfile
 from pathlib import Path
 
 from .ai_client import DEFAULT_MODELS, ONPREM, AIClient
+from .health import STAGE
 from .api_client import ReviewAPI, Superseded
 from .checkpoint import (Checkpoint, atomic_write_json, atomic_write_text, attempt_dir, now, previous_attempts,
                          review_dir)
@@ -116,6 +117,8 @@ class Worker:
     def _beat(self, stage: str, pct: int | None = None, current=None, outcome=None, error=None):
         st = self.cp.state
         st["stage"] = stage
+        for name in STAGE_PCT:
+            STAGE.labels(name).set(1 if name == stage else 0)
         st["progress"] = max(st["progress"], STAGE_PCT[stage] if pct is None else pct)
         self.cp.save()
         atomic_write_json(self.rdir / "progress.json",
@@ -252,16 +255,18 @@ def main(argv=None) -> int:
     cfg = WorkerConfig()
     if args.review_id:
         cfg.review_id = args.review_id
-    from .health import READY, start_health_server
+    from .health import READY, SCAN_ATTEMPTS, start_health_server
     start_health_server(int(os.environ.get("HEALTH_PORT", "8002")))
     READY.set()
     api = ReviewAPI(cfg.review_api_url, cfg.internal_token)
     w = Worker(cfg, api, make_ai(cfg))
     try:
         w.run()
+        SCAN_ATTEMPTS.labels("success").inc()
         return 0
     except Exception as exc:  # noqa: BLE001
         log.exception("scan attempt failed")
+        SCAN_ATTEMPTS.labels("error").inc()
         try:  # outcome=error for this attempt; the watchdog decides on attempt n+1 (max 5 per budget)
             w._beat(w.cp.state["stage"], outcome="error", error=f"{type(exc).__name__}: {exc}")
         except Exception:  # noqa: BLE001

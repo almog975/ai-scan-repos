@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy import select
 
+from .metrics import SCAN_ATTEMPTS
 from .models import Outcome, Review, ReviewAttempt, State
 from .state import transition
 
@@ -22,6 +23,7 @@ def end_attempt(db, r: Review, outcome: Outcome, error: str | None = None) -> No
     a = current_attempt(db, r)
     if a and a.ended_at is None:
         a.ended_at, a.outcome, a.error = now(), outcome, error
+        SCAN_ATTEMPTS.labels(getattr(outcome, "value", outcome)).inc()
 
 
 def start_attempt(db, r: Review, launcher, *, mark_running: bool = True) -> ReviewAttempt:
