@@ -42,7 +42,7 @@ flowchart LR
    - `kubernetes` – in-cluster `BatchV1Api.create_namespaced_job`; Job `scan-<id>-a<attempt>-<rand>`,
      `backoffLimit: 0`, `ttlSecondsAfterFinished: 3600`, non-root UID 10001, read-only rootfs,
      drop ALL caps, no SA token, `emptyDir` `/work` (2Gi) and `/tmp`, PVC `/reports`, secrets via
-     `envFrom` Secret `scanner-worker-env`. Requests 250m/512Mi, limits 2 CPU/2Gi.
+     `envFrom` Secret `scanner-secrets`. Requests 250m/512Mi, limits 2 CPU/2Gi.
 3. Worker fetches the review via `/internal/reviews/{id}`, loads `checkpoint.json` if present, clones
    into `/work`, runs semgrep → gitleaks → trivy (each a checkpoint step), the AI phase, then writes
    the report and posts `status=completed`. The cloned source is always deleted (`finally`).

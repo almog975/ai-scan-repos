@@ -27,7 +27,7 @@ As implemented today:
   `automountServiceAccountToken: false`, UID/GID 10001, `runAsNonRoot`, seccomp RuntimeDefault,
   `readOnlyRootFilesystem`, drop ALL caps, no privilege escalation; requests 250m/512Mi, limits 2/2Gi.
   Volumes: `/work` emptyDir 2Gi, `/tmp` emptyDir 1Gi, `/reports` PVC `ai-scan-reports`.
-  Secrets only via `envFrom` Secret `scanner-worker-env` — never in args.
+  Secrets only via `envFrom` Secret `scanner-secrets` — never in args.
 - **Checkpoint**: `<reports>/<review_id>/checkpoint.json`, written atomically (tmp file → fsync →
   `os.replace`) after each scanner and, in `deep` mode, after each AI-reviewed file (`done_files`).
   `progress.json` alongside. On start the worker loads the checkpoint and skips completed scanners/files.
