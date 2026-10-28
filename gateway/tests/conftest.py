@@ -27,11 +27,11 @@ def make_client(base_url="http://app.test", **kw):
 
 def do_login(c, router, login="almog", uid=42):
     router.post(f"{GH}/login/oauth/access_token").respond(200, json={"access_token": "ghtok"})
-    router.get(f"{API}/user").respond(200, json={"id": uid, "login": login})
-    r = c.get("/auth/login", follow_redirects=False)
-    state = c.cookies.get("aisr_oauth_state")
+    router.get(f"{API}/user").respond(200, json={"id": uid, "login": login, "avatar_url": f"https://avatars.example/{uid}"})
+    r = c.get("/auth/github/login", follow_redirects=False)
+    state = c.cookies.get("aiscan_oauth_state")
     assert f"state={state}" in r.headers["location"]
-    return c.get(f"/auth/callback?code=x&state={state}", follow_redirects=False)
+    return c.get(f"/auth/github/callback?code=x&state={state}", follow_redirects=False)
 
 
 @pytest.fixture
