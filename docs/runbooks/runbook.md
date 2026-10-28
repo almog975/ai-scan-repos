@@ -7,27 +7,60 @@ See README Quickstart. Defaults: SQLite `./review-api.db`, `JOB_LAUNCHER=local`,
 Set `LOCAL_WORKER_CWD` to `scanner-worker/` so the subprocess finds the `scanner` package.
 
 ### Docker images
+Images are always `<host>/ai-scan/<svc>:<sha>` (git SHA, never `latest`); registry hosts per target are in
+[deploy/README.md](../../deploy/README.md).
 ```bash
-docker build -t <registry>/ai-scan-repos/review-api:<tag> review-api
-docker build -t <registry>/ai-scan-repos/scanner-worker:<tag> scanner-worker
+SHA=$(git rev-parse --short HEAD)
+docker build -t <host>/ai-scan/review-api:$SHA review-api
+docker build -t <host>/ai-scan/scanner-worker:$SHA scanner-worker
+docker build -t <host>/ai-scan/gateway:$SHA gateway
+docker build -t <host>/ai-scan/frontend:$SHA frontend
+docker push <host>/ai-scan/<svc>:$SHA
 ```
 
-### Kubernetes — TODO (no manifests/Helm chart in repo yet)
-What the code expects to exist (derive manifests from this, defaults from `review-api/app/config.py`):
-- Namespace `ai-scan-repos`.
-- Postgres + `DATABASE_URL` (e.g. `postgresql+psycopg://...`); review-api runs `alembic upgrade head` on start.
-- PVC `ai-scan-reports` mounted at `REPORTS_DIR` in review-api **and** in every Job at `/reports`
-  → needs `ReadWriteMany` (or co-located pods with RWO). TODO: confirm storage class.
-- ServiceAccount for review-api with RBAC `create` on `batch/jobs` in the namespace; env `JOB_LAUNCHER=kubernetes`.
-- ServiceAccount `scanner-worker` (token not mounted).
-- Secret `scanner-worker-env` with `INTERNAL_API_TOKEN`, `AI_PROVIDER`, `AI_MODEL`, `AI_BASE_URL`, `AI_API_KEY`.
-- Secret for review-api: `INTERNAL_API_TOKEN` (same value), `AI_KEYS_ENCRYPTION_KEY`, `DATABASE_URL`.
-- Service `review-api:8001` (ClusterIP, not exposed) — matches `REVIEW_API_INTERNAL_URL`.
-- `SCANNER_IMAGE` pointing at the pushed worker image.
-- Probes: liveness `/healthz`, readiness `/readyz`.
-- Egress for Jobs: github.com, AI endpoint, and trivy/semgrep rule/DB downloads.
+### Kubernetes (Kustomize, per component)
+Manifests live in `deploy/<component>/{base,overlays/{local,k3s,eks}}`; deploy each with
+`kubectl apply -k deploy/<component>/overlays/$OVERLAY`. Apply order (from [infra-README.md](../infra-README.md)):
 
-CI/CD (Jenkins) and GitOps (Argo CD) for this project: **TODO** (Pipelines owns this).
+1. **platform** – `kubectl apply -k deploy/platform/overlays/$OVERLAY` (on a fresh cluster the ServiceMonitor
+   CRD is missing: re-apply after step 3 or ignore that error).
+2. **secrets** – create them from the CLI per [secrets-runbook.md](../secrets-runbook.md) (never in git):
+   `gateway-secrets`, `db-secrets`, `ai-keys-master`, `scanner-secrets` (ns `ai-scan-repos`),
+   `grafana-admin` (ns `monitoring`), `registry-htpasswd`, `registry-tls` (ns `registry`).
+3. **kube-prometheus-stack** – `infra/helm/kube-prometheus-stack/install.sh`.
+4. **registry** – `kubectl apply -f infra/registry/registry.yaml`; on K3s nodes install
+   `infra/registry/registries.yaml.example` as the registries config.
+5. **postgres** – `kubectl apply -k deploy/postgres/overlays/$OVERLAY`.
+6. **scanner-worker** – `kubectl apply -k deploy/scanner-worker/overlays/$OVERLAY` (RBAC + Job template).
+7. **review-api, gateway, frontend** – `kubectl apply -k deploy/<svc>/overlays/$OVERLAY`.
+
+**Image tags:** overlays ship with `GIT_SHA_PLACEHOLDER`. For a manual deploy set a real tag first:
+```bash
+cd deploy/review-api/overlays/$OVERLAY
+kustomize edit set image ai-scan/review-api=<host>/ai-scan/review-api:$SHA
+# scanner-worker: the image is passed to review-api via ConfigMap scanner-image
+cd ../../../scanner-worker/overlays/$OVERLAY
+kustomize edit set configmap scanner-image --from-literal=SCANNER_IMAGE=<host>/ai-scan/scanner-worker:$SHA
+```
+Don't commit these manual edits on `main` — in normal operation Jenkins sets the tags.
+
+What the code expects at runtime (defaults in `review-api/app/config.py`; check against the manifests):
+- Namespace `ai-scan-repos`; review-api `JOB_LAUNCHER=kubernetes` with RBAC to create `batch/jobs` there.
+- Postgres reachable via `DATABASE_URL` (from `db-secrets`); review-api runs `alembic upgrade head` on start.
+- Reports PVC mounted at `REPORTS_DIR` in review-api **and** at `/reports` in every scanner Job → must be
+  shared (`ReadWriteMany`, or co-located pods with RWO); see [storage-plan.md](../storage-plan.md).
+- ServiceAccount `scanner-worker` (token not mounted); scanner Jobs get env via `envFrom` Secret
+  `scanner-secrets` (`SCANNER_SECRET_NAME`, set in the review-api deployment).
+- `INTERNAL_API_TOKEN` must be identical in review-api, gateway and scanner Jobs.
+- Service `review-api:8001` (ClusterIP, not exposed) — matches `REVIEW_API_INTERNAL_URL`.
+- `SCANNER_IMAGE` from ConfigMap `scanner-image`.
+- Probes: liveness `/healthz`, readiness `/readyz`.
+- Egress for Jobs: github.com, the AI endpoint, trivy/semgrep rule/DB downloads.
+
+### CI/CD and GitOps
+Jenkins (smee relay → test → build → Trivy → push → tag bump) and the Argo CD Applications that watch
+`deploy/<component>/overlays/<target>` are described in [docs/ci.md](../ci.md) and
+[deploy/README.md](../../deploy/README.md).
 
 ## 2. Operate
 
@@ -58,7 +91,7 @@ cleaned up — TODO retention policy.
 | Startup crash in container | `alembic upgrade head` failed — check DB connectivity |
 | Review stuck `running`, attempts climbing | Worker crashing or no heartbeat; check job logs; watchdog relaunches every 15 min, fails after 5 attempts |
 | Review `failed` "no progress for 900s after N attempts" | Max attempts reached; fix cause then create a new review |
-| Job never appears (k8s) | review-api RBAC to create Jobs, `SCANNER_IMAGE` pull errors, Secret `scanner-worker-env` missing |
+| Job never appears (k8s) | review-api RBAC to create Jobs, `SCANNER_IMAGE` pull errors, Secret `scanner-secrets` missing |
 | Local mode: nothing happens | `local worker command not found` warning → set `LOCAL_WORKER_CWD`/`LOCAL_WORKER_CMD`, activate venv |
 | Scanner shows `skipped` | Tool not on PATH (normal locally for gitleaks/trivy; image ships all three) |
 | Scanner shows `error ... timed out` | Raise `SCANNER_TIMEOUT_SECONDS` |
