@@ -8,7 +8,7 @@ Out of scope: UI designs, tags, and per-depth estimates. Findings are not paged 
 - **Alembic** in `review-api/alembic/` is the only thing that runs migrations. Its runner is a k8s Job or init container; it must not be part of the app CMD.
 - `infra/db/schema.sql` is the reference DDL, and a CI test checks that it matches the migrations. Run `alembic upgrade head` against an empty Postgres, then `pg_dump --schema-only`, then diff the dump against `schema.sql` with normalisation.
 - Planned revisions:
-  - `0002_contract_v1`: enums `review_state` (queued, running, stuck, retrying, cancelled, failed, done) and `user_role`; `reviews.budget_no`, `ref`, `commit_sha CHECK ^[a-f0-9]{40}$`, `provider_id`, `ack_cloud`, `depth`; table `review_attempts(review_id, budget_no, n 1..5, job_name, outcome, started_at, finished_at, error)` with UNIQUE(review_id, budget_no, n); `ai_providers(key_ciphertext, key_nonce, key_version)`; `settings` key/value jsonb; `sessions`; `webhook_deliveries`; a first-user-admin trigger.
+  - `0002_contract_v1`: enums `review_state` (queued, running, paused, stuck, retrying, completed, failed, cancelled — exactly `common.schema.json#/$defs/state`; "done" = `completed`) and `user_role`; `reviews.budget_no`, `ref`, `commit_sha CHECK ^[a-f0-9]{40}$`, `provider_id`, `ack_cloud`, `depth`; table `review_attempts(review_id, budget_no, n 1..5, job_name, outcome, started_at, finished_at, error)` with UNIQUE(review_id, budget_no, n); `ai_providers(key_ciphertext, key_nonce, key_version)`; `settings` key/value jsonb; `sessions`; `webhook_deliveries`; a first-user-admin trigger.
   - `0003_*`: indexes and backfills only. Every revision must have a working downgrade.
 - Test: `review-api/tests/test_migrations.py` runs upgrade, then downgrade, then upgrade (testcontainers Postgres; skipped when docker is absent).
 
@@ -20,7 +20,7 @@ Out of scope: UI designs, tags, and per-depth estimates. Findings are not paged 
 - Acceptance: the `test_openapi_specs` Error/401/403 checks pass. New `tests/test_errors.py` checks that every error response validates against the Error schema. `tests/test_auth.py` checks that the first user becomes admin, the second becomes user, and `/admin/*` returns 403 for a user.
 
 ### 2. Review model + state machine
-- Files: `app/models.py` (Review, ReviewAttempt), `app/state.py` (allowed transitions queued→running→{done,failed,stuck,cancelled}, stuck→retrying→running, failed→retrying via retry; attempt 1..5 per budget, budget_no+1 on retry).
+- Files: `app/models.py` (Review, ReviewAttempt), `app/state.py` (allowed transitions queued→running→{paused,completed,failed,stuck,cancelled}, paused→running, stuck→retrying→running, failed→retrying via retry; attempt 1..5 per budget, budget_no+1 on retry).
 - Acceptance: a table-driven `tests/test_state.py` that rejects illegal transitions with 409 CONFLICT. The state enum is identical to `common.schema.json#/$defs/state` (asserted against the contract file).
 
 ### 3. POST/GET /reviews
