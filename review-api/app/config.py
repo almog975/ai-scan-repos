@@ -13,6 +13,8 @@ class Settings(BaseSettings):
     # Fernet key (urlsafe base64, 32 bytes). Generate: python -c "from cryptography.fernet import Fernet;print(Fernet.generate_key().decode())"
     ai_keys_encryption_key: str = ""
     # local | kubernetes
+    # Optional GitHub token for API calls (repo metadata / ref resolution)
+    github_token: str = ""
     job_launcher: str = "local"
     reports_dir: str = "./reports"
     # Kubernetes Job settings

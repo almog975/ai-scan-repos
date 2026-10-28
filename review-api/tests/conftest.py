@@ -31,8 +31,13 @@ def launcher(settings):
 
 
 @pytest.fixture
-def app(settings, launcher):
-    return create_app(settings, launcher=launcher, start_watchdog=False)
+def gh():
+    return FakeGitHub()
+
+
+@pytest.fixture
+def app(settings, launcher, gh):
+    return create_app(settings, launcher=launcher, github=gh, start_watchdog=False)
 
 
 @pytest.fixture
@@ -61,3 +66,21 @@ def A(users):
 @pytest.fixture
 def H(users):
     return hdr(users[1])
+
+
+class FakeGitHub:
+    def __init__(self):
+        self.repos = {("a", "b"): (False, "main", 2048), ("big", "repo"): (False, "main", 10_000_000)}
+        self.n = 0
+
+    def repo(self, owner, name):
+        from app.errors import not_found
+        from app.github import RepoInfo
+        if (owner, name) not in self.repos:
+            raise not_found("repository or ref")
+        return RepoInfo(*self.repos[(owner, name)])
+
+    def resolve(self, owner, name, ref):
+        self.repo(owner, name)
+        self.n += 1
+        return f"{self.n:040x}" if ref != "fixed" else "a" * 40
