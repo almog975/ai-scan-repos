@@ -9,7 +9,6 @@ import logging
 import os
 import shlex
 import subprocess
-import uuid
 from typing import Protocol
 
 from .config import Settings
@@ -24,7 +23,8 @@ class JobLauncher(Protocol):
 
 
 def job_name_for(review_id: str, attempt: int) -> str:
-    return f"scan-{review_id[:12]}-a{attempt}-{uuid.uuid4().hex[:5]}"
+    """Deterministic: scan-<reviewId>-a<attempt> (no random suffix -> idempotent create)."""
+    return f"scan-{review_id}-a{attempt}"[:63].rstrip("-")
 
 
 class LocalLauncher:
@@ -56,18 +56,56 @@ def ai_secret_name(job_name: str) -> str:
     return f"{job_name}-ai"
 
 
-def build_job_manifest(s: Settings, review_id: str, attempt: int, name: str, ai_secret: str | None = None) -> dict:
-    """batch/v1 Job manifest (plain dict) for one scanner attempt."""
+def _load_template(s: Settings) -> dict | None:
+    if not s.scanner_job_template:
+        return None
+    import yaml
+    with open(s.scanner_job_template) as f:
+        return yaml.safe_load(f)
+
+
+def build_job_manifest(s: Settings, review_id: str, attempt: int, name: str, ai_secret: str | None = None,
+                       depth: str | None = None) -> dict:
+    """batch/v1 Job manifest (plain dict) for one scanner attempt.
+
+    If SCANNER_JOB_TEMPLATE points at the mounted scanner-job-template ConfigMap, it is used as the
+    base and the per-review fields (name, labels, image, args, env, deadline) are overlaid.
+    """
+    if ":" not in s.scanner_image.rsplit("/", 1)[-1] or s.scanner_image.endswith(":latest"):
+        raise ValueError("SCANNER_IMAGE must be pinned to a tag other than :latest")
+    m = _built_in_manifest(s, review_id, attempt, name, ai_secret)
+    c = m["spec"]["template"]["spec"]["containers"][0]
+    if depth:
+        c["env"].append({"name": "DEPTH", "value": depth})
+    tpl = _load_template(s)
+    if tpl:
+        tpl.setdefault("metadata", {}).update(m["metadata"])
+        spec = tpl.setdefault("spec", {})
+        spec.pop("suspend", None)
+        spec["activeDeadlineSeconds"] = s.scanner_active_deadline_seconds
+        pod = spec.setdefault("template", {})
+        pod.setdefault("metadata", {}).setdefault("labels", {}).update(m["spec"]["template"]["metadata"]["labels"])
+        tc = pod.setdefault("spec", {}).setdefault("containers", [{}])[0]
+        tc.update({"image": c["image"], "args": c["args"]})
+        tc["env"] = [e for e in tc.get("env", []) if e["name"] not in {x["name"] for x in c["env"]}] + c["env"]
+        tc["envFrom"] = c["envFrom"]
+        pod["spec"]["serviceAccountName"] = s.scanner_service_account
+        return tpl
+    return m
+
+
+def _built_in_manifest(s: Settings, review_id: str, attempt: int, name: str, ai_secret: str | None) -> dict:
     return {
         "apiVersion": "batch/v1",
         "kind": "Job",
         "metadata": {"name": name, "namespace": s.k8s_namespace,
-                     "labels": {"app": "scanner-worker", "review-id": review_id[:63], "attempt": str(attempt)}},
+                     "labels": {"app": "scanner", "review-id": review_id[:63], "attempt": str(attempt)}},
         "spec": {
-            "backoffLimit": 0,  # retries are owned by the watchdog, not by K8s
+            "backoffLimit": 0,
+            "activeDeadlineSeconds": s.scanner_active_deadline_seconds,  # retries are owned by the watchdog, not by K8s
             "ttlSecondsAfterFinished": 3600,
             "template": {
-                "metadata": {"labels": {"app": "scanner-worker", "review-id": review_id[:63]}},
+                "metadata": {"labels": {"app": "scanner", "review-id": review_id[:63]}},
                 "spec": {
                     "restartPolicy": "Never",
                     "serviceAccountName": s.scanner_service_account,

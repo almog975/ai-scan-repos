@@ -17,10 +17,13 @@ class Settings(BaseSettings):
     reports_dir: str = "./reports"
     # Kubernetes Job settings
     k8s_namespace: str = "ai-scan-repos"
-    scanner_image: str = "registry.local/ai-scan-repos/scanner-worker:latest"
-    reports_pvc: str = "ai-scan-reports"
-    scanner_service_account: str = "scanner-worker"
-    scanner_secret_name: str = "scanner-worker-env"
+    scanner_image: str = "registry.local/ai-scan-repos/scanner-worker:0.1.0"  # never :latest; env SCANNER_IMAGE
+    reports_pvc: str = "reports"
+    scanner_service_account: str = "scanner"
+    scanner_secret_name: str = "scanner-secrets"
+    # Path of the mounted scanner-job-template ConfigMap (Job YAML). Empty -> built-in template.
+    scanner_job_template: str = ""
+    scanner_active_deadline_seconds: int = 21600
     review_api_internal_url: str = "http://review-api:8001"
     # Watchdog
     heartbeat_timeout_seconds: int = 900  # 15 minutes
