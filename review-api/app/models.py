@@ -41,6 +41,17 @@ class ProviderKind(str, enum.Enum):
     cloud = "cloud"
 
 
+class FailureCode(str, enum.Enum):  # common.schema.json#/$defs/failure_code
+    CLONE_FAILED = "CLONE_FAILED"
+    REPO_TOO_LARGE = "REPO_TOO_LARGE"
+    SCANNER_ERROR = "SCANNER_ERROR"
+    AI_PROVIDER_ERROR = "AI_PROVIDER_ERROR"
+    AI_RATE_LIMITED = "AI_RATE_LIMITED"
+    TIMEOUT = "TIMEOUT"
+    MAX_ATTEMPTS_EXCEEDED = "MAX_ATTEMPTS_EXCEEDED"
+    INTERNAL = "INTERNAL"
+
+
 class Outcome(str, enum.Enum):
     success = "success"
     stuck = "stuck"
@@ -122,6 +133,13 @@ class Review(Base):
     started_at: Mapped[datetime | None] = mapped_column(TZ, nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(TZ, nullable=True)
     paused_at: Mapped[datetime | None] = mapped_column(TZ, nullable=True)
+    # Phase 3 (alembic 0003). failure_reason is the contract's failure_detail (free text).
+    failure_code: Mapped[FailureCode | None] = mapped_column(_enum(FailureCode, "failure_code"), nullable=True)
+    stuck_since: Mapped[datetime | None] = mapped_column(TZ, nullable=True)
+    next_retry_at: Mapped[datetime | None] = mapped_column(TZ, nullable=True)
+    paused_by: Mapped[str | None] = mapped_column(GUID, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    cancelled_at: Mapped[datetime | None] = mapped_column(TZ, nullable=True)
+    cancelled_by: Mapped[str | None] = mapped_column(GUID, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
 
 class ReviewAttempt(Base):
