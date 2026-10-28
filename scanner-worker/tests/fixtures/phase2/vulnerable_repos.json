@@ -1,0 +1,14 @@
+{
+  "description": "Small, intentionally vulnerable public repos used by the opt-in network tests (AISCAN_NETWORK_TESTS=1). SHAs pinned 2026-10-28 via git ls-remote HEAD.",
+  "repos": [
+    {"name": "DSVW", "url": "https://github.com/stamparm/DSVW", "commit_sha": "9ca3c9acf3defa0a6148d40e5f5cebeb5dcbb908",
+     "license": "Unlicense", "why": "single-file Python web app with SQLi/XSS/RCE etc. -> semgrep SAST + Dockerfile misconfig",
+     "expect": {"semgrep_min": 1, "trivy_misconfig_min": 1}},
+    {"name": "Vulnerable-Flask-App", "url": "https://github.com/we45/Vulnerable-Flask-App", "commit_sha": "b6a4f97afd466e83e1f60781494252dec1c37039",
+     "license": null, "why": "Flask app with pinned outdated deps (app/requirements.txt) -> trivy vulns + semgrep SAST",
+     "expect": {"semgrep_min": 1, "trivy_vuln_min": 10}},
+    {"name": "test_keys", "url": "https://github.com/trufflesecurity/test_keys", "commit_sha": "0416560b1330d8ac42045813251d85c688717eaf",
+     "license": null, "why": "tiny repo of deliberately leaked (revoked/canary) keys -> gitleaks",
+     "expect": {"gitleaks_min": 1}}
+  ]
+}

@@ -31,7 +31,7 @@ Out of scope: UI designs, tags, and per-depth estimates. Findings are not paged 
 ### 4. AI providers + crypto
 - `app/crypto.py`: AES-256-GCM with a 96-bit random nonce and AAD = provider id. The key is `AI_KEYS_ENCRYPTION_KEY` from Secret `ai-keys-master`; startup fails, and `/readyz` returns 503, if it is missing or not 32 bytes. `key_version` allows rotation later.
 - Routes: `/admin/ai-providers` CRUD (AIProviderWrite/Patch), `/admin/ai-providers/{id}/test`, and `GET /ai-providers` (id, name, kind, cloud flag; never any key material).
-- Adapters: `app/providers/base.py` (`Provider` protocol: `complete()`, `test()`, `is_cloud`) and 9 stubs in `app/providers/{openai,anthropic,gemini,azure_openai,bedrock,mistral,groq,ollama,openai_compatible}.py`, plus a registry mapping each `provider_kind` to its adapter.
+- Adapters: `app/providers/base.py` (`Provider` protocol: `complete()`, `test()`, `is_cloud`) and 9 stubs in `app/providers/{openai,anthropic,gemini,azure_openai,bedrock,mistral,groq,ollama,openai_compatible}.py` (Phase 2: bedrock removed → 8 adapters over the shared `ai_adapters.py`), plus a registry mapping each `provider_kind` to its adapter.
 - Acceptance:
   - The provider_kind enum equals the registry keys (test reads `common.schema.json`).
   - Round-trip encrypt/decrypt works, and a tampered ciphertext fails.

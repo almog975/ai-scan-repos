@@ -1,37 +1,45 @@
-"""Minimal AI client over httpx (no SDKs).
+"""Worker-side AI client: a thin wrapper over ai_adapters.Adapter (shared with review-api).
 
-Providers:
-  openai_compatible  on-prem LM Studio / Ollama / vLLM (base_url required, e.g. via Tailscale)
-  openai, grok       OpenAI chat-completions API (xAI is OpenAI-compatible)
-  anthropic          Messages API
-  gemini             generateContent API
+`provider` is the adapter name (8 adapters, see ai_adapters.ADAPTER_NAMES). `kind` comes from the DB
+provider row (env AI_KIND, set by review-api) and is never derived from the adapter name; when it is
+missing the client assumes "cloud" (the safe side: the report then says code left the network).
 """
 from __future__ import annotations
 
+import logging
+import os
+import time
 from dataclasses import dataclass
 
 import httpx
 
-CLOUD_BASES = {
-    "openai": "https://api.openai.com/v1",
-    "grok": "https://api.x.ai/v1",
-    "anthropic": "https://api.anthropic.com/v1",
-    "gemini": "https://generativelanguage.googleapis.com/v1beta",
-    "groq": "https://api.groq.com/openai/v1",
-    "mistral": "https://api.mistral.ai/v1",
-}
-# review-api adapter names (app/providers) that speak OpenAI chat-completions at a caller-given base URL.
-# bedrock needs AWS SigV4 and is not supported by this httpx client: AI is skipped (scanners still run).
-BASE_URL_REQUIRED = {"openai_compatible", "ollama", "azure_openai"}
-OPENAI_STYLE = {"openai", "grok", "groq", "mistral", *BASE_URL_REQUIRED}
-ONPREM = {"openai_compatible", "ollama"}
-PROVIDERS = {*CLOUD_BASES, *BASE_URL_REQUIRED}
-# Used when AI_MODEL is left at its on-prem default but a cloud provider is selected per review.
-DEFAULT_MODELS = {"openai": "gpt-4o-mini", "grok": "grok-2-latest", "anthropic": "claude-3-5-sonnet-latest",
-                  "gemini": "gemini-1.5-pro"}
+from .ai_adapters import ADAPTER_NAMES, SPECS, Adapter
 
-SYSTEM_PROMPT = ("You are a senior application-security reviewer. Given scanner findings and code, "
-                 "explain real risks, rank them, and give concrete fixes. Be concise. Use Markdown.")
+log = logging.getLogger(__name__)
+PROVIDERS = set(ADAPTER_NAMES)
+BASE_URL_REQUIRED = {a for a, (default, _, _) in SPECS.items() if default is None}
+# Used when AI_MODEL is empty (the admin always sets a model; this is only a dev fallback).
+DEFAULT_MODELS = {"openai": "gpt-4o-mini", "anthropic": "claude-3-5-sonnet-latest", "gemini": "gemini-1.5-pro",
+                  "mistral": "mistral-small-latest", "groq": "llama-3.1-8b-instant", "ollama": "llama3"}
+
+
+RETRY_TRIES = 3
+RETRY_BASE_SECONDS = float(os.environ.get("AI_RETRY_BASE_SECONDS", "0.5"))
+RETRY_MAX_SECONDS = 30.0
+_sleep = time.sleep
+
+
+def _retry_after(v: str | None) -> float | None:
+    if not v:
+        return None
+    try:
+        return max(float(v), 0.0)
+    except ValueError:
+        try:
+            from email.utils import parsedate_to_datetime
+            return max((parsedate_to_datetime(v).timestamp() - time.time()), 0.0)
+        except (TypeError, ValueError):
+            return None
 
 
 @dataclass
@@ -40,6 +48,8 @@ class AIClient:
     model: str
     api_key: str = ""
     base_url: str = ""
+    kind: str = ""
+    name: str = ""
     timeout: float = 120.0
     transport: httpx.BaseTransport | None = None
 
@@ -48,41 +58,50 @@ class AIClient:
             raise ValueError(f"unknown AI provider {self.provider!r}")
         if self.provider in BASE_URL_REQUIRED and not self.base_url:
             raise ValueError(f"AI_BASE_URL is required for {self.provider}")
-        self.base_url = (self.base_url or CLOUD_BASES[self.provider]).rstrip("/")
+        if self.kind not in ("onprem", "cloud"):
+            log.warning("AI_KIND %r missing/invalid: treating provider as cloud", self.kind)
+            self.kind = "cloud"
+        self._a = Adapter(self.provider, self.model, self.api_key, self.base_url, self.timeout, self.transport)
+        self.base_url = self._a.base_url
+        self.name = self.name or self.provider
 
     @property
     def is_cloud(self) -> bool:
-        """True when code/findings leave the private network."""
-        return self.provider not in ONPREM
+        """True when code/findings leave the private network (DB kind)."""
+        return self.kind == "cloud"
 
     def build_request(self, prompt: str) -> httpx.Request:
-        p = self.provider
-        if p in OPENAI_STYLE:
-            headers = {"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}
-            return httpx.Request("POST", f"{self.base_url}/chat/completions", headers=headers, json={
-                "model": self.model, "temperature": 0.2,
-                "messages": [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": prompt}]})
-        if p == "anthropic":
-            return httpx.Request("POST", f"{self.base_url}/messages",
-                                 headers={"x-api-key": self.api_key, "anthropic-version": "2023-06-01"},
-                                 json={"model": self.model, "max_tokens": 2048, "system": SYSTEM_PROMPT,
-                                       "messages": [{"role": "user", "content": prompt}]})
-        # gemini: key in header, not URL (keeps it out of logs)
-        return httpx.Request("POST", f"{self.base_url}/models/{self.model}:generateContent",
-                             headers={"x-goog-api-key": self.api_key},
-                             json={"systemInstruction": {"parts": [{"text": SYSTEM_PROMPT}]},
-                                   "contents": [{"role": "user", "parts": [{"text": prompt}]}]})
+        return self._a.build_request(prompt)
 
-    @staticmethod
-    def parse_response(provider: str, data: dict) -> str:
-        if provider in OPENAI_STYLE:
-            return data["choices"][0]["message"]["content"]
-        if provider == "anthropic":
-            return "".join(b.get("text", "") for b in data.get("content", []) if b.get("type") == "text")
-        return "".join(p.get("text", "") for p in data["candidates"][0]["content"]["parts"])
+    def complete_once(self, prompt: str) -> str:
+        return self._a.complete(prompt)
 
     def complete(self, prompt: str) -> str:
-        with httpx.Client(timeout=self.timeout, transport=self.transport) as c:
-            r = c.send(self.build_request(prompt))
-            r.raise_for_status()
-            return self.parse_response(self.provider, r.json())
+        """Up to RETRY_TRIES tries on 429/5xx with exponential backoff, honouring Retry-After (capped)."""
+        for n in range(1, RETRY_TRIES + 1):
+            try:
+                return self._a.complete(prompt)
+            except httpx.HTTPStatusError as e:
+                code = e.response.status_code
+                if n == RETRY_TRIES or not (code == 429 or code >= 500):
+                    raise
+                delay = _retry_after(e.response.headers.get("retry-after"))
+                delay = RETRY_BASE_SECONDS * 2 ** (n - 1) if delay is None else delay
+                log.info("AI %s HTTP %d, retry %d/%d in %.1fs", self.provider, code, n, RETRY_TRIES - 1, delay)
+                _sleep(min(delay, RETRY_MAX_SECONDS))
+        raise AssertionError("unreachable")
+
+
+def parse_ai_json(ans: str) -> tuple[str, dict | None]:
+    """Split an answer into (markdown, trailing JSON object or None)."""
+    import json
+    import re
+    s = (ans or "").strip()
+    m = re.search(r"```(?:json)?\s*(\{.*\})\s*```\s*$", s, re.S) or re.search(r"(\{[^\n]*\})\s*$", s)
+    if not m:
+        return s, None
+    try:
+        j = json.loads(m.group(1))
+    except ValueError:
+        return s, None
+    return (s[:m.start()].strip() or s), j if isinstance(j, dict) else None

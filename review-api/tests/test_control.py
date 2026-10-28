@@ -118,9 +118,9 @@ def test_sse_streams_changes(client, H, k8s, settings):
     write_progress(settings, rid, [("a.py", "pending")])
 
     def later():
-        time.sleep(0.2)
+        time.sleep(0.6)
         write_progress(settings, rid, [("a.py", "done")], stamp="2026-10-28T10:00:05Z")
-        time.sleep(0.2)
+        time.sleep(0.6)
         set_state(rid, State.cancelled)
     threading.Thread(target=later).start()
     with client.stream("GET", f"/reviews/{rid}/progress", headers=H) as r:

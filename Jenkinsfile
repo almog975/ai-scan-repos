@@ -43,28 +43,51 @@ pipeline {
       changed = SERVICES.keySet().findAll { s -> files.any { it.startsWith("${SERVICES[s][0]}/") } } as List
       echo "Changed services: ${changed}"
     } } }
+    stage('Install CI deps') { when { expression { !skipBuild } } steps {
+      // venv on the agent; later stages put it first on PATH
+      sh 'python3 -m venv .ci-venv && .ci-venv/bin/pip install -q --upgrade pip && .ci-venv/bin/pip install -q -r requirements-ci.txt -r gateway/requirements.txt'
+      // semgrep pins rich~=13.5 which conflicts with schemathesis (rich>=13.9.4): worker gets its own venv
+      sh 'python3 -m venv .ci-venv-worker && .ci-venv-worker/bin/pip install -q -r scanner-worker/requirements.txt pytest==9.2.0 jsonschema[format]==4.26.0 referencing==0.37.0 PyYAML==6.0.2 respx==0.22.0'
+    } }
     stage('Contracts') { when { expression { !skipBuild } } steps {
-      sh 'make contracts && python3 -m pytest -q contracts/tests'
+      sh 'export PATH="$PWD/.ci-venv/bin:$PATH" && make contracts && python3 -m pytest -q contracts/tests'
     } }
     stage('Test') { when { expression { !skipBuild && changed } } steps { script {
-      changed.each { s -> dir(SERVICES[s][0]) { sh 'make test' } }
+      changed.each { s -> dir(SERVICES[s][0]) { sh "export AISCAN_WORKER_PYTHON=\$WORKSPACE/.ci-venv-worker/bin/python PATH=\"\$WORKSPACE/${s == 'scanner-worker' ? '.ci-venv-worker' : '.ci-venv'}/bin:\$PATH\" && make test" } }
     } } }
     stage('DB parity (Postgres)') { when { expression { !skipBuild } } steps {
-      sh 'ci/db-parity.sh'   // alembic head == infra/db/schema.sql via pg_dump, plus downgrade/upgrade round trip
+      sh 'export PATH="$PWD/.ci-venv/bin:$PATH" && ci/db-parity.sh'   // alembic head == infra/db/schema.sql via pg_dump, plus downgrade/upgrade round trip
     } }
     stage('Schemathesis') { when { expression { !skipBuild } } steps {
-      sh 'ci/schemathesis.sh 50'   // review-api vs contracts/review-api.openapi.yaml
+      sh 'export PATH="$PWD/.ci-venv/bin:$PATH" && ci/schemathesis.sh 50'   // review-api vs contracts/review-api.openapi.yaml
     } }
-    stage('Build') { when { expression { !skipBuild && changed } } steps { script {
-      changed.each { s -> sh "docker build -t ${env.REGISTRY}/ai-scan/${s}:${env.GIT_SHA} ${SERVICES[s][0]}" }
+    stage('Build') { when { expression { !skipBuild && (changed - ['scanner-worker']) } } steps { script {
+      (changed - ['scanner-worker']).each { s -> sh "docker build -t ${env.REGISTRY}/ai-scan/${s}:${env.GIT_SHA} ${SERVICES[s][0]}" }
     } } }
-    stage('Trivy scan') { when { expression { !skipBuild && changed } } steps { script {
-      changed.each { s -> sh "trivy image --exit-code 1 --severity HIGH,CRITICAL --no-progress ${env.REGISTRY}/ai-scan/${s}:${env.GIT_SHA}" }
+    stage('Trivy scan') { when { expression { !skipBuild && (changed - ['scanner-worker']) } } steps { script {
+      (changed - ['scanner-worker']).each { s -> sh "trivy image --exit-code 1 --severity HIGH,CRITICAL --no-progress ${env.REGISTRY}/ai-scan/${s}:${env.GIT_SHA}" }
     } } }
-    stage('Push') { when { allOf { branch 'main'; expression { !skipBuild && changed } } } steps {
+    // Phase 2: scanner-worker image (scanner-worker/Dockerfile, context scanner-worker/). Path filter = the
+    // git-diff based 'changed' list only: `changeset` is empty on a branch's first build and would skip the image.
+    // Deploy (below) writes SCANNER_IMAGE into the scanner-image configMapGenerator.
+    stage('Scanner worker image') {
+      when { expression { !skipBuild && changed.contains('scanner-worker') } }
+      steps { script {
+        def img = "${env.REGISTRY}/ai-scan/scanner-worker:${env.GIT_SHA}"
+        sh "docker build -t ${img} -f scanner-worker/Dockerfile scanner-worker"
+        sh "trivy image --exit-code 1 --severity HIGH,CRITICAL --no-progress ${img}"
+        if (env.BRANCH_NAME == 'main') {
+          withCredentials([usernamePassword(credentialsId: 'registry-creds', usernameVariable: 'U', passwordVariable: 'P')]) {
+            sh 'echo "$P" | docker login "$REGISTRY" -u "$U" --password-stdin'
+            sh "docker push ${img}"
+          }
+        }
+      } }
+    }
+    stage('Push') { when { allOf { branch 'main'; expression { !skipBuild && (changed - ['scanner-worker']) } } } steps {
       withCredentials([usernamePassword(credentialsId: 'registry-creds', usernameVariable: 'U', passwordVariable: 'P')]) { script {
         sh 'echo "$P" | docker login "$REGISTRY" -u "$U" --password-stdin'
-        changed.each { s -> sh "docker push ${env.REGISTRY}/ai-scan/${s}:${env.GIT_SHA}" }
+        (changed - ['scanner-worker']).each { s -> sh "docker push ${env.REGISTRY}/ai-scan/${s}:${env.GIT_SHA}" }
       } }
     } }
     stage('Deploy') { when { allOf { branch 'main'; expression { !skipBuild && changed } } } steps { script {

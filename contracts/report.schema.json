@@ -8,6 +8,7 @@
     "review_id",
     "repo",
     "depth",
+    "provider",
     "started_at",
     "finished_at",
     "summary",
@@ -45,6 +46,10 @@
             "string",
             "null"
           ]
+        },
+        "private": {
+          "type": "boolean",
+          "description": "true when the repo was cloned with a token"
         }
       }
     },
@@ -52,10 +57,7 @@
       "$ref": "common.schema.json#/$defs/depth"
     },
     "provider": {
-      "type": [
-        "object",
-        "null"
-      ],
+      "type": "object",
       "properties": {
         "name": {
           "type": "string"
@@ -66,7 +68,14 @@
         "kind": {
           "$ref": "common.schema.json#/$defs/provider_kind"
         }
-      }
+      },
+      "required": [
+        "name",
+        "kind",
+        "model"
+      ],
+      "additionalProperties": false,
+      "description": "AI provider used. kind is the DB provider row's kind (never derived from the adapter). No AI: {name:'none', kind:'onprem', model:'none'}."
     },
     "started_at": {
       "$ref": "common.schema.json#/$defs/timestamp"
@@ -91,7 +100,8 @@
         "high",
         "medium",
         "low",
-        "info"
+        "info",
+        "files_scanned"
       ],
       "properties": {
         "critical": {

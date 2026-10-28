@@ -84,3 +84,25 @@ class FakeGitHub:
         self.repo(owner, name)
         self.n += 1
         return f"{self.n:040x}" if ref != "fixed" else "a" * 40
+
+
+@pytest.fixture(autouse=True)
+def ai_http(monkeypatch):
+    """No real network from /admin/ai-providers/{id}/test: every adapter gets an httpx.MockTransport."""
+    import httpx
+
+    from app.providers.base import Provider
+    seen: list = []
+    state = {"handler": None}
+
+    def handler(req):
+        seen.append(req)
+        if state["handler"]:
+            return state["handler"](req)
+        if "anthropic" in str(req.url):
+            return httpx.Response(200, json={"content": [{"type": "text", "text": "ok"}]})
+        if "generateContent" in str(req.url):
+            return httpx.Response(200, json={"candidates": [{"content": {"parts": [{"text": "ok"}]}}]})
+        return httpx.Response(200, json={"choices": [{"message": {"content": "ok"}}]})
+    monkeypatch.setattr(Provider, "transport", httpx.MockTransport(handler))
+    return type("AIHttp", (), {"seen": seen, "state": state})

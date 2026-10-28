@@ -29,3 +29,6 @@ class WorkerConfig:
     deep_max_files: int = field(default_factory=lambda: _int("DEEP_MAX_FILES", 40))
     deep_max_file_bytes: int = field(default_factory=lambda: _int("DEEP_MAX_FILE_BYTES", 60_000))
     brief_top_findings: int = field(default_factory=lambda: _int("BRIEF_TOP_FINDINGS", 10))
+    ai_kind: str = field(default_factory=lambda: os.environ.get("AI_KIND", ""))
+    ai_provider_name: str = field(default_factory=lambda: os.environ.get("AI_PROVIDER_NAME", ""))
+    repo_private: bool = field(default_factory=lambda: os.environ.get("REPO_PRIVATE", "false").lower() == "true")

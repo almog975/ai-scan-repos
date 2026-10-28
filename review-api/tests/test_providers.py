@@ -78,15 +78,83 @@ def test_validation(client, A):
         check("Error", r.json())
 
 
-def test_nine_adapters():
-    assert len(ADAPTERS) == 9
+def test_eight_adapters_no_bedrock():
+    assert len(ADAPTERS) == 8 and "bedrock" not in ADAPTERS
+    assert set(ADAPTERS) == {"openai", "anthropic", "gemini", "azure_openai", "mistral", "groq", "ollama",
+                             "openai_compatible"}
     assert adapter_name("https://api.anthropic.com", "cloud") == "anthropic"
     assert adapter_name("http://ollama.local:11434", "onprem") == "ollama"
     assert adapter_name("https://myres.openai.azure.com", "cloud") == "azure_openai"
     assert adapter_name("http://vllm:8000/v1", "onprem") == "openai_compatible"
     assert adapter_name(None, "onprem") == "ollama"
     assert {"onprem", "cloud"} == set(common_enum("provider_kind"))
-    assert {c.is_cloud for c in ADAPTERS.values()} == {True, False}
+
+
+@pytest.mark.parametrize("adapter,given,want", [
+    ("openai", None, "https://api.openai.com/v1"),
+    ("openai", "https://api.openai.com/v1/", "https://api.openai.com/v1"),
+    ("openai_compatible", "http://lm:1234", "http://lm:1234/v1"),
+    ("ollama", "http://ollama.local:11434", "http://ollama.local:11434/v1"),
+    ("gemini", "https://generativelanguage.googleapis.com", "https://generativelanguage.googleapis.com/v1beta"),
+    ("gemini", None, "https://generativelanguage.googleapis.com/v1beta"),
+    ("anthropic", "https://api.anthropic.com", "https://api.anthropic.com/v1"),
+    ("groq", "https://api.groq.com", "https://api.groq.com/openai/v1"),
+    ("mistral", "https://api.mistral.ai/v1", "https://api.mistral.ai/v1"),
+    ("azure_openai", "https://r.openai.azure.com/openai/deployments/x", "https://r.openai.azure.com"),
+])
+def test_base_url_normalized_per_adapter(adapter, given, want):
+    from app.providers import normalize_base_url
+    assert normalize_base_url(adapter, given) == want
+
+
+def test_adapters_module_identical_to_worker():
+    from pathlib import Path
+    here = Path(__file__).resolve().parents[1] / "app/providers/ai_adapters.py"
+    worker = Path(__file__).resolve().parents[2] / "scanner-worker/scanner/ai_adapters.py"
+    if not worker.exists():
+        pytest.skip("scanner-worker not checked out")
+    assert here.read_bytes() == worker.read_bytes()
+
+
+def _mk(client, A, **kw):
+    r = client.post("/admin/ai-providers", json={**W, **kw}, headers=A)
+    assert r.status_code == 201, r.text
+    return r.json()["id"]
+
+
+def test_provider_test_makes_real_minimal_call(client, A, ai_http):
+    pid = _mk(client, A, kind="onprem", base_url="http://lmstudio.tailnet:1234", api_key=None, name="LM")
+    r = client.post(f"/admin/ai-providers/{pid}/test", headers=A)
+    assert r.status_code == 200 and r.json()["adapter"] == "openai_compatible"
+    req = ai_http.seen[-1]
+    assert str(req.url) == "http://lmstudio.tailnet:1234/v1/chat/completions"
+    assert json.loads(req.content)["max_tokens"] <= 5
+    assert req.extensions["timeout"]["read"] == 10.0
+
+
+def test_provider_test_errors_are_502_without_secrets(client, A, ai_http):
+    import httpx
+    pid = _mk(client, A)
+    ai_http.state["handler"] = lambda req: httpx.Response(401, json={"error": "bad key sk-test-secret-1234"})
+    r = client.post(f"/admin/ai-providers/{pid}/test", headers=A)
+    assert r.status_code == 502 and "HTTP 401" in r.json()["error"]["message"] and "sk-test" not in r.text
+    check("Error", r.json())
+
+    def boom(req):
+        raise httpx.ReadTimeout("slow", request=req)
+    ai_http.state["handler"] = boom
+    r = client.post(f"/admin/ai-providers/{pid}/test", headers=A)
+    assert r.status_code == 502 and "timed out" in r.json()["error"]["message"]
+
+
+def test_openai_compatible_cloud_kind_needs_ack(client, A, ai_http):
+    """kind comes from the DB row: an openai_compatible URL registered as cloud still needs ack_cloud."""
+    from app.providers import adapter_name
+    pid = _mk(client, A, kind="cloud", base_url="https://llm.example.com/v1", name="hosted-vllm")
+    assert adapter_name("https://llm.example.com/v1", "cloud") == "openai_compatible"
+    r = client.post("/reviews", json={"repo_url": "https://github.com/o/r", "depth": "quick", "provider_id": pid},
+                    headers=A)
+    assert r.status_code == 422 and r.json()["error"]["code"] == "CLOUD_ACK_REQUIRED"
 
 
 def test_readyz_needs_key(settings, launcher, gh):

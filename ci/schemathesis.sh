@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Contract fuzzing: runs review-api (sqlite, no-op worker) and checks it against contracts/review-api.openapi.yaml.
 # Undocumented 5xx fail status_code_conformance; documented ones (e.g. 502 on provider test) are allowed.
-# Positive mode only: several ops document no 400 for malformed input (follow-up: add 400 to the contract).
+# All modes (positive + negative): every operation that accepts input documents 400 (Error schema).
 # Usage: ci/schemathesis.sh [max-examples]   (needs: pip install -r review-api/requirements.txt schemathesis)
 set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
@@ -23,4 +23,4 @@ for _ in $(seq 50); do curl -fs "http://127.0.0.1:$PORT/healthz" >/dev/null && b
 schemathesis run "$ROOT/contracts/review-api.openapi.yaml" --url "http://127.0.0.1:$PORT" \
   -H "X-Internal-Token: $INTERNAL_API_TOKEN" -H "X-User-Id: $USER_ID" \
   --checks status_code_conformance,content_type_conformance,response_schema_conformance \
-  --mode positive --exclude-path-regex '/progress$' --max-examples "${1:-25}" --workers 1
+  --mode all --exclude-path-regex '/progress$' --max-examples "${1:-25}" --workers 1

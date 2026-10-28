@@ -247,10 +247,12 @@ def test_make_ai(tmp_path):
     assert make_ai(c) is None
     c.ai_provider, c.ai_model, c.ai_base_url = "ollama", "llama3", "http://ollama:11434/v1"
     ai = make_ai(c)
-    assert ai.base_url == "http://ollama:11434/v1" and not ai.is_cloud
-    c.ai_provider, c.ai_model, c.ai_base_url = "anthropic", "", ""
+    assert ai.base_url == "http://ollama:11434/v1" and ai.is_cloud  # no AI_KIND -> cloud (safe side)
+    c.ai_kind = "onprem"
+    assert not make_ai(c).is_cloud
+    c.ai_provider, c.ai_model, c.ai_base_url, c.ai_kind = "anthropic", "", "", "cloud"
     assert make_ai(c).model and make_ai(c).is_cloud
-    c.ai_provider = "bedrock"  # unsupported by the httpx client -> AI skipped, scan continues
+    c.ai_provider = "bedrock"  # removed adapter -> AI skipped, scan continues
     assert make_ai(c) is None
 
 
@@ -302,3 +304,28 @@ def test_pause_resume_same_attempt_dir(tmp_path):
         return fake_scanner(name, src, t)
     assert Worker(cfg(tmp_path, attempt=1, sha=SHA), FakeAPI(), None, counting, fake_clone).run() == "completed"
     assert seen == ["gitleaks", "trivy"] and len(report(tmp_path)["findings"]) == 18
+
+
+@pytest.mark.parametrize("case", ["completed", "paused", "crashed", "superseded"])
+def test_work_dir_empty_after_every_outcome(tmp_path, case):
+    """Step 5: the clone under /work never outlives the run (success, pause, failure/cancel kill, supersede)."""
+    api = FakeAPI(supersede_after=2 if case == "superseded" else None)
+    scan = killing_scanner(1) if case == "crashed" else fake_scanner
+    if case == "paused":
+        rdir(tmp_path).mkdir(parents=True)
+        (rdir(tmp_path) / "PAUSE").touch()
+    w = Worker(cfg(tmp_path, "deep", sha=SHA), api, FakeAI(), scan, fake_clone)
+    if case == "crashed":
+        with pytest.raises(Kill):
+            w.run()
+    else:
+        assert w.run() == case
+    assert not list((tmp_path / "work").iterdir())
+
+
+def test_sigterm_unwinds_and_cleans_work(tmp_path):
+    def term_scanner(name, src, t):
+        runmod._on_sigterm(15, None)
+    with pytest.raises(SystemExit) as e:
+        Worker(cfg(tmp_path, sha=SHA), FakeAPI(), None, term_scanner, fake_clone).run()
+    assert e.value.code == 143 and not list((tmp_path / "work").iterdir())

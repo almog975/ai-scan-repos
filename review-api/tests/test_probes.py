@@ -33,16 +33,17 @@ def test_readyz_fails_when_k8s_api_down(client):
     assert r.status_code == 503 and r.json()["error"]["code"] == "INTERNAL"
 
 
-def test_kubernetes_launcher_ready_lists_jobs():
+def test_kubernetes_launcher_ready_gets_a_job():
     from app.config import Settings
     from app.launcher import KubernetesJobLauncher
     calls = []
 
     class Batch:
-        def list_namespaced_job(self, namespace, limit):
-            calls.append((namespace, limit))
+        def read_namespaced_job(self, name, namespace):
+            calls.append((namespace, name))
+            raise type("E", (Exception,), {"status": 404})()
     KubernetesJobLauncher(Settings(k8s_namespace="ns"), batch_api=Batch(), core_api=object()).ready()
-    assert calls == [("ns", 1)]
+    assert calls == [("ns", "readyz-probe")]
 
 
 def test_review_counters_move(client, H):
@@ -116,3 +117,17 @@ def test_migrations_job_uses_deployment_image(overlay):
 def test_dockerfile_does_not_migrate():
     cmd = [l for l in (DEPLOY.parent / "review-api" / "Dockerfile").read_text().splitlines() if l.startswith("CMD")]
     assert cmd and "alembic" not in cmd[0]
+
+
+def test_rbac_is_least_privilege_and_launcher_stays_within_it():
+    """Role allows jobs create/get/delete and secrets create/update/delete; the launcher must not need more."""
+    import re
+    docs = [d for d in yaml.safe_load_all((DEPLOY / "review-api" / "base" / "rbac.yaml").read_text()) if d]
+    (role,) = [d for d in docs if d["kind"] == "Role"]
+    rules = {(r["apiGroups"][0], tuple(r["resources"])): set(r["verbs"]) for r in role["rules"]}
+    assert rules == {("batch", ("jobs",)): {"create", "get", "delete"},
+                     ("", ("secrets",)): {"create", "update", "delete"}}
+    src = (Path(__file__).resolve().parents[1] / "app" / "launcher.py").read_text()
+    calls = set(re.findall(r"self\.(?:api|core)\.(\w+)\(", src))
+    assert calls == {"create_namespaced_job", "read_namespaced_job", "delete_namespaced_job",
+                     "create_namespaced_secret", "replace_namespaced_secret", "delete_namespaced_secret"}, calls

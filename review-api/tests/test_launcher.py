@@ -8,7 +8,7 @@ import yaml
 
 from app import db as dbmod
 from app.config import Settings
-from app.launcher import JobSpec, KubernetesJobLauncher, LocalLauncher, build_job_manifest, make_launcher
+from app.launcher import job_name_for, JobSpec, KubernetesJobLauncher, LocalLauncher, build_job_manifest, make_launcher
 from app.models import Review
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -89,8 +89,8 @@ class FakeCore:
     def create_namespaced_secret(self, namespace, body):
         self.secrets.append(body)
 
-    def delete_collection_namespaced_secret(self, namespace, label_selector):
-        self.sel = label_selector
+    def delete_namespaced_secret(self, name, namespace):
+        self.deleted = getattr(self, "deleted", []) + [name]
 
 
 def test_k8s_launcher_secret_owned_and_conflict_retry():
@@ -102,8 +102,8 @@ def test_k8s_launcher_secret_owned_and_conflict_retry():
     sec = c.secrets[0]
     assert sec["metadata"]["ownerReferences"][0]["uid"] == "uid-1" and sec["stringData"] == {"AI_API_KEY": "sk"}
     k.delete(name)  # 404 ignored
-    k.cleanup(RID)
-    assert RID in c.sel
+    k.cleanup(RID)  # by known names only (RBAC has no list/deletecollection)
+    assert c.deleted == [f"{job_name_for(RID, n)}-ai" for n in range(1, 6)]
 
 
 def test_make_launcher():
@@ -130,7 +130,7 @@ def test_review_gets_decrypted_provider_key(client, A, H, launcher, monkeypatch)
                                                  "model": "llama3", "api_key": "k-123456"}, headers=A).json()
     r = client.post("/reviews", json={"repo_url": "https://github.com/a/b", "depth": "deep", "provider_id": p["id"]}, headers=H)
     assert r.status_code == 201
-    assert got["env"] == {"AI_PROVIDER": "ollama", "AI_MODEL": "llama3", "AI_BASE_URL": "http://ollama:11434", "AI_API_KEY": "k-123456"}
+    assert got["env"] == {"AI_PROVIDER": "ollama", "AI_KIND": "onprem", "AI_PROVIDER_NAME": "o", "AI_MODEL": "llama3", "AI_BASE_URL": "http://ollama:11434", "AI_API_KEY": "k-123456"}
 
 
 def test_job_status():
@@ -153,7 +153,7 @@ def test_job_status():
         def __init__(self, res):
             self.res = res
 
-        def read_namespaced_job_status(self, name, namespace):
+        def read_namespaced_job(self, name, namespace):  # get jobs only (no jobs/status)
             if isinstance(self.res, Exception):
                 raise self.res
             return type("J", (), {"status": self.res})()
@@ -165,3 +165,29 @@ def test_job_status():
     assert KubernetesJobLauncher(s, Api(St(f=1)), object()).status("j") == "failed"
     assert KubernetesJobLauncher(s, Api(St()), object()).status("j") == "active"
     assert KubernetesJobLauncher(s, Api(E()), object()).status("j") == "missing"
+
+
+def test_repo_private_from_github_check_reaches_worker_env():
+    """repo.private in report.json comes from the GitHub /repos check stored on the review (REPO_PRIVATE)."""
+    from types import SimpleNamespace
+
+    from app.launcher import JobSpec, contract_env
+    r = SimpleNamespace(id="r1", attempt=1, budget_no=1, depth="quick", repo_url="https://github.com/o/r",
+                        commit_sha=None, ref="main", repo_private=True)
+    env = {e["name"]: e["value"] for e in contract_env(JobSpec.of(r))}
+    assert env["REPO_PRIVATE"] == "true"
+    r.repo_private = False
+    assert {e["name"]: e["value"] for e in contract_env(JobSpec.of(r))}["REPO_PRIVATE"] == "false"
+
+
+def test_k8s_launcher_creates_job_from_configmap_template():
+    b, c = FakeBatch(), FakeCore()
+    s = Settings(scanner_job_template=str(TPL), scanner_image="reg/ai-scan/scanner-worker:abc123")
+    name = KubernetesJobLauncher(s, batch_api=b, core_api=c, sleep=lambda s: None).launch(SPEC, secret_env={"AI_API_KEY": "sk"})
+    pod = b.created[0]["spec"]["template"]["spec"]
+    ctr = pod["containers"][0]
+    assert [x["secretRef"]["name"] for x in ctr["envFrom"]] == ["scanner-secrets", f"{name}-ai"]
+    assert pod["securityContext"]["runAsNonRoot"] and pod["securityContext"]["seccompProfile"] == {"type": "RuntimeDefault"}
+    assert ctr["securityContext"]["allowPrivilegeEscalation"] is False and ctr["securityContext"]["capabilities"] == {"drop": ["ALL"]}
+    assert {"name": "reports", "persistentVolumeClaim": {"claimName": "reports"}} in pod["volumes"]
+    assert "sk" not in json.dumps(b.created[0])

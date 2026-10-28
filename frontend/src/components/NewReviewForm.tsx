@@ -1,14 +1,17 @@
-import { FormEvent, useState } from 'react'
-import { api, Depth, GITHUB_URL, isCloud, PROVIDERS, Review } from '../api'
+import { FormEvent, useEffect, useState } from 'react'
+import { api, Depth, GITHUB_URL, ProviderPublic, Review } from '../api'
 
 export default function NewReviewForm({ onCreated }: { onCreated: (r: Review) => void }) {
   const [url, setUrl] = useState('')
   const [depth, setDepth] = useState<Depth>('quick')
-  const [provider, setProvider] = useState('openai_compatible')
+  const [providers, setProviders] = useState<ProviderPublic[]>([])
+  const [provider, setProvider] = useState('none')
+  useEffect(() => { api.providers().then(setProviders).catch(() => setProviders([])) }, [])
   const [confirmed, setConfirmed] = useState(false)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
-  const cloud = isCloud(provider)
+  const selected = providers.find(p => p.id === provider)
+  const cloud = !!selected?.cloud_warning
   const validUrl = GITHUB_URL.test(url.trim())
   const canSubmit = validUrl && (!cloud || confirmed) && !busy
 
@@ -17,7 +20,7 @@ export default function NewReviewForm({ onCreated }: { onCreated: (r: Review) =>
     if (!canSubmit) return
     setBusy(true); setError('')
     try {
-      onCreated(await api.createReview(url.trim(), depth, provider === 'none' ? null : provider))
+      onCreated(await api.createReview(url.trim(), depth, selected ? selected.id : null, cloud && confirmed))
       setUrl(''); setConfirmed(false)
     } catch (err) { setError((err as Error).message) } finally { setBusy(false) }
   }
@@ -38,7 +41,8 @@ export default function NewReviewForm({ onCreated }: { onCreated: (r: Review) =>
       </fieldset>
       <label>AI provider
         <select value={provider} onChange={e => { setProvider(e.target.value); setConfirmed(false) }}>
-          {PROVIDERS.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
+          <option value="none">No AI (scanners only)</option>
+          {providers.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
         </select>
       </label>
       {cloud && (
@@ -48,7 +52,7 @@ export default function NewReviewForm({ onCreated }: { onCreated: (r: Review) =>
           sensitive code unless you are allowed to.
           <label className="inline">
             <input type="checkbox" checked={confirmed} onChange={e => setConfirmed(e.target.checked)} />
-            I understand and agree to send code to {PROVIDERS.find(p => p.id === provider)?.label}
+            I understand and agree to send code to {selected?.name}
           </label>
         </div>)}
       {error && <p className="error">{error}</p>}

@@ -8,3 +8,5 @@ reports/
 venv/
 node_modules/
 .schemathesis/
+.ci-venv/
+.ci-venv-worker/

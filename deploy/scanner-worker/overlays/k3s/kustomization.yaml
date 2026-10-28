@@ -8,3 +8,10 @@ configMapGenerator:
   - name: scanner-image
     literals:
       - SCANNER_IMAGE=registry.ai-scan.127.0.0.1.nip.io/ai-scan/scanner-worker:GIT_SHA_PLACEHOLDER
+patches:
+  - path: networkpolicy-ai-egress.yaml
+    target:
+      group: networking.k8s.io
+      version: v1
+      kind: NetworkPolicy
+      name: scanner-egress
