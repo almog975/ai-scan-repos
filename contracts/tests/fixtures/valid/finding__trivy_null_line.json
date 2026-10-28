@@ -1,0 +1,1 @@
+{"id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","tool":"trivy","category":"dependency","rule":"CVE-2024-1","severity":"critical","file":"requirements.txt","line":null,"title":"vuln","description":"d","cve":"CVE-2024-1","package":"requests","fixed_version":"2.32.0","confidence":0.9}
