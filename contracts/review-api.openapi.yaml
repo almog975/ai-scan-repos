@@ -33,7 +33,7 @@ components:
           additionalProperties: false
           required: [code, message]
           properties:
-            code: {enum: [INVALID_SIGNATURE, CLOUD_ACK_REQUIRED, UNAUTHORIZED, FORBIDDEN, NOT_FOUND, VALIDATION_ERROR, RATE_LIMITED, CONFLICT, INTERNAL]}
+            code: {enum: [INVALID_SIGNATURE, CLOUD_ACK_REQUIRED, UNAUTHORIZED, FORBIDDEN, NOT_FOUND, VALIDATION_ERROR, RATE_LIMITED, CONFLICT, REPORT_EXPIRED, INTERNAL]}
             message: {type: string}
             details: {type: object}
         request_id: {type: string}
@@ -70,7 +70,16 @@ components:
         files_done: {type: integer, minimum: 0}
         files_total: {type: [integer, 'null'], minimum: 0}
         findings_count: {type: integer, minimum: 0}
-        failure_reason: {type: [string, 'null']}
+        failure_reason: {type: [string, 'null'], description: 'Deprecated alias of failure_detail (kept for existing clients)'}
+        failure_code: {oneOf: [{$ref: 'common.schema.json#/$defs/failure_code'}, {type: 'null'}]}
+        failure_detail: {type: [string, 'null'], description: Free text — what happened}
+        queue_position: {type: [integer, 'null'], minimum: 1, description: '1-based position while queued (null otherwise); no ETA'}
+        stuck_since: {$ref: 'common.schema.json#/$defs/nullable_timestamp'}
+        next_retry_at: {$ref: 'common.schema.json#/$defs/nullable_timestamp', description: 'When the reconciler launches the next attempt (retrying only)'}
+        paused_at: {$ref: 'common.schema.json#/$defs/nullable_timestamp'}
+        paused_by: {oneOf: [{$ref: 'common.schema.json#/$defs/user_ref'}, {type: 'null'}]}
+        cancelled_at: {$ref: 'common.schema.json#/$defs/nullable_timestamp'}
+        cancelled_by: {oneOf: [{$ref: 'common.schema.json#/$defs/user_ref'}, {type: 'null'}]}
         provider: {oneOf: [{$ref: '#/components/schemas/ProviderRef'}, {type: 'null'}]}
         created_at: {$ref: 'common.schema.json#/$defs/timestamp'}
         updated_at: {$ref: 'common.schema.json#/$defs/timestamp'}
@@ -280,8 +289,13 @@ paths:
     parameters: [{$ref: '#/components/parameters/ReviewId'}]
     post:
       operationId: resumeReview
-      description: paused|stuck -> queued (new Job, same budget).
-      responses: {'400': {$ref: '#/components/responses/BadRequest'}, '202': {$ref: '#/components/responses/Accepted'}, '401': {$ref: '#/components/responses/Unauthorized'}, '404': {$ref: '#/components/responses/NotFound'}, '409': {$ref: '#/components/responses/InvalidState'}, '429': {$ref: '#/components/responses/TooMany'}}
+      description: >-
+        paused|stuck -> queued (new Job, same budget). From paused the same attempt continues (a user pause does not
+        count as an attempt); from stuck this is the reconciler's retry triggered now (attempt n+1, never a second Job).
+        409 CONFLICT if the review's provider is disabled; 422 CLOUD_ACK_REQUIRED if the provider
+        is now cloud and the body lacks ack_cloud.
+      requestBody: {required: false, content: {application/json: {schema: {type: object, additionalProperties: false, properties: {ack_cloud: {type: boolean, default: false}}}}}}
+      responses: {'422': {description: 'CLOUD_ACK_REQUIRED', content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}, '400': {$ref: '#/components/responses/BadRequest'}, '202': {$ref: '#/components/responses/Accepted'}, '401': {$ref: '#/components/responses/Unauthorized'}, '404': {$ref: '#/components/responses/NotFound'}, '409': {$ref: '#/components/responses/InvalidState'}, '429': {$ref: '#/components/responses/TooMany'}}
   /reviews/{id}/retry:
     parameters: [{$ref: '#/components/parameters/ReviewId'}]
     post:
@@ -292,27 +306,32 @@ paths:
     parameters: [{$ref: '#/components/parameters/ReviewId'}]
     post:
       operationId: cancelReview
+      description: Allowed from queued, running, paused, stuck, retrying; 409 from completed, failed, cancelled. Partial results are kept.
       responses: {'400': {$ref: '#/components/responses/BadRequest'}, '202': {$ref: '#/components/responses/Accepted'}, '401': {$ref: '#/components/responses/Unauthorized'}, '404': {$ref: '#/components/responses/NotFound'}, '409': {$ref: '#/components/responses/InvalidState'}}
   /reviews/{id}/report.json:
     parameters: [{$ref: '#/components/parameters/ReviewId'}]
     get:
       operationId: getReportJson
+      description: 200 for completed; also for failed/cancelled when a partial report exists (report.partial=true).
       responses:
         '400': {$ref: '#/components/responses/BadRequest'}
         '200': {description: Report, content: {application/json: {schema: {$ref: 'report.schema.json'}}}}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '404': {$ref: '#/components/responses/NotFound'}
-        '409': {$ref: '#/components/responses/InvalidState'}
+        '409': {description: 'Not completed and no partial report (failed/cancelled without results)', content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '410': {description: 'code REPORT_EXPIRED: removed by retention cleanup', content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
   /reviews/{id}/report.md:
     parameters: [{$ref: '#/components/parameters/ReviewId'}]
     get:
       operationId: getReportMd
+      description: 200 for completed; also for failed/cancelled when a partial report exists (report.partial=true).
       responses:
         '400': {$ref: '#/components/responses/BadRequest'}
         '200': {description: Markdown report, content: {text/markdown: {schema: {type: string}}}}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '404': {$ref: '#/components/responses/NotFound'}
-        '409': {$ref: '#/components/responses/InvalidState'}
+        '409': {description: 'Not completed and no partial report (failed/cancelled without results)', content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '410': {description: 'code REPORT_EXPIRED: removed by retention cleanup', content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
   /repos/check:
     get:
       operationId: checkRepo
@@ -373,6 +392,22 @@ paths:
         '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
         '502': {description: Provider error, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+  /admin/reviews/{id}/fail:
+    parameters: [{$ref: '#/components/parameters/ReviewId'}]
+    post:
+      operationId: forceFailReview
+      description: Admin only. Force an active review to failed (Job deleted, partial results kept). Default failure_code INTERNAL.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                failure_code: {$ref: 'common.schema.json#/$defs/failure_code'}
+                failure_detail: {type: string, maxLength: 2000}
+      responses: {'202': {$ref: '#/components/responses/Accepted'}, '400': {$ref: '#/components/responses/BadRequest'}, '401': {$ref: '#/components/responses/Unauthorized'}, '403': {$ref: '#/components/responses/Forbidden'}, '404': {$ref: '#/components/responses/NotFound'}, '409': {$ref: '#/components/responses/InvalidState'}}
   /admin/settings:
     get:
       operationId: getSettings
