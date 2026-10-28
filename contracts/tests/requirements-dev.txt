@@ -1,0 +1,6 @@
+pytest>=8
+PyYAML>=6
+jsonschema[format]>=4.23
+referencing>=0.35
+openapi-spec-validator>=0.7
+schemathesis>=4.0,<5
