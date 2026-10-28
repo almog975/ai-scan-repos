@@ -112,7 +112,6 @@ All non-probe endpoints require `X-Internal-Token`; user endpoints also take `X-
 - [docs/ci.md](docs/ci.md) – CI/CD and GitOps
 
 ## Gaps / TODO
-- TODO: split `deploy/k8s/` into `deploy/<component>/{base,overlays/{local,k3s,eks}}` (what `deploy/argocd-app.yaml` and the Jenkinsfile expect).
 - TODO: align code with `contracts/` (states, checkpoint, report/finding shapes, endpoints) — see [ADR-0002](docs/adr/0002-k8s-job-per-review.md).
 - TODO: per-user AI keys are stored but not passed to the worker (worker uses `AI_API_KEY` env).
 - TODO: Jenkins push step is a stub (see [docs/ci.md](docs/ci.md)).
