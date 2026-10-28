@@ -81,3 +81,28 @@ def test_deep_resume_no_duplicate_file_reviews(tmp_path):
     rep = json.loads((rdir(tmp_path) / "report.json").read_text())
     ids = [f["id"] for f in rep["findings"]]
     assert len(ids) == len(set(ids))
+
+
+def test_partial_report_on_kill_and_removed_on_success(tmp_path):
+    from tests.test_worker import killing_scanner, Kill
+    import pytest
+    with pytest.raises(Kill):
+        Worker(cfg(tmp_path, sha=SHA), FakeAPI(), None, killing_scanner(1), fake_clone).run()
+    p = json.loads((rdir(tmp_path) / "report.partial.json").read_text())
+    check("report.schema.json", p)
+    assert p["partial"] is True and p["summary"]["files_scanned"] == 0 and p["findings"]
+    assert "Partial report" in (rdir(tmp_path) / "report.partial.md").read_text()
+    assert not (rdir(tmp_path) / "report.json").exists()
+    assert Worker(cfg(tmp_path, attempt=2, sha=SHA), FakeAPI(), None, fake_scanner, fake_clone).run() == "completed"
+    assert json.loads((rdir(tmp_path) / "report.json").read_text())["partial"] is False
+    assert not (rdir(tmp_path) / "report.partial.json").exists()
+
+
+def test_no_partial_report_when_clone_failed(tmp_path):
+    import pytest
+
+    def bad(*a):
+        raise RuntimeError("no repo")
+    with pytest.raises(RuntimeError):
+        Worker(cfg(tmp_path), FakeAPI(), None, fake_scanner, bad).run()
+    assert not (rdir(tmp_path) / "report.partial.json").exists()

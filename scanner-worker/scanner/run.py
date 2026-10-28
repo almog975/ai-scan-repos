@@ -25,7 +25,7 @@ from .api_client import ReviewAPI, Superseded
 from .checkpoint import (Checkpoint, atomic_write_json, atomic_write_text, attempt_dir, now, previous_attempts,
                          review_dir)
 from .config import WorkerConfig
-from .report import build_report, top_findings, write_report
+from .report import build_report, top_findings, write_partial_report, write_report
 from .tools import SCANNERS, SEV_ORDER, make_finding, run_scanner, tool_versions
 
 log = logging.getLogger("scanner")
@@ -249,10 +249,14 @@ class Worker:
             return "completed"
         except Paused:
             log.info("paused — checkpoint saved")
+            self._partial()
             return "paused"
         except Superseded as exc:
             log.info("attempt superseded (%s) — stopping", exc)
             return "superseded"
+        except BaseException:  # error, SIGTERM (cancel / force-fail / pause), kill by the watchdog
+            self._partial()
+            raise
         finally:
             self._stop.set()
             shutil.rmtree(tmp, ignore_errors=True)  # source code never outlives the job
@@ -307,6 +311,19 @@ class Worker:
             if ans:
                 atomic_write_text(self.cp.summary_path, ans)
         self._beat("ai")
+
+    def _partial(self) -> None:
+        """Keep results so far (Phase 3: partial reports on failed/cancelled). Never masks the original error."""
+        if not self.cp.state.get("commit_sha") or not self.files:
+            return  # nothing scanned yet (e.g. clone failed): no partial report
+        try:
+            rep = self._report()
+            # scanners run over the whole tree: files count as scanned once every scanner finished
+            scanned = len(self.cp.cursor["scanners_done"]) == len(SCANNERS)
+            rep["summary"]["files_scanned"] = len(self.files) if scanned else 0
+            write_partial_report(self.rdir, rep)
+        except Exception:  # noqa: BLE001
+            log.warning("could not write partial report", exc_info=True)
 
     def _report(self) -> dict:
         prov = None
