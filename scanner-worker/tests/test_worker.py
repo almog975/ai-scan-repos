@@ -290,3 +290,15 @@ def test_main_env_and_attempt_error(tmp_path, monkeypatch):
     assert runmod.main([]) == 1
     assert calls[-1]["outcome"] == "error" and calls[-1]["attempt"] == 3 and calls[-1]["budget_no"] == 2
     assert "boom" in calls[-1]["error"]
+
+
+def test_pause_resume_same_attempt_dir(tmp_path):
+    with pytest.raises(Kill):  # Job deleted by pause while running gitleaks
+        Worker(cfg(tmp_path, attempt=1, sha=SHA), FakeAPI(), None, killing_scanner(1), fake_clone).run()
+    seen = []
+
+    def counting(name, src, t):
+        seen.append(name)
+        return fake_scanner(name, src, t)
+    assert Worker(cfg(tmp_path, attempt=1, sha=SHA), FakeAPI(), None, counting, fake_clone).run() == "completed"
+    assert seen == ["gitleaks", "trivy"] and len(report(tmp_path)["findings"]) == 18

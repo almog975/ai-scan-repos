@@ -17,9 +17,9 @@ TERMINAL = {State.completed, State.failed, State.cancelled}
 TRANSITIONS: dict[State, set[State]] = {
     State.queued: {State.running, State.paused, State.cancelled, State.failed},
     State.running: {State.paused, State.stuck, State.completed, State.failed, State.cancelled},
-    State.paused: {State.running, State.cancelled},
-    State.stuck: {State.retrying, State.failed, State.cancelled},
-    State.retrying: {State.running, State.failed, State.cancelled},
+    State.paused: {State.queued, State.running, State.cancelled},
+    State.stuck: {State.queued, State.retrying, State.failed, State.cancelled},
+    State.retrying: {State.running, State.paused, State.failed, State.cancelled},
     State.failed: {State.retrying},
     State.completed: set(),
     State.cancelled: set(),

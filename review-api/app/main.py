@@ -18,7 +18,7 @@ from .github import HttpGitHub
 from .jobs import ReviewJobs
 from .launcher import make_launcher
 from .crypto import parse_key
-from .routers import misc, providers, reviews
+from .routers import control, misc, providers, reviews
 
 
 def create_app(settings: Settings | None = None, **deps) -> FastAPI:
@@ -68,6 +68,7 @@ def create_app(settings: Settings | None = None, **deps) -> FastAPI:
         return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
     app.include_router(reviews.router)
+    app.include_router(control.router)
     app.include_router(providers.router)
     app.include_router(misc.router)
     return app

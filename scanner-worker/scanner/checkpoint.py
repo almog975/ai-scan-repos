@@ -126,6 +126,10 @@ class Checkpoint:
             return False
         self.state.update(commit_sha=old["commit_sha"], stage=old["stage"], progress=old["progress"],
                           cursor=old["cursor"])
+        if prev.resolve() == self.dir.resolve():
+            self._truncate_to_offset()
+            self.save()
+            return True
         if (prev / PARTIAL).is_file():
             shutil.copyfile(prev / PARTIAL, self.partial)
         else:
@@ -138,11 +142,12 @@ class Checkpoint:
 
 
 def previous_attempts(reports_dir, review_id: str, budget_no: int, attempt: int) -> list[Path]:
-    """Earlier attempt dirs of this review, newest first (across budgets)."""
+    """Attempt dirs to resume from, newest first (across budgets). Includes this attempt's own dir:
+    after pause/resume the same attempt is relaunched and continues its own checkpoint."""
     base = review_dir(reports_dir, review_id) / "attempts"
     found = []
     for d in base.iterdir() if base.is_dir() else []:
         m = _ATTEMPT_DIR.match(d.name)
-        if m and (int(m[1]), int(m[2])) < (budget_no, attempt):
+        if m and (int(m[1]), int(m[2])) <= (budget_no, attempt):
             found.append(((int(m[1]), int(m[2])), d))
     return [d for _, d in sorted(found, reverse=True)]

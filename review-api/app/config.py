@@ -32,6 +32,9 @@ class Settings(BaseSettings):
     max_attempts: int = 5
     watchdog_interval_seconds: int = 60
     watchdog_enabled: bool = True
+    # SSE /reviews/{id}/progress poll interval of the reports volume; optional max stream length
+    sse_interval_seconds: float = 1.0
+    sse_max_seconds: float | None = None
     # Local launcher command (dev)
     local_worker_cmd: str = "python -m scanner.run"
     local_worker_cwd: str = ""
