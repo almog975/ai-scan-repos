@@ -6,11 +6,21 @@ patches:
     patch: |
       - {op: replace, path: /spec/accessModes, value: [ReadWriteMany]}
       - {op: replace, path: /spec/storageClassName, value: efs-sc}
+  # EKS TLS placeholder: either terminate at the NLB/ALB with an ACM cert (then drop `tls` and route on `web`),
+  # or let cert-manager (ClusterIssuer letsencrypt) issue Secret ai-scan-tls. See docs/tls-runbook.md.
   - target: {kind: IngressRoute, name: ai-scan}
     patch: |
       - op: replace
         path: /spec/routes/0/match
-        value: Host(`ai-scan.example.com`) && (PathPrefix(`/api`) || PathPrefix(`/auth`) || PathPrefix(`/me`) || PathPrefix(`/webhooks`))
+        value: Host(`ai-scan.example.com`) && PathRegexp(`^/api/reviews/[^/]+/progress$`)
       - op: replace
         path: /spec/routes/1/match
+        value: Host(`ai-scan.example.com`) && (PathPrefix(`/api`) || PathPrefix(`/auth`) || PathPrefix(`/me`) || PathPrefix(`/webhooks`))
+      - op: replace
+        path: /spec/routes/2/match
         value: Host(`ai-scan.example.com`) && PathPrefix(`/`)
+  - target: {kind: IngressRoute, name: ai-scan-http}
+    patch: |
+      - op: replace
+        path: /spec/routes/0/match
+        value: Host(`ai-scan.example.com`)

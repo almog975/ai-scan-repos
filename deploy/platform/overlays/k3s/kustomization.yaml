@@ -6,10 +6,18 @@ patches:
     patch: |
       - op: replace
         path: /spec/routes/0/match
-        value: Host(`ai-scan.127.0.0.1.nip.io`) && (PathPrefix(`/api`) || PathPrefix(`/auth`) || PathPrefix(`/me`) || PathPrefix(`/webhooks`))
+        value: Host(`ai-scan.127.0.0.1.nip.io`) && PathRegexp(`^/api/reviews/[^/]+/progress$`)
       - op: replace
         path: /spec/routes/1/match
+        value: Host(`ai-scan.127.0.0.1.nip.io`) && (PathPrefix(`/api`) || PathPrefix(`/auth`) || PathPrefix(`/me`) || PathPrefix(`/webhooks`))
+      - op: replace
+        path: /spec/routes/2/match
         value: Host(`ai-scan.127.0.0.1.nip.io`) && PathPrefix(`/`)
+  - target: {kind: IngressRoute, name: ai-scan-http}
+    patch: |
+      - op: replace
+        path: /spec/routes/0/match
+        value: Host(`ai-scan.127.0.0.1.nip.io`)
   - target: {kind: PersistentVolumeClaim, name: reports}
     patch: |
       - {op: replace, path: /spec/storageClassName, value: reports-local}
