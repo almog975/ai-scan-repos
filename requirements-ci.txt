@@ -1,0 +1,11 @@
+# CI tooling for the Contracts / Test / DB parity / Schemathesis stages (Jenkinsfile "Install CI deps").
+-r review-api/requirements.txt
+openapi-spec-validator==0.9.0
+jsonschema[format]==4.26.0
+referencing==0.37.0
+PyYAML==6.0.2
+pytest==9.2.0
+respx==0.22.0
+schemathesis==4.32.7
+uvicorn[standard]==0.34.0
+alembic==1.14.0

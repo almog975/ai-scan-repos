@@ -43,17 +43,23 @@ pipeline {
       changed = SERVICES.keySet().findAll { s -> files.any { it.startsWith("${SERVICES[s][0]}/") } } as List
       echo "Changed services: ${changed}"
     } } }
+    stage('Install CI deps') { when { expression { !skipBuild } } steps {
+      // venv on the agent; later stages put it first on PATH
+      sh 'python3 -m venv .ci-venv && .ci-venv/bin/pip install -q --upgrade pip && .ci-venv/bin/pip install -q -r requirements-ci.txt -r gateway/requirements.txt'
+      // semgrep pins rich~=13.5 which conflicts with schemathesis (rich>=13.9.4): worker gets its own venv
+      sh 'python3 -m venv .ci-venv-worker && .ci-venv-worker/bin/pip install -q -r scanner-worker/requirements.txt pytest==9.2.0 jsonschema[format]==4.26.0 referencing==0.37.0 PyYAML==6.0.2 respx==0.22.0'
+    } }
     stage('Contracts') { when { expression { !skipBuild } } steps {
-      sh 'make contracts && python3 -m pytest -q contracts/tests'
+      sh 'export PATH="$PWD/.ci-venv/bin:$PATH" && make contracts && python3 -m pytest -q contracts/tests'
     } }
     stage('Test') { when { expression { !skipBuild && changed } } steps { script {
-      changed.each { s -> dir(SERVICES[s][0]) { sh 'make test' } }
+      changed.each { s -> dir(SERVICES[s][0]) { sh "export PATH=\"\$WORKSPACE/${s == 'scanner-worker' ? '.ci-venv-worker' : '.ci-venv'}/bin:\$PATH\" && make test" } }
     } } }
     stage('DB parity (Postgres)') { when { expression { !skipBuild } } steps {
-      sh 'ci/db-parity.sh'   // alembic head == infra/db/schema.sql via pg_dump, plus downgrade/upgrade round trip
+      sh 'export PATH="$PWD/.ci-venv/bin:$PATH" && ci/db-parity.sh'   // alembic head == infra/db/schema.sql via pg_dump, plus downgrade/upgrade round trip
     } }
     stage('Schemathesis') { when { expression { !skipBuild } } steps {
-      sh 'ci/schemathesis.sh 50'   // review-api vs contracts/review-api.openapi.yaml
+      sh 'export PATH="$PWD/.ci-venv/bin:$PATH" && ci/schemathesis.sh 50'   // review-api vs contracts/review-api.openapi.yaml
     } }
     stage('Build') { when { expression { !skipBuild && (changed - ['scanner-worker']) } } steps { script {
       (changed - ['scanner-worker']).each { s -> sh "docker build -t ${env.REGISTRY}/ai-scan/${s}:${env.GIT_SHA} ${SERVICES[s][0]}" }
