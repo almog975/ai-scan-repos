@@ -18,5 +18,6 @@ ROUTES: dict[str, tuple[str, ...]] = {
     "/api/admin/ai-providers/{id}": ("PATCH", "DELETE"),
     "/api/admin/ai-providers/{id}/test": ("POST",),
     "/api/admin/settings": ("GET", "PUT"),
+    "/api/admin/reviews/{id}/fail": ("POST",),
 }
 STREAMING = {"/api/reviews/{id}/progress"}  # SSE: relayed chunk by chunk

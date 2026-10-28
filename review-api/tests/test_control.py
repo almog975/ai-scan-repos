@@ -21,12 +21,12 @@ class FakeK8s:
 
     def launch(self, r):
         self.launched.append((r.budget_no, r.attempt))
-        return f"scan-{r.id}-a{r.attempt}"
+        return f"scan-{r.id}-b{r.budget_no}-a{r.attempt}"
 
     def delete(self, name):
         self.deleted.append(name)
 
-    def cleanup(self, rid):
+    def cleanup(self, rid, budget_no=1):
         self.cleaned.append(rid)
 
     def status(self, name):
@@ -87,7 +87,7 @@ def test_progress_json_snapshot(client, H, k8s, settings):
     rid = create(client, H)["id"]
     snap = client.get(f"/reviews/{rid}/progress?format=json", headers=H).json()
     check("Progress", snap)
-    assert snap["files"] == [] and snap["state"] == "running"
+    assert snap["files"] == [] and snap["state"] == "queued"  # running on the worker's first heartbeat
     write_progress(settings, rid, [("a.py", "done"), ("b.py", "pending")])
     snap = client.get(f"/reviews/{rid}/progress?format=json", headers=H).json()
     check("progress.schema.json", snap)
@@ -128,7 +128,7 @@ def test_sse_streams_changes(client, H, k8s, settings):
     progress = [d for e, d in events if e == "progress"]
     assert len(progress) >= 2 and progress[0]["files"][0]["status"] == "pending"
     assert any(d["files"][0]["status"] == "done" for d in progress)
-    assert [d["state"] for e, d in events if e == "state"] == ["running", "cancelled"]
+    assert [d["state"] for e, d in events if e == "state"] == ["queued", "cancelled"]
     assert events[-1] == ("done", {"state": "cancelled"})
     for d in progress:
         check("progress.schema.json", d)
@@ -154,7 +154,8 @@ def test_pause_resume_cancel(client, H, k8s):
     r = client.post(f"/reviews/{rid}/pause", headers=H)
     assert r.status_code == 202 and r.json()["state"] == "paused"
     check("Review", r.json())
-    assert k8s.deleted == [f"scan-{rid}-a1"]
+    assert r.json()["paused_at"] and r.json()["paused_by"]["login"]
+    assert k8s.deleted == [f"scan-{rid}-b1-a1"]
     assert client.post(f"/reviews/{rid}/pause", headers=H).status_code == 409
     r = client.post(f"/reviews/{rid}/resume", headers=H)
     assert r.status_code == 202 and r.json()["state"] == "queued" and r.json()["attempt"] == 1
@@ -164,6 +165,8 @@ def test_pause_resume_cancel(client, H, k8s):
     assert beat(client, rid).json()["state"] == "running"  # first heartbeat
     r = client.post(f"/reviews/{rid}/cancel", headers=H)
     assert r.status_code == 202 and r.json()["state"] == "cancelled"
+    check("Review", r.json())
+    assert r.json()["cancelled_at"] and r.json()["cancelled_by"]["id"] and r.json()["paused_by"] is None
     assert k8s.cleaned == [rid] and len(k8s.deleted) == 2
     assert client.post(f"/reviews/{rid}/cancel", headers=H).status_code == 409
     att = client.get(f"/reviews/{rid}/attempts", headers=H).json()
@@ -176,15 +179,22 @@ def test_resume_from_stuck_uses_next_attempt(client, H, k8s):
     set_state(rid, State.stuck)
     r = client.post(f"/reviews/{rid}/resume", headers=H)
     assert r.status_code == 202 and r.json()["attempt"] == 2 and k8s.launched[-1] == (1, 2)
+    assert r.json()["state"] == "retrying"
+    assert client.post(f"/reviews/{rid}/resume", headers=H).status_code == 409  # no double Job
+    assert len(k8s.launched) == 2
     set_state(rid, State.stuck, attempt=5)
-    assert client.post(f"/reviews/{rid}/resume", headers=H).status_code == 409
+    r = client.post(f"/reviews/{rid}/resume", headers=H)  # retry now: budget exhausted -> failed
+    assert r.status_code == 202 and r.json()["state"] == "failed"
+    assert r.json()["failure_code"] == "MAX_ATTEMPTS_EXCEEDED" and len(k8s.launched) == 2
 
 
 def test_report_endpoints(client, H, k8s, settings):
     rid = create(client, H)["id"]
     assert client.get(f"/reviews/{rid}/report.json", headers=H).status_code == 409
     set_state(rid, State.completed)
-    assert client.get(f"/reviews/{rid}/report.md", headers=H).status_code == 404
+    r = client.get(f"/reviews/{rid}/report.md", headers=H)  # retention removed it
+    assert r.status_code == 410 and r.json()["error"]["code"] == "REPORT_EXPIRED"
+    check("Error", r.json())
     d = Path(settings.reports_dir) / rid
     d.mkdir(parents=True, exist_ok=True)
     (d / "report.md").write_text("# Security review\n")
@@ -242,3 +252,80 @@ def test_end_to_end_with_real_worker(client, H, k8s, settings, depth):
     assert client.get(f"/reviews/{rid}/report.md", headers=H).text.startswith("# Security review")
     att = client.get(f"/reviews/{rid}/attempts", headers=H).json()
     assert [a["outcome"] for a in att] == ["success"] and k8s.cleaned == [rid]
+
+
+def test_partial_report_for_failed_and_cancelled(client, H, k8s, settings):
+    rid = create(client, H)["id"]
+    d = Path(settings.reports_dir) / rid
+    d.mkdir(parents=True, exist_ok=True)
+    set_state(rid, State.cancelled, started_at=datetime.now(timezone.utc))
+    r = client.get(f"/reviews/{rid}/report.json", headers=H)
+    assert r.status_code == 409  # no partial written
+    (d / "report.partial.json").write_text(json.dumps({"partial": True}))
+    (d / "report.partial.md").write_text("# Security review\n\n> Partial report\n")
+    assert client.get(f"/reviews/{rid}/report.json", headers=H).json() == {"partial": True}
+    set_state(rid, State.failed)
+    assert "Partial" in client.get(f"/reviews/{rid}/report.md", headers=H).text
+    import shutil
+    shutil.rmtree(d)
+    r = client.get(f"/reviews/{rid}/report.json", headers=H)
+    assert r.status_code == 410 and r.json()["error"]["code"] == "REPORT_EXPIRED"
+
+
+def test_cancel_from_every_active_state(client, H, k8s):
+    for st in (State.queued, State.running, State.paused, State.stuck, State.retrying):
+        rid = create(client, H)["id"]
+        set_state(rid, st)
+        r = client.post(f"/reviews/{rid}/cancel", headers=H)
+        assert r.status_code == 202 and r.json()["state"] == "cancelled", st
+        for again in ("cancel", "pause", "resume"):
+            assert client.post(f"/reviews/{rid}/{again}", headers=H).status_code == 409
+
+
+def test_queue_position(client, H, k8s):
+    a = create(client, H)["id"]
+    set_state(a, State.queued, commit_sha="d" * 40)  # not a duplicate of the next one
+    b = create(client, H)
+    assert b["queue_position"] == 2
+    assert client.get(f"/reviews/{a}", headers=H).json()["queue_position"] == 1
+    beat(client, a)
+    assert client.get(f"/reviews/{a}", headers=H).json()["queue_position"] is None
+    assert client.get(f"/reviews/{b['id']}", headers=H).json()["queue_position"] == 1
+
+
+def test_admin_force_fail(client, H, A, k8s):
+    rid = create(client, H)["id"]
+    assert client.post(f"/admin/reviews/{rid}/fail", headers=H).status_code == 403
+    r = client.post(f"/admin/reviews/{rid}/fail", headers=A)
+    assert r.status_code == 202 and r.json()["state"] == "failed" and r.json()["failure_code"] == "INTERNAL"
+    check("Review", r.json())
+    assert k8s.deleted == [f"scan-{rid}-b1-a1"]
+    assert client.post(f"/admin/reviews/{rid}/fail", headers=A).status_code == 409
+    rid2 = create(client, H)["id"]  # first one is failed (not active) -> no duplicate
+    r = client.post(f"/admin/reviews/{rid2}/fail", json={"failure_code": "SCANNER_ERROR", "failure_detail": "trivy db"},
+                    headers=A)
+    assert r.json()["failure_code"] == "SCANNER_ERROR" and r.json()["failure_detail"] == "trivy db"
+    assert client.post(f"/admin/reviews/{rid2}/fail", json={"failure_code": "NOPE"}, headers=A).status_code == 400
+
+
+def test_resume_provider_checks(client, H, A, k8s):
+    from app.models import AIProvider, ProviderKind
+    with dbmod.session_factory()() as db:
+        p = AIProvider(name="p", kind=ProviderKind.onprem, base_url="http://ollama:11434", model="m", enabled=True)
+        db.add(p)
+        db.commit()
+        pid = p.id
+    rid = client.post("/reviews", json={"repo_url": URL, "depth": "quick", "provider_id": pid}, headers=H).json()["id"]
+    client.post(f"/reviews/{rid}/pause", headers=H)
+    with dbmod.session_factory()() as db:
+        db.get(AIProvider, pid).enabled = False
+        db.commit()
+    assert client.post(f"/reviews/{rid}/resume", headers=H).status_code == 409
+    with dbmod.session_factory()() as db:
+        p = db.get(AIProvider, pid)
+        p.enabled, p.kind = True, ProviderKind.cloud
+        db.commit()
+    r = client.post(f"/reviews/{rid}/resume", headers=H)
+    assert r.status_code == 422 and r.json()["error"]["code"] == "CLOUD_ACK_REQUIRED"
+    r = client.post(f"/reviews/{rid}/resume", json={"ack_cloud": True}, headers=H)
+    assert r.status_code == 202 and r.json()["state"] == "queued"

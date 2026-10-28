@@ -11,12 +11,13 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from .. import db as dbmod
 from .. import reports, settings_store
-from ..auth import current_user, require_internal
+from ..auth import current_user, require_admin, require_internal
 from ..db import get_db
 from ..errors import ApiError, conflict, not_found
-from ..models import Outcome, Review, State, User
+from ..models import AIProvider, FailureCode, Outcome, ProviderKind, Review, State, User
 from ..service import current_attempt, end_attempt, now, start_attempt
-from ..state import ACTIVE, TERMINAL, next_attempt, transition
+from ..state import ACTIVE, TERMINAL, transition
+from ..watchdog import relaunch
 from .reviews import check_capacity, get_review, out
 
 router = APIRouter()
@@ -100,33 +101,49 @@ def list_files(id: str, request: Request, status: FileStatus | None = None, page
 
 
 # ---- reports ----------------------------------------------------------------------------------
-def _completed(r: Review):
-    if State(r.state) != State.completed:
-        raise conflict(f"report is available once the review is completed (state is {State(r.state).value})",
-                       state=State(r.state).value)
+def expired() -> ApiError:
+    return ApiError(410, "REPORT_EXPIRED", "the report was removed by retention (REPORT_RETENTION_DAYS)")
+
+
+def _report(request: Request, r: Review, kind: str):
+    """completed -> report.*; failed|cancelled -> report.partial.* when the worker left one, else 409;
+    410 REPORT_EXPIRED when the files (or the whole review dir) were removed by retention."""
+    s, st = _settings(request), State(r.state)
+    read = reports.report_json if kind == "json" else reports.report_md
+    if st == State.completed:
+        doc = read(s, r)
+        if doc is None:
+            raise expired()
+        return doc
+    if st in (State.failed, State.cancelled):
+        if reports.has_partial(s, r):
+            doc = read(s, r, partial=True)
+            if doc is not None:
+                return doc
+        if (r.files_done or r.report_path or r.started_at) and not reports.dir_exists(s, r):
+            raise expired()
+        raise conflict(f"no partial report for this {st.value} review", state=st.value)
+    raise conflict(f"report is available once the review is completed (state is {st.value})", state=st.value)
 
 
 @router.get("/reviews/{id}/report.json")
 def get_report_json(id: str, request: Request, user: User = Depends(current_user), db=Depends(get_db)):
-    r = get_review(db, id, user)
-    _completed(r)
-    rep = reports.report_json(_settings(request), r)
-    if rep is None:
-        raise not_found("report")
-    return rep
+    return _report(request, get_review(db, id, user), "json")
 
 
 @router.get("/reviews/{id}/report.md")
 def get_report_md(id: str, request: Request, user: User = Depends(current_user), db=Depends(get_db)):
-    r = get_review(db, id, user)
-    _completed(r)
-    md = reports.report_md(_settings(request), r)
-    if md is None:
-        raise not_found("report")
+    md = _report(request, get_review(db, id, user), "md")
     return PlainTextResponse(md, media_type="text/markdown; charset=utf-8")
 
 
-# ---- pause / resume / cancel -----------------------------------------------------------------
+# ---- pause / resume / cancel / admin fail ----------------------------------------------------
+def _locked(db, id: str, user: User) -> Review:
+    r = get_review(db, id, user)
+    db.refresh(r, with_for_update=True)  # serialise with the reconciler (no double Job); no-op on sqlite
+    return r
+
+
 def _delete_job(db, r: Review, jobs):
     a = current_attempt(db, r)
     if a is not None and a.job_name:
@@ -136,45 +153,85 @@ def _delete_job(db, r: Review, jobs):
 
 @router.post("/reviews/{id}/pause", status_code=202)
 def pause_review(id: str, request: Request, user: User = Depends(current_user), db=Depends(get_db)):
-    """queued|running|retrying -> paused. The worker checkpoints after every unit of work, so the Job is
+    """queued|running|retrying -> paused. The worker checkpoints after every file (atomic), so the Job is
     deleted right away; the attempt stays open and resume relaunches the same attempt from its checkpoint."""
-    r = get_review(db, id, user)
-    transition(r, State.paused)
+    r = _locked(db, id, user)
+    transition(r, State.paused, by=user.id)
     _delete_job(db, r, _jobs(request))
     db.commit()
     return JSONResponse(out(db, r), 202)
 
 
+class ResumeBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    ack_cloud: bool = False
+
+
 @router.post("/reviews/{id}/resume", status_code=202)
-def resume_review(id: str, request: Request, user: User = Depends(current_user), db=Depends(get_db)):
-    """paused|stuck -> queued with a new Job in the same budget (running on the worker's first heartbeat)."""
-    r = get_review(db, id, user)
+def resume_review(id: str, request: Request, body: ResumeBody | None = None, user: User = Depends(current_user),
+                  db=Depends(get_db)):
+    """paused -> queued: same attempt, continues from the checkpoint (does not consume an attempt).
+    stuck -> retrying: the reconciler's retry done now (attempt n+1, or failed once the budget is exhausted);
+    the row lock + state change mean the reconciler cannot launch a second Job."""
+    r = _locked(db, id, user)
     src = State(r.state)
     if src not in (State.paused, State.stuck):
         raise conflict(f"resume is only allowed from paused or stuck (state is {src.value})", state=src.value)
+    if r.provider_id:
+        p = db.get(AIProvider, r.provider_id)
+        if p is None or not p.enabled:
+            raise conflict("the review's AI provider is disabled", state=src.value, provider_id=r.provider_id)
+        if getattr(p.kind, "value", p.kind) == ProviderKind.cloud.value and not (body and body.ack_cloud):
+            raise ApiError(422, "CLOUD_ACK_REQUIRED",
+                           "provider is a cloud provider: code will leave the cluster; resend with ack_cloud=true",
+                           {"provider_id": p.id})
     check_capacity(db, settings_store.load(db))
-    if src == State.stuck:  # the stuck attempt is closed: continue with n+1 of this budget
-        n = next_attempt(r)
-        if not n:
-            raise conflict("attempt budget exhausted; use POST /reviews/{id}/retry once failed", state=src.value)
-        r.attempt = n
-    transition(r, State.queued)
-    r.paused_at = None
-    start_attempt(db, r, _jobs(request), mark_running=False)
+    jobs = _jobs(request)
+    if src == State.stuck:
+        relaunch(db, r, jobs)
+    else:
+        transition(r, State.queued)
+        start_attempt(db, r, jobs, mark_running=False)
     db.commit()
     return JSONResponse(out(db, r), 202)
 
 
 @router.post("/reviews/{id}/cancel", status_code=202)
 def cancel_review(id: str, request: Request, user: User = Depends(current_user), db=Depends(get_db)):
-    r = get_review(db, id, user)
+    """queued|running|paused|stuck|retrying -> cancelled (409 otherwise). The Job is deleted (the worker's
+    SIGTERM handler removes /work); partial results in the reports volume are kept."""
+    r = _locked(db, id, user)
     if State(r.state) not in ACTIVE:
         raise conflict(f"cannot cancel a {State(r.state).value} review", state=State(r.state).value)
     jobs = _jobs(request)
     _delete_job(db, r, jobs)
     end_attempt(db, r, Outcome.cancelled)
-    transition(r, State.cancelled)
-    jobs.cleanup(r.id)
+    transition(r, State.cancelled, by=user.id)
+    jobs.cleanup(r.id, r.budget_no)
+    db.commit()
+    return JSONResponse(out(db, r), 202)
+
+
+class ForceFail(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    failure_code: FailureCode = FailureCode.INTERNAL
+    failure_detail: str | None = Field(default=None, max_length=2000)
+
+
+@router.post("/admin/reviews/{id}/fail", status_code=202)
+def force_fail_review(id: str, request: Request, body: ForceFail | None = None,
+                      user: User = Depends(require_admin), db=Depends(get_db)):
+    """Admin: any active review -> failed (default failure_code INTERNAL). Deletes the Job; keeps partial results."""
+    body = body or ForceFail()
+    r = _locked(db, id, user)
+    if State(r.state) not in ACTIVE:
+        raise conflict(f"cannot fail a {State(r.state).value} review", state=State(r.state).value)
+    jobs = _jobs(request)
+    _delete_job(db, r, jobs)
+    detail = body.failure_detail or f"failed by admin {user.login}"
+    end_attempt(db, r, Outcome.error, detail)
+    transition(r, State.failed, code=body.failure_code, reason=detail)
+    jobs.cleanup(r.id, r.budget_no)
     db.commit()
     return JSONResponse(out(db, r), 202)
 
@@ -221,7 +278,7 @@ def worker_progress(id: str, body: WorkerProgress, request: Request, db=Depends(
         r.report_path = str(reports.review_dir(s, r.id) / "report.json")
         end_attempt(db, r, Outcome.success)
         transition(r, State.completed)
-        _jobs(request).cleanup(r.id)
+        _jobs(request).cleanup(r.id, r.budget_no)
     elif body.outcome is not None:  # error: the watchdog relaunches attempt n+1 on its next sweep
         end_attempt(db, r, Outcome.error, body.error)
     db.commit()
