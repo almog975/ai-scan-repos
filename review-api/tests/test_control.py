@@ -293,21 +293,6 @@ def test_queue_position(client, H, k8s):
     assert client.get(f"/reviews/{b['id']}", headers=H).json()["queue_position"] == 1
 
 
-def test_admin_force_fail(client, H, A, k8s):
-    rid = create(client, H)["id"]
-    assert client.post(f"/admin/reviews/{rid}/fail", headers=H).status_code == 403
-    r = client.post(f"/admin/reviews/{rid}/fail", headers=A)
-    assert r.status_code == 202 and r.json()["state"] == "failed" and r.json()["failure_code"] == "INTERNAL"
-    check("Review", r.json())
-    assert k8s.deleted == [f"scan-{rid}-b1-a1"]
-    assert client.post(f"/admin/reviews/{rid}/fail", headers=A).status_code == 409
-    rid2 = create(client, H)["id"]  # first one is failed (not active) -> no duplicate
-    r = client.post(f"/admin/reviews/{rid2}/fail", json={"failure_code": "SCANNER_ERROR", "failure_detail": "trivy db"},
-                    headers=A)
-    assert r.json()["failure_code"] == "SCANNER_ERROR" and r.json()["failure_detail"] == "trivy db"
-    assert client.post(f"/admin/reviews/{rid2}/fail", json={"failure_code": "NOPE"}, headers=A).status_code == 400
-
-
 def test_resume_provider_checks(client, H, A, k8s):
     from app.models import AIProvider, ProviderKind
     with dbmod.session_factory()() as db:
@@ -320,7 +305,9 @@ def test_resume_provider_checks(client, H, A, k8s):
     with dbmod.session_factory()() as db:
         db.get(AIProvider, pid).enabled = False
         db.commit()
-    assert client.post(f"/reviews/{rid}/resume", headers=H).status_code == 409
+    r = client.post(f"/reviews/{rid}/resume", headers=H)
+    assert r.status_code == 422 and r.json()["error"]["code"] == "VALIDATION_ERROR"
+    check("Error", r.json())
     with dbmod.session_factory()() as db:
         p = db.get(AIProvider, pid)
         p.enabled, p.kind = True, ProviderKind.cloud

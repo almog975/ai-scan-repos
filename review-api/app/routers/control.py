@@ -11,10 +11,10 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from .. import db as dbmod
 from .. import reports, settings_store
-from ..auth import current_user, require_admin, require_internal
+from ..auth import current_user, require_internal
 from ..db import get_db
 from ..errors import ApiError, conflict, not_found
-from ..models import AIProvider, FailureCode, Outcome, ProviderKind, Review, State, User
+from ..models import AIProvider, Outcome, ProviderKind, Review, State, User
 from ..service import current_attempt, end_attempt, now, start_attempt
 from ..state import ACTIVE, TERMINAL, transition
 from ..watchdog import relaunch
@@ -137,7 +137,7 @@ def get_report_md(id: str, request: Request, user: User = Depends(current_user),
     return PlainTextResponse(md, media_type="text/markdown; charset=utf-8")
 
 
-# ---- pause / resume / cancel / admin fail ----------------------------------------------------
+# ---- pause / resume / cancel ----------------------------------------------------------------
 def _locked(db, id: str, user: User) -> Review:
     r = get_review(db, id, user)
     db.refresh(r, with_for_update=True)  # serialise with the reconciler (no double Job); no-op on sqlite
@@ -180,7 +180,8 @@ def resume_review(id: str, request: Request, body: ResumeBody | None = None, use
     if r.provider_id:
         p = db.get(AIProvider, r.provider_id)
         if p is None or not p.enabled:
-            raise conflict("the review's AI provider is disabled", state=src.value, provider_id=r.provider_id)
+            raise ApiError(422, "VALIDATION_ERROR", "the review's AI provider is missing or disabled",
+                           {"provider_id": r.provider_id})
         if getattr(p.kind, "value", p.kind) == ProviderKind.cloud.value and not (body and body.ack_cloud):
             raise ApiError(422, "CLOUD_ACK_REQUIRED",
                            "provider is a cloud provider: code will leave the cluster; resend with ack_cloud=true",
@@ -207,30 +208,6 @@ def cancel_review(id: str, request: Request, user: User = Depends(current_user),
     _delete_job(db, r, jobs)
     end_attempt(db, r, Outcome.cancelled)
     transition(r, State.cancelled, by=user.id)
-    jobs.cleanup(r.id, r.budget_no)
-    db.commit()
-    return JSONResponse(out(db, r), 202)
-
-
-class ForceFail(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    failure_code: FailureCode = FailureCode.INTERNAL
-    failure_detail: str | None = Field(default=None, max_length=2000)
-
-
-@router.post("/admin/reviews/{id}/fail", status_code=202)
-def force_fail_review(id: str, request: Request, body: ForceFail | None = None,
-                      user: User = Depends(require_admin), db=Depends(get_db)):
-    """Admin: any active review -> failed (default failure_code INTERNAL). Deletes the Job; keeps partial results."""
-    body = body or ForceFail()
-    r = _locked(db, id, user)
-    if State(r.state) not in ACTIVE:
-        raise conflict(f"cannot fail a {State(r.state).value} review", state=State(r.state).value)
-    jobs = _jobs(request)
-    _delete_job(db, r, jobs)
-    detail = body.failure_detail or f"failed by admin {user.login}"
-    end_attempt(db, r, Outcome.error, detail)
-    transition(r, State.failed, code=body.failure_code, reason=detail)
     jobs.cleanup(r.id, r.budget_no)
     db.commit()
     return JSONResponse(out(db, r), 202)
