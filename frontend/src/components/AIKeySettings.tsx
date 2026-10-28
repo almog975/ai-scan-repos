@@ -1,32 +1,18 @@
-import { FormEvent, useEffect, useState } from 'react'
-import { api, PROVIDERS } from '../api'
+import { useEffect, useState } from 'react'
+import { api, ProviderPublic } from '../api'
 
+// AI providers are configured by an admin (POST /api/admin/ai-providers); users only see the public list.
 export default function AIKeySettings() {
-  const [keys, setKeys] = useState<string[]>([])
-  const [provider, setProvider] = useState('openai')
-  const [key, setKey] = useState('')
+  const [providers, setProviders] = useState<ProviderPublic[]>([])
   const [msg, setMsg] = useState('')
-  const load = () => api.listKeys().then(k => setKeys(k.map(x => x.provider))).catch(e => setMsg(e.message))
-  useEffect(() => { load() }, [])
-  async function save(e: FormEvent) {
-    e.preventDefault()
-    try { await api.putKey(provider, key); setKey(''); setMsg(`Saved key for ${provider}`); load() }
-    catch (err) { setMsg((err as Error).message) }
-  }
+  useEffect(() => { api.providers().then(setProviders).catch(e => setMsg(e.message)) }, [])
   return (
-    <form className="card" onSubmit={save} aria-label="ai keys">
-      <h2>AI provider keys</h2>
-      <p className="hint">Keys are encrypted at rest and only injected into the scan Job as a short-lived Kubernetes Secret. They are never shown again.</p>
-      <ul>{PROVIDERS.filter(p => p.id !== 'none').map(p =>
-        <li key={p.id}>{p.label}: {keys.includes(p.id) ? '✅ configured' : '— not set'}</li>)}</ul>
-      <label>Provider
-        <select value={provider} onChange={e => setProvider(e.target.value)}>
-          {PROVIDERS.filter(p => p.id !== 'none').map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
-        </select>
-      </label>
-      <label>API key<input type="password" autoComplete="off" value={key} onChange={e => setKey(e.target.value)} /></label>
-      <button type="submit" disabled={!key}>Save key</button>
+    <div className="card" aria-label="ai providers">
+      <h2>AI providers</h2>
+      <p className="hint">Providers and their keys are managed by an admin. Keys are encrypted at rest and never shown.</p>
+      <ul>{providers.map(p => <li key={p.id}>{p.name} ({p.kind === 'cloud' ? 'cloud' : 'on-prem'})</li>)}</ul>
+      {!providers.length && !msg && <p className="hint">No AI providers configured: scanners only.</p>}
       {msg && <p className="hint">{msg}</p>}
-    </form>
+    </div>
   )
 }

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { api, ApiError, Me, Review } from './api'
+import { api, LOGIN_URL, Me, Review } from './api'
 import AIKeySettings from './components/AIKeySettings'
 import NewReviewForm from './components/NewReviewForm'
 import ReportView from './components/ReportView'
@@ -13,7 +13,7 @@ export default function App() {
   const [view, setView] = useState<View>({ name: 'reviews' })
 
   useEffect(() => {
-    api.me().then(setMe).catch(e => setMe(e instanceof ApiError && e.status === 401 ? null : null))
+    api.me().then(setMe).catch(() => setMe(null))
   }, [])
   const refresh = useCallback(() => { api.listReviews().then(setReviews).catch(() => undefined) }, [])
   useEffect(() => { if (me) refresh() }, [me, refresh])
@@ -24,7 +24,7 @@ export default function App() {
     <main className="login card">
       <h1>AI Scan Repos</h1>
       <p>Security review for GitHub repositories: Semgrep, Gitleaks, Trivy + AI.</p>
-      <a className="button" href="/auth/login">Log in with GitHub</a>
+      <a className="button" href={LOGIN_URL}>Log in with GitHub</a>
     </main>)
 
   return (
@@ -33,9 +33,9 @@ export default function App() {
         <h1>AI Scan Repos</h1>
         <nav>
           <button onClick={() => setView({ name: 'reviews' })}>Reviews</button>
-          <button onClick={() => setView({ name: 'settings' })}>AI keys</button>
+          <button onClick={() => setView({ name: 'settings' })}>AI providers</button>
         </nav>
-        <span>@{me.login} <button onClick={() => api.logout().then(() => setMe(null))}>Log out</button></span>
+        <span>@{me.github_login} <button onClick={() => api.logout().then(() => setMe(null))}>Log out</button></span>
       </header>
       <main>
         {view.name === 'reviews' && <>
