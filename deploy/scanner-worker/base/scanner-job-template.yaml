@@ -12,6 +12,8 @@ data:
       namespace: ai-scan-repos
       labels: {app: scanner, review-id: "${REVIEW_ID}", attempt: "${ATTEMPT}"}
     spec:
+      # Retries are owned by the review-api reconciler (new Job scan-<id>-a<N+1>),
+      # NOT the Job controller: keep backoffLimit 0 and the 6h activeDeadlineSeconds.
       backoffLimit: 0
       ttlSecondsAfterFinished: 3600
       activeDeadlineSeconds: 21600

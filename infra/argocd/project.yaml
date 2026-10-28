@@ -1,0 +1,22 @@
+# AppProject restricting ai-scan apps to this repo and the ai-scan-repos namespace
+# (platform also creates the jenkins/argocd/monitoring/registry namespaces, hence cluster Namespace whitelist).
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: ai-scan-repos
+  namespace: argocd
+spec:
+  description: AI Scan Repos
+  sourceRepos:
+    - https://github.com/almog975/ai-scan-repos
+    - https://github.com/almog975/ai-scan-repos.git
+  destinations:
+    - {server: https://kubernetes.default.svc, namespace: ai-scan-repos}
+    - {server: https://kubernetes.default.svc, namespace: argocd}
+    - {server: https://kubernetes.default.svc, namespace: ""}
+  clusterResourceWhitelist:
+    - {group: "", kind: Namespace}
+    - {group: "", kind: PersistentVolume}
+    - {group: storage.k8s.io, kind: StorageClass}
+  namespaceResourceWhitelist:
+    - {group: "*", kind: "*"}

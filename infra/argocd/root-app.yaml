@@ -1,0 +1,20 @@
+# App-of-apps root. Reuses the Pipelines-owned child Applications in deploy/argocd-app.yaml
+# (no duplicate definitions here). Apply once: kubectl apply -f infra/argocd/
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: ai-scan-root
+  namespace: argocd
+  finalizers: [resources-finalizer.argocd.argoproj.io]
+spec:
+  project: ai-scan-repos
+  source:
+    repoURL: https://github.com/almog975/ai-scan-repos
+    targetRevision: main
+    path: deploy
+    directory:
+      recurse: false
+      include: argocd-app.yaml
+  destination: {server: https://kubernetes.default.svc, namespace: argocd}
+  syncPolicy:
+    automated: {prune: true, selfHeal: true}
