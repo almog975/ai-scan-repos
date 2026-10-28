@@ -5,7 +5,7 @@ from app.schemas import ReviewCreate, normalize_github_url
 
 
 @pytest.mark.parametrize("url,expected", [
-    ("https://github.com/almog975/FinalProject", "https://github.com/almog975/FinalProject"),
+    ("https://github.com/almog975/ai-scan-repos", "https://github.com/almog975/ai-scan-repos"),
     ("https://github.com/a/b.git", "https://github.com/a/b"),
     ("  https://github.com/a-b/c_d.e/ ", "https://github.com/a-b/c_d.e"),
 ])

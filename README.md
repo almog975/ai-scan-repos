@@ -5,7 +5,7 @@ depth; the **review-api** launches a short-lived **scanner-worker** run that clo
 **Semgrep, Gitleaks and Trivy**, optionally asks an AI model for a risk explanation + fixes, and
 writes `report.json` / `report.md` to a shared reports volume.
 
-Standalone repository (extracted from the `FinalProject` monorepo with history).
+Standalone repository for AI Scan Repos.
 The sibling project `devsecops-shop-*` holds the existing Jenkins / Helm / Argo CD / monitoring work;
 see [`../README.md`](../README.md).
 
