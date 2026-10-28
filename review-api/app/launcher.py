@@ -23,6 +23,7 @@ import yaml
 
 from .config import Settings
 
+MAX_ATTEMPTS = 5  # per budget (contract)
 log = logging.getLogger(__name__)
 SECRET_LABEL = "ai-scan-repos/per-review-secret"
 _SAFE = re.compile(r"^[A-Za-z0-9:/._@-]*$")
@@ -235,20 +236,26 @@ class KubernetesJobLauncher:
                 raise
 
     def cleanup(self, review_id: str) -> None:
-        try:
-            self.core.delete_collection_namespaced_secret(
-                namespace=self.s.k8s_namespace, label_selector=f"{SECRET_LABEL}=true,review-id={review_id}")
-        except Exception:  # noqa: BLE001 - GC via ownerReference is the fallback
-            log.warning("could not delete per-review secrets for %s", review_id)
-
+        """Delete the per-attempt AI Secrets by their known names (RBAC: secrets delete only, no list).
+        ownerReferences to the Job are the GC fallback."""
+        for n in range(1, MAX_ATTEMPTS + 1):
+            try:
+                self.core.delete_namespaced_secret(name=f"{job_name_for(review_id, n)}-ai", namespace=self.s.k8s_namespace)
+            except Exception as e:  # noqa: BLE001
+                if getattr(e, "status", None) != 404:
+                    log.warning("could not delete AI secret for %s attempt %d", review_id, n)
 
     def ready(self) -> None:
-        """readyz: the k8s API answers for our namespace (RBAC allows list jobs)."""
-        self.api.list_namespaced_job(namespace=self.s.k8s_namespace, limit=1)
+        """readyz: the k8s API answers and RBAC allows `get jobs` (a 404 for a probe name is fine)."""
+        try:
+            self.api.read_namespaced_job(name="readyz-probe", namespace=self.s.k8s_namespace)
+        except Exception as e:
+            if getattr(e, "status", None) != 404:
+                raise
 
     def status(self, job_name: str) -> str:
         try:
-            st = self.api.read_namespaced_job_status(name=job_name, namespace=self.s.k8s_namespace).status
+            st = self.api.read_namespaced_job(name=job_name, namespace=self.s.k8s_namespace).status
         except Exception as e:
             if getattr(e, "status", None) == 404:
                 return "missing"

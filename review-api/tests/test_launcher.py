@@ -8,7 +8,7 @@ import yaml
 
 from app import db as dbmod
 from app.config import Settings
-from app.launcher import JobSpec, KubernetesJobLauncher, LocalLauncher, build_job_manifest, make_launcher
+from app.launcher import job_name_for, JobSpec, KubernetesJobLauncher, LocalLauncher, build_job_manifest, make_launcher
 from app.models import Review
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -89,8 +89,8 @@ class FakeCore:
     def create_namespaced_secret(self, namespace, body):
         self.secrets.append(body)
 
-    def delete_collection_namespaced_secret(self, namespace, label_selector):
-        self.sel = label_selector
+    def delete_namespaced_secret(self, name, namespace):
+        self.deleted = getattr(self, "deleted", []) + [name]
 
 
 def test_k8s_launcher_secret_owned_and_conflict_retry():
@@ -102,8 +102,8 @@ def test_k8s_launcher_secret_owned_and_conflict_retry():
     sec = c.secrets[0]
     assert sec["metadata"]["ownerReferences"][0]["uid"] == "uid-1" and sec["stringData"] == {"AI_API_KEY": "sk"}
     k.delete(name)  # 404 ignored
-    k.cleanup(RID)
-    assert RID in c.sel
+    k.cleanup(RID)  # by known names only (RBAC has no list/deletecollection)
+    assert c.deleted == [f"{job_name_for(RID, n)}-ai" for n in range(1, 6)]
 
 
 def test_make_launcher():
@@ -153,7 +153,7 @@ def test_job_status():
         def __init__(self, res):
             self.res = res
 
-        def read_namespaced_job_status(self, name, namespace):
+        def read_namespaced_job(self, name, namespace):  # get jobs only (no jobs/status)
             if isinstance(self.res, Exception):
                 raise self.res
             return type("J", (), {"status": self.res})()
