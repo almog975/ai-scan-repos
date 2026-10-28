@@ -49,12 +49,10 @@ def test_csp_no_unsafe_script():
     assert c["default-src"] == ["'self'"]
 
 
-@pytest.mark.xfail(reason="style-src 'unsafe-inline' (nginx.conf CSP); the SPA has no inline style= so it is not needed", strict=True)
 def test_csp_no_unsafe_inline_style():
     assert "'unsafe-inline'" not in csp().get("style-src", [])
 
 
-@pytest.mark.xfail(reason="CSP lacks base-uri / form-action / object-src 'none'", strict=True)
 def test_csp_hardening_directives():
     c = csp()
     assert c.get("base-uri") in (["'self'"], ["'none'"])
@@ -62,7 +60,6 @@ def test_csp_hardening_directives():
     assert c.get("object-src") == ["'none'"]
 
 
-@pytest.mark.xfail(reason="No Permissions-Policy header (neither nginx nor Traefik permissionsPolicy)", strict=True)
 def test_permissions_policy():
     assert "permissions-policy" in headers() or "permissionsPolicy" in open(os.path.join(os.path.dirname(CONF), "..", "deploy", "platform", "base", "ingress.yaml")).read()
 
@@ -80,7 +77,6 @@ def test_hsts_at_traefik_on_all_routes():
     assert "websecure" in ING
 
 
-@pytest.mark.xfail(reason="Traefik browserXssFilter emits deprecated X-XSS-Protection: 1; mode=block (should be off/0)", strict=True)
 def test_no_legacy_xss_filter():
     assert not re.search(r"browserXssFilter:\s*true", ING)
 

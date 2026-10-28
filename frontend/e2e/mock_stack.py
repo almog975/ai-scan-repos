@@ -151,11 +151,11 @@ def make_handler(stack: Stack):
                 return self.err(404, "NOT_FOUND", "no such review")
             rid, sub = mt.group(1), mt.group(2)
             r = stack.reviews[rid]
+            if sub == "progress":  # long-lived stream: must not hold stack.lock (it would block every other call)
+                return self.sse(rid)
             with stack.lock:
                 if sub is None:
                     return self.send(200, r)
-                if sub == "progress":
-                    return self.sse(rid)
                 if m == "POST" and sub in ("pause", "resume", "cancel", "retry"):
                     allowed = {"pause": PAUSABLE, "resume": RESUMABLE, "cancel": CANCELLABLE, "retry": {"failed"}}[sub]
                     if r["state"] not in allowed:

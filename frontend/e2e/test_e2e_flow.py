@@ -1,5 +1,5 @@
 """Phase 4 e2e: login -> new review -> progress -> pause/resume -> report (+ partial).
-Runs the real built SPA against mock_stack (contract-shaped gateway). Strict xfail = not landed yet."""
+Runs the real built SPA against mock_stack (contract-shaped gateway). The strict xfails landed in Phase 4 and are now plain tests."""
 import json, urllib.request
 import pytest
 from playwright.sync_api import expect
@@ -85,6 +85,8 @@ def test_pause_resume_with_csrf(page, stack):
 def test_paused_review_stops_polling(page, stack):
     login(page)
     rid = start(page, stack)
+    mset(stack, rid, state="running")  # Planner: Pause is offered only for running
+    expect(row(page).locator(".badge")).to_have_text("running")
     row(page).get_by_role("button", name="Pause").click()
     expect(row(page).locator(".badge")).to_have_text("paused")
     n = len(stack.calls)
@@ -100,9 +102,8 @@ def test_logout(page, stack):
     expect(page.get_by_role("link", name="Log in with GitHub")).to_be_visible()
 
 
-# ---------------- not landed yet (strict xfail) ----------------
+# ---------------- landed in Phase 4 (were strict xfail) ----------------
 
-@pytest.mark.xfail(reason="UI polls GET /api/reviews every 3s; it never subscribes to SSE /api/reviews/{id}/progress", strict=True)
 def test_progress_uses_sse(page, stack):
     login(page)
     rid = start(page, stack)
@@ -111,7 +112,6 @@ def test_progress_uses_sse(page, stack):
     assert stack.sse_subscribers > 0
 
 
-@pytest.mark.xfail(reason="Report button only for completed; failed/cancelled with partial report (report.partial=true) is unreachable", strict=True)
 @pytest.mark.parametrize("final", ["failed", "cancelled"])
 def test_partial_report_reachable(page, stack, final):
     login(page)
@@ -121,7 +121,6 @@ def test_partial_report_reachable(page, stack, final):
     expect(page.get_by_text("Partial report")).to_be_visible()
 
 
-@pytest.mark.xfail(reason="No Cancel button although POST /cancel is in the contract", strict=True)
 def test_cancel_button(page, stack):
     login(page)
     rid = start(page, stack)
@@ -129,7 +128,6 @@ def test_cancel_button(page, stack):
     expect(row(page).locator(".badge")).to_have_text("cancelled")
 
 
-@pytest.mark.xfail(reason="No Retry button for failed reviews although POST /retry (budget_no+1) is in the contract", strict=True)
 def test_retry_button(page, stack):
     login(page)
     rid = start(page, stack)
@@ -139,10 +137,14 @@ def test_retry_button(page, stack):
     assert stack.reviews[rid]["budget_no"] == 2
 
 
-@pytest.mark.xfail(reason="Pause/Resume onClick has no catch: a 409 CONFLICT becomes an unhandled rejection and nothing is shown", strict=True)
 def test_pause_conflict_shows_error(page, stack):
     login(page)
     rid = start(page, stack)
-    mset(stack, rid, state="completed")  # server moved on; UI still shows Pause until next poll
+    mset(stack, rid, state="running")
+    expect(row(page).get_by_role("button", name="Pause")).to_be_visible()
+    # Race: the server moves on before the click lands (the UI follows SSE, so simulate the 409 at the network).
+    page.route("**/api/reviews/*/pause", lambda route: route.fulfill(
+        status=409, content_type="application/json",
+        body='{"error": {"code": "CONFLICT", "message": "cannot pause from completed"}, "request_id": "req-test"}'))
     row(page).get_by_role("button", name="Pause").click()
     expect(page.locator(".error")).to_be_visible(timeout=2000)
