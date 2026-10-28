@@ -1,0 +1,284 @@
+{
+ "version": "1.182.1",
+ "results": [
+  {
+   "check_id": "dockerfile.security.missing-user-entrypoint.missing-user-entrypoint",
+   "path": "Dockerfile",
+   "start": {
+    "line": 13,
+    "col": 1,
+    "offset": 166
+   },
+   "end": {
+    "line": 13,
+    "col": 22,
+    "offset": 187
+   },
+   "extra": {
+    "message": "By not specifying a USER, a program in the container may run as 'root'. This is a security hazard. If an attacker can control a process running as root, they may have control over the container. Ensure that the last USER in a Dockerfile is a USER other than 'root'.",
+    "severity": "ERROR",
+    "metadata": {
+     "cwe": [
+      "CWE-269: Improper Privilege Management"
+     ],
+     "category": "security"
+    },
+    "lines": "requires login"
+   }
+  },
+  {
+   "check_id": "dockerfile.security.missing-user.missing-user",
+   "path": "Dockerfile",
+   "start": {
+    "line": 15,
+    "col": 1,
+    "offset": 189
+   },
+   "end": {
+    "line": 15,
+    "col": 15,
+    "offset": 203
+   },
+   "extra": {
+    "message": "By not specifying a USER, a program in the container may run as 'root'. This is a security hazard. If an attacker can control a process running as root, they may have control over the container. Ensure that the last USER in a Dockerfile is a USER other than 'root'.",
+    "severity": "ERROR",
+    "metadata": {
+     "cwe": [
+      "CWE-250: Execution with Unnecessary Privileges"
+     ],
+     "category": "security"
+    },
+    "lines": "requires login"
+   }
+  },
+  {
+   "check_id": "python.flask.security.dangerous-template-string.dangerous-template-string",
+   "path": "app/app.py",
+   "start": {
+    "line": 103,
+    "col": 5,
+    "offset": 3116
+   },
+   "end": {
+    "line": 114,
+    "col": 89,
+    "offset": 3391
+   },
+   "extra": {
+    "message": "Found a template created with string formatting. This is susceptible to server-side template injection and cross-site scripting attacks.",
+    "severity": "ERROR",
+    "metadata": {
+     "cwe": [
+      "CWE-96: Improper Neutralization of Directives in Statically Saved Code ('Static Code Injection')"
+     ],
+     "category": "security"
+    },
+    "lines": "requires login"
+   }
+  },
+  {
+   "check_id": "yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag",
+   "path": ".github/workflows/zap_test.yml",
+   "start": {
+    "line": 11,
+    "col": 9,
+    "offset": 118
+   },
+   "end": {
+    "line": 11,
+    "col": 34,
+    "offset": 143
+   },
+   "extra": {
+    "message": "GitHub Actions step uses a mutable tag or branch reference. Tags and branch names can be silently repointed by the action owner, enabling supply-chain attacks \u2014 as seen in the trivy-action and kics-github-action compromises. Pin the reference to a full 40-character commit SHA instead, e.g. `uses: actions/checkout@8ade135a41bc03ea155e62e844d188df1ea18608`.",
+    "severity": "WARNING",
+    "metadata": {
+     "cwe": [
+      "CWE-1357: Reliance on Insufficiently Trustworthy Component",
+      "CWE-353: Missing Support for Integrity Check"
+     ],
+     "category": "security"
+    },
+    "lines": "requires login"
+   }
+  },
+  {
+   "check_id": "yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag",
+   "path": ".github/workflows/zap_test.yml",
+   "start": {
+    "line": 13,
+    "col": 9,
+    "offset": 186
+   },
+   "end": {
+    "line": 13,
+    "col": 38,
+    "offset": 215
+   },
+   "extra": {
+    "message": "GitHub Actions step uses a mutable tag or branch reference. Tags and branch names can be silently repointed by the action owner, enabling supply-chain attacks \u2014 as seen in the trivy-action and kics-github-action compromises. Pin the reference to a full 40-character commit SHA instead, e.g. `uses: actions/checkout@8ade135a41bc03ea155e62e844d188df1ea18608`.",
+    "severity": "WARNING",
+    "metadata": {
+     "cwe": [
+      "CWE-1357: Reliance on Insufficiently Trustworthy Component",
+      "CWE-353: Missing Support for Integrity Check"
+     ],
+     "category": "security"
+    },
+    "lines": "requires login"
+   }
+  },
+  {
+   "check_id": "yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag",
+   "path": ".github/workflows/zap_test.yml",
+   "start": {
+    "line": 49,
+    "col": 9,
+    "offset": 1921
+   },
+   "end": {
+    "line": 49,
+    "col": 44,
+    "offset": 1956
+   },
+   "extra": {
+    "message": "GitHub Actions step uses a mutable tag or branch reference. Tags and branch names can be silently repointed by the action owner, enabling supply-chain attacks \u2014 as seen in the trivy-action and kics-github-action compromises. Pin the reference to a full 40-character commit SHA instead, e.g. `uses: actions/checkout@8ade135a41bc03ea155e62e844d188df1ea18608`.",
+    "severity": "WARNING",
+    "metadata": {
+     "cwe": [
+      "CWE-1357: Reliance on Insufficiently Trustworthy Component",
+      "CWE-353: Missing Support for Integrity Check"
+     ],
+     "category": "security"
+    },
+    "lines": "requires login"
+   }
+  },
+  {
+   "check_id": "python.sqlalchemy.security.sqlalchemy-execute-raw-query.sqlalchemy-execute-raw-query",
+   "path": "dsvw.py",
+   "start": {
+    "line": 22,
+    "col": 21,
+    "offset": 14539
+   },
+   "end": {
+    "line": 22,
+    "col": 109,
+    "offset": 14627
+   },
+   "extra": {
+    "message": "Avoiding SQL string concatenation: untrusted input concatenated with raw SQL query can result in SQL Injection. In order to execute raw query safely, prepared statement should be used. SQLAlchemy provides TextualSQL to easily used prepared statement with named parameters. For complex SQL composition, use SQL Expression Language or Schema Definition Language. In most cases, SQLAlchemy ORM will be a better option.",
+    "severity": "ERROR",
+    "metadata": {
+     "cwe": [
+      "CWE-89: Improper Neutralization of Special Elements used in an SQL Command ('SQL Injection')"
+     ],
+     "category": "security"
+    },
+    "lines": "requires login"
+   }
+  },
+  {
+   "check_id": "yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag",
+   "path": ".github/workflows/tests.yml",
+   "start": {
+    "line": 17,
+    "col": 9,
+    "offset": 269
+   },
+   "end": {
+    "line": 17,
+    "col": 34,
+    "offset": 294
+   },
+   "extra": {
+    "message": "GitHub Actions step uses a mutable tag or branch reference. Tags and branch names can be silently repointed by the action owner, enabling supply-chain attacks \u2014 as seen in the trivy-action and kics-github-action compromises. Pin the reference to a full 40-character commit SHA instead, e.g. `uses: actions/checkout@8ade135a41bc03ea155e62e844d188df1ea18608`.",
+    "severity": "WARNING",
+    "metadata": {
+     "cwe": [
+      "CWE-1357: Reliance on Insufficiently Trustworthy Component",
+      "CWE-353: Missing Support for Integrity Check"
+     ],
+     "category": "security"
+    },
+    "lines": "requires login"
+   }
+  },
+  {
+   "check_id": "yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag",
+   "path": ".github/workflows/tests.yml",
+   "start": {
+    "line": 19,
+    "col": 9,
+    "offset": 304
+   },
+   "end": {
+    "line": 19,
+    "col": 38,
+    "offset": 333
+   },
+   "extra": {
+    "message": "GitHub Actions step uses a mutable tag or branch reference. Tags and branch names can be silently repointed by the action owner, enabling supply-chain attacks \u2014 as seen in the trivy-action and kics-github-action compromises. Pin the reference to a full 40-character commit SHA instead, e.g. `uses: actions/checkout@8ade135a41bc03ea155e62e844d188df1ea18608`.",
+    "severity": "WARNING",
+    "metadata": {
+     "cwe": [
+      "CWE-1357: Reliance on Insufficiently Trustworthy Component",
+      "CWE-353: Missing Support for Integrity Check"
+     ],
+     "category": "security"
+    },
+    "lines": "requires login"
+   }
+  },
+  {
+   "check_id": "synthetic.info-rule",
+   "path": "Dockerfile",
+   "start": {
+    "line": 3,
+    "col": 1
+   },
+   "end": {
+    "line": 3,
+    "col": 5
+   },
+   "extra": {
+    "message": "By not specifying a USER, a program in the container may run as 'root'. This is a security hazard. If an attacker can control a process running as root, they may have control over the container. Ensure that the last USER in a Dockerfile is a USER other than 'root'.",
+    "severity": "INFO",
+    "metadata": {
+     "cwe": [
+      "CWE-269: Improper Privilege Management"
+     ],
+     "category": "security"
+    },
+    "lines": "requires login"
+   }
+  },
+  {
+   "check_id": "dockerfile.security.missing-user-entrypoint.missing-user-entrypoint",
+   "path": "Dockerfile",
+   "start": {
+    "line": 13,
+    "col": 1,
+    "offset": 166
+   },
+   "end": {
+    "line": 13,
+    "col": 22,
+    "offset": 187
+   },
+   "extra": {
+    "message": "By not specifying a USER, a program in the container may run as 'root'. This is a security hazard. If an attacker can control a process running as root, they may have control over the container. Ensure that the last USER in a Dockerfile is a USER other than 'root'.",
+    "severity": "ERROR",
+    "metadata": {
+     "cwe": [
+      "CWE-269: Improper Privilege Management"
+     ],
+     "category": "security"
+    },
+    "lines": "requires login"
+   }
+  }
+ ],
+ "errors": []
+}

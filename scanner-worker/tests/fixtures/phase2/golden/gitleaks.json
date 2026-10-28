@@ -1,0 +1,50 @@
+[
+ {
+  "category": "secret",
+  "description": "Possible secret: Detected a Generic API Key, potentially exposing access to various services and sensitive operations.",
+  "file": "new_key",
+  "id": "253c6bcd34594fc716254d4cedb04cc1eee18a3c",
+  "line": 3,
+  "rule": "generic-api-key",
+  "secret_redacted": true,
+  "severity": "high",
+  "title": "Possible secret: Detected a Generic API Key, potentially exposing access to various services and sensitive operations.",
+  "tool": "gitleaks"
+ },
+ {
+  "category": "secret",
+  "description": "Possible secret: Identified a pattern that may indicate AWS credentials, risking unauthorized cloud resource access and data breaches on AWS platforms.",
+  "file": "new_key",
+  "id": "3a10d9ae162b62193d398a9b0fce3c94cd65dc9d",
+  "line": 2,
+  "rule": "aws-access-token",
+  "secret_redacted": true,
+  "severity": "high",
+  "title": "Possible secret: Identified a pattern that may indicate AWS credentials, risking unauthorized cloud resource access and data breaches on AWS platforms.",
+  "tool": "gitleaks"
+ },
+ {
+  "category": "secret",
+  "description": "Possible secret: Identified a Private Key, which may compromise cryptographic security and sensitive data encryption.",
+  "file": "keys",
+  "id": "40576b0537f1b7657f86b2c0f78f09eee75dde94",
+  "line": 6,
+  "rule": "private-key",
+  "secret_redacted": true,
+  "severity": "high",
+  "title": "Possible secret: Identified a Private Key, which may compromise cryptographic security and sensitive data encryption.",
+  "tool": "gitleaks"
+ },
+ {
+  "category": "secret",
+  "description": "Possible secret: Detected a Generic API Key, potentially exposing access to various services and sensitive operations.",
+  "file": "config/settings.py",
+  "id": "f2270566b53e6c65b8e1e7eb6a5f99c8fd197b36",
+  "line": 9,
+  "rule": "aws-access-token",
+  "secret_redacted": true,
+  "severity": "high",
+  "title": "Possible secret: Detected a Generic API Key, potentially exposing access to various services and sensitive operations.",
+  "tool": "gitleaks"
+ }
+]

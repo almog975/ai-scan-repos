@@ -1,0 +1,80 @@
+{
+ "SchemaVersion": 2,
+ "ArtifactName": "Vulnerable-Flask-App",
+ "Results": [
+  {
+   "Target": "app/requirements.txt",
+   "Class": "lang-pkgs",
+   "Type": "pip",
+   "Vulnerabilities": [
+    {
+     "VulnerabilityID": "CVE-2018-1000656",
+     "PkgName": "Flask",
+     "InstalledVersion": "0.12.2",
+     "FixedVersion": "0.12.3",
+     "Severity": "HIGH",
+     "Title": "python-flask: Denial of Service via crafted JSON file"
+    },
+    {
+     "VulnerabilityID": "CVE-2026-27205",
+     "PkgName": "Flask",
+     "InstalledVersion": "0.12.2",
+     "FixedVersion": "3.1.3",
+     "Severity": "LOW",
+     "Title": "flask: Flask: Information disclosure via improper caching of session data"
+    },
+    {
+     "VulnerabilityID": "CVE-2020-28493",
+     "PkgName": "Jinja2",
+     "InstalledVersion": "2.9.6",
+     "FixedVersion": "2.11.3",
+     "Severity": "MEDIUM",
+     "Title": "python-jinja2: ReDoS vulnerability in the urlize filter"
+    },
+    {
+     "VulnerabilityID": "CVE-2026-102268",
+     "PkgName": "PyJWT",
+     "InstalledVersion": "1.5.2",
+     "FixedVersion": "2.14.0",
+     "Severity": "CRITICAL",
+     "Title": "pyjwt: PyJWT: Authentication bypass via improper public key validation"
+    },
+    {
+     "VulnerabilityID": "GHSA-synt-heti-c000",
+     "PkgName": "Flask",
+     "InstalledVersion": "0.12.2",
+     "FixedVersion": "0.12.3",
+     "Severity": "UNKNOWN",
+     "Title": "python-flask: Denial of Service via crafted JSON file"
+    },
+    {
+     "VulnerabilityID": "CVE-2018-1000656",
+     "PkgName": "Flask",
+     "InstalledVersion": "0.12.2",
+     "FixedVersion": "0.12.3",
+     "Severity": "HIGH",
+     "Title": "python-flask: Denial of Service via crafted JSON file"
+    }
+   ]
+  },
+  {
+   "Target": "Dockerfile",
+   "Class": "config",
+   "Type": "dockerfile",
+   "Misconfigurations": [
+    {
+     "ID": "DS-0002",
+     "Title": "Image user should not be 'root'",
+     "Description": "Running containers with 'root' user can lead to a container escape situation. It is a best practice to run containers as non-root users, which can be done by adding a 'USER' statement to the Dockerfile.",
+     "Severity": "HIGH"
+    },
+    {
+     "ID": "DS-0026",
+     "Title": "No HEALTHCHECK defined",
+     "Description": "You should add HEALTHCHECK instruction in your docker container images to perform the health check on running containers.",
+     "Severity": "LOW"
+    }
+   ]
+  }
+ ]
+}

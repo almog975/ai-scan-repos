@@ -1,0 +1,157 @@
+[
+ {
+  "category": "sast",
+  "cwe": [
+   "CWE-89"
+  ],
+  "description": "Avoiding SQL string concatenation: untrusted input concatenated with raw SQL query can result in SQL Injection. In order to execute raw query safely, prepared statement should be used. SQLAlchemy provides TextualSQL to easily used prepared statement with named parameters. For complex SQL composition, use SQL Expression Language or Schema Definition Language. In most cases, SQLAlchemy ORM will be a better option.",
+  "file": "dsvw.py",
+  "id": "01521247812655a1098790c619b4dd40cfff0c7b",
+  "line": 22,
+  "line_end": 22,
+  "rule": "python.sqlalchemy.security.sqlalchemy-execute-raw-query.sqlalchemy-execute-raw-query",
+  "severity": "high",
+  "title": "python.sqlalchemy.security.sqlalchemy-execute-raw-query.sqlalchemy-execute-raw-query",
+  "tool": "semgrep"
+ },
+ {
+  "category": "sast",
+  "cwe": [
+   "CWE-1357",
+   "CWE-353"
+  ],
+  "description": "GitHub Actions step uses a mutable tag or branch reference. Tags and branch names can be silently repointed by the action owner, enabling supply-chain attacks \u2014 as seen in the trivy-action and kics-github-action compromises. Pin the reference to a full 40-character commit SHA instead, e.g. `uses: actions/checkout@8ade135a41bc03ea155e62e844d188df1ea18608`.",
+  "file": ".github/workflows/zap_test.yml",
+  "id": "14c4aa864c9c9082790c40fc382253517326c82e",
+  "line": 13,
+  "line_end": 13,
+  "rule": "yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag",
+  "severity": "medium",
+  "title": "yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag",
+  "tool": "semgrep"
+ },
+ {
+  "category": "sast",
+  "cwe": [
+   "CWE-269"
+  ],
+  "description": "By not specifying a USER, a program in the container may run as 'root'. This is a security hazard. If an attacker can control a process running as root, they may have control over the container. Ensure that the last USER in a Dockerfile is a USER other than 'root'.",
+  "file": "Dockerfile",
+  "id": "5cc842bd166ff054e796beeb0321a670357c01e1",
+  "line": 3,
+  "line_end": 3,
+  "rule": "synthetic.info-rule",
+  "severity": "low",
+  "title": "synthetic.info-rule",
+  "tool": "semgrep"
+ },
+ {
+  "category": "sast",
+  "cwe": [
+   "CWE-96"
+  ],
+  "description": "Found a template created with string formatting. This is susceptible to server-side template injection and cross-site scripting attacks.",
+  "file": "app/app.py",
+  "id": "6d8b003359dc32ccf0172f89ad9e7d90d4c9c3e7",
+  "line": 103,
+  "line_end": 114,
+  "rule": "python.flask.security.dangerous-template-string.dangerous-template-string",
+  "severity": "high",
+  "title": "python.flask.security.dangerous-template-string.dangerous-template-string",
+  "tool": "semgrep"
+ },
+ {
+  "category": "sast",
+  "cwe": [
+   "CWE-1357",
+   "CWE-353"
+  ],
+  "description": "GitHub Actions step uses a mutable tag or branch reference. Tags and branch names can be silently repointed by the action owner, enabling supply-chain attacks \u2014 as seen in the trivy-action and kics-github-action compromises. Pin the reference to a full 40-character commit SHA instead, e.g. `uses: actions/checkout@8ade135a41bc03ea155e62e844d188df1ea18608`.",
+  "file": ".github/workflows/tests.yml",
+  "id": "74580e6b563c058045c92301bdbadb0a65ecc7ef",
+  "line": 19,
+  "line_end": 19,
+  "rule": "yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag",
+  "severity": "medium",
+  "title": "yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag",
+  "tool": "semgrep"
+ },
+ {
+  "category": "sast",
+  "cwe": [
+   "CWE-1357",
+   "CWE-353"
+  ],
+  "description": "GitHub Actions step uses a mutable tag or branch reference. Tags and branch names can be silently repointed by the action owner, enabling supply-chain attacks \u2014 as seen in the trivy-action and kics-github-action compromises. Pin the reference to a full 40-character commit SHA instead, e.g. `uses: actions/checkout@8ade135a41bc03ea155e62e844d188df1ea18608`.",
+  "file": ".github/workflows/zap_test.yml",
+  "id": "872f068fc69e696a7f9648df48a723c575daca50",
+  "line": 49,
+  "line_end": 49,
+  "rule": "yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag",
+  "severity": "medium",
+  "title": "yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag",
+  "tool": "semgrep"
+ },
+ {
+  "category": "sast",
+  "cwe": [
+   "CWE-1357",
+   "CWE-353"
+  ],
+  "description": "GitHub Actions step uses a mutable tag or branch reference. Tags and branch names can be silently repointed by the action owner, enabling supply-chain attacks \u2014 as seen in the trivy-action and kics-github-action compromises. Pin the reference to a full 40-character commit SHA instead, e.g. `uses: actions/checkout@8ade135a41bc03ea155e62e844d188df1ea18608`.",
+  "file": ".github/workflows/zap_test.yml",
+  "id": "c7cf15103d4b71ff3fbda9aa69d0661fd2960fab",
+  "line": 11,
+  "line_end": 11,
+  "rule": "yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag",
+  "severity": "medium",
+  "title": "yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag",
+  "tool": "semgrep"
+ },
+ {
+  "category": "sast",
+  "cwe": [
+   "CWE-269"
+  ],
+  "description": "By not specifying a USER, a program in the container may run as 'root'. This is a security hazard. If an attacker can control a process running as root, they may have control over the container. Ensure that the last USER in a Dockerfile is a USER other than 'root'.",
+  "file": "Dockerfile",
+  "id": "deac360dfd0422fa163a6f8a70cdbcb6c526fa4d",
+  "line": 13,
+  "line_end": 13,
+  "rule": "dockerfile.security.missing-user-entrypoint.missing-user-entrypoint",
+  "severity": "high",
+  "title": "dockerfile.security.missing-user-entrypoint.missing-user-entrypoint",
+  "tool": "semgrep"
+ },
+ {
+  "category": "sast",
+  "cwe": [
+   "CWE-1357",
+   "CWE-353"
+  ],
+  "description": "GitHub Actions step uses a mutable tag or branch reference. Tags and branch names can be silently repointed by the action owner, enabling supply-chain attacks \u2014 as seen in the trivy-action and kics-github-action compromises. Pin the reference to a full 40-character commit SHA instead, e.g. `uses: actions/checkout@8ade135a41bc03ea155e62e844d188df1ea18608`.",
+  "file": ".github/workflows/tests.yml",
+  "id": "e21a0738b6c38810d6ee5c960811a0eea8a8958a",
+  "line": 17,
+  "line_end": 17,
+  "rule": "yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag",
+  "severity": "medium",
+  "title": "yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag",
+  "tool": "semgrep"
+ },
+ {
+  "category": "sast",
+  "cwe": [
+   "CWE-250"
+  ],
+  "description": "By not specifying a USER, a program in the container may run as 'root'. This is a security hazard. If an attacker can control a process running as root, they may have control over the container. Ensure that the last USER in a Dockerfile is a USER other than 'root'.",
+  "file": "Dockerfile",
+  "id": "f40397b18b39615078118ae8af925c61a120738c",
+  "line": 15,
+  "line_end": 15,
+  "rule": "dockerfile.security.missing-user.missing-user",
+  "severity": "high",
+  "title": "dockerfile.security.missing-user.missing-user",
+  "tool": "semgrep"
+ }
+]

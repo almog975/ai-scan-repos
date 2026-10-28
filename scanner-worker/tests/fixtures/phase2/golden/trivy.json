@@ -1,0 +1,93 @@
+[
+ {
+  "category": "dependency",
+  "cve": "CVE-2018-1000656",
+  "description": "Flask 0.12.2 -> 0.12.3",
+  "file": "app/requirements.txt",
+  "fixed_version": "0.12.3",
+  "id": "3047150de8a2fb83bb3d3088a6cf8e7232d4ce08",
+  "line": null,
+  "package": "Flask",
+  "rule": "CVE-2018-1000656:Flask",
+  "severity": "high",
+  "title": "python-flask: Denial of Service via crafted JSON file",
+  "tool": "trivy"
+ },
+ {
+  "category": "dependency",
+  "description": "Flask 0.12.2 -> 0.12.3",
+  "file": "app/requirements.txt",
+  "fixed_version": "0.12.3",
+  "id": "3c805da0bae4cdbb218720ffed8f163c1839bab4",
+  "line": null,
+  "package": "Flask",
+  "rule": "GHSA-synt-heti-c000:Flask",
+  "severity": "info",
+  "title": "python-flask: Denial of Service via crafted JSON file",
+  "tool": "trivy"
+ },
+ {
+  "category": "misconfig",
+  "description": "Running containers with 'root' user can lead to a container escape situation. It is a best practice to run containers as non-root users, which can be done by adding a 'USER' statement to the Dockerfile.",
+  "file": "Dockerfile",
+  "id": "70fb51b719695b39bba6880040b683533cf3c575",
+  "line": null,
+  "rule": "DS-0002",
+  "severity": "high",
+  "title": "Image user should not be 'root'",
+  "tool": "trivy"
+ },
+ {
+  "category": "dependency",
+  "cve": "CVE-2026-102268",
+  "description": "PyJWT 1.5.2 -> 2.14.0",
+  "file": "app/requirements.txt",
+  "fixed_version": "2.14.0",
+  "id": "8c14693a4b43d9183f5d0189f3735f69c52aef1d",
+  "line": null,
+  "package": "PyJWT",
+  "rule": "CVE-2026-102268:PyJWT",
+  "severity": "critical",
+  "title": "pyjwt: PyJWT: Authentication bypass via improper public key validation",
+  "tool": "trivy"
+ },
+ {
+  "category": "dependency",
+  "cve": "CVE-2020-28493",
+  "description": "Jinja2 2.9.6 -> 2.11.3",
+  "file": "app/requirements.txt",
+  "fixed_version": "2.11.3",
+  "id": "dd3572ed5d5c7c974bfcdc223f1bb9dccb53036f",
+  "line": null,
+  "package": "Jinja2",
+  "rule": "CVE-2020-28493:Jinja2",
+  "severity": "medium",
+  "title": "python-jinja2: ReDoS vulnerability in the urlize filter",
+  "tool": "trivy"
+ },
+ {
+  "category": "dependency",
+  "cve": "CVE-2026-27205",
+  "description": "Flask 0.12.2 -> 3.1.3",
+  "file": "app/requirements.txt",
+  "fixed_version": "3.1.3",
+  "id": "e71527fb1b8461fed1cfab1290ddec6f3a648a1f",
+  "line": null,
+  "package": "Flask",
+  "rule": "CVE-2026-27205:Flask",
+  "severity": "low",
+  "title": "flask: Flask: Information disclosure via improper caching of session data",
+  "tool": "trivy"
+ },
+ {
+  "category": "misconfig",
+  "description": "You should add HEALTHCHECK instruction in your docker container images to perform the health check on running containers.",
+  "file": "Dockerfile",
+  "id": "f35949b39b101c87cceef5df7b629e77daa3f0ca",
+  "line": null,
+  "rule": "DS-0026",
+  "severity": "low",
+  "title": "No HEALTHCHECK defined",
+  "tool": "trivy"
+ }
+]
