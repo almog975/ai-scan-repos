@@ -18,14 +18,14 @@ import sys
 import tempfile
 from pathlib import Path
 
-from .ai_client import DEFAULT_MODELS, ONPREM, AIClient
+from .ai_client import DEFAULT_MODELS, AIClient, parse_ai_json
 from .health import STAGE
 from .api_client import ReviewAPI, Superseded
 from .checkpoint import (Checkpoint, atomic_write_json, atomic_write_text, attempt_dir, now, previous_attempts,
                          review_dir)
 from .config import WorkerConfig
 from .report import build_report, top_findings, write_report
-from .tools import SCANNERS, make_finding, run_scanner, tool_versions
+from .tools import SCANNERS, SEV_ORDER, make_finding, run_scanner, tool_versions
 
 log = logging.getLogger("scanner")
 CODE_EXT = {".py", ".js", ".ts", ".tsx", ".jsx", ".go", ".java", ".rb", ".php", ".cs", ".rs", ".kt", ".c", ".cpp",
@@ -33,6 +33,58 @@ CODE_EXT = {".py", ".js", ".ts", ".tsx", ".jsx", ".go", ".java", ".rb", ".php", 
 SKIP_DIRS = {".git", "node_modules", "vendor", "dist", "build", ".venv", "venv", "__pycache__"}
 STAGE_PCT = {"start": 0, "clone": 5, "semgrep": 20, "gitleaks": 35, "trivy": 50, "ai": 50, "report": 100, "done": 100}
 BRIEF_TOP = 10
+
+
+BRIEF_JSON_HINT = ('Answer in Markdown, then end with one line of JSON exactly like '
+                   '{"ai_severity": "critical|high|medium|low|info", "confidence": 0.0-1.0, "ai_fix": "<markdown fix>"}')
+DEEP_JSON_HINT = ('Answer in Markdown, then end with one line of JSON: {"findings": [{"id": "<finding id>", '
+                  '"ai_severity": "critical|high|medium|low|info", "confidence": 0.0-1.0, "ai_fix": "<markdown>"}]}')
+UNSTRUCTURED_CONFIDENCE = 0.5  # docs/severity-mapping.md: AI answered without the JSON line
+
+
+def _findings_with_ids(findings) -> str:
+    return "\n".join(f"- id={f['id']} [{f['severity']}] {f['tool']} {f['rule']} line {f.get('line') or '-'}"
+                     for f in findings) or "(no scanner findings)"
+
+
+def _mask_secret_lines(code: str, related: list[dict]) -> str:
+    lines = {f["line"] for f in related if f["tool"] == "gitleaks" and f.get("line")}
+    if not lines:
+        return code
+    out = code.splitlines()
+    for n in lines:
+        if 0 < n <= len(out):
+            out[n - 1] = "[line redacted: possible secret]"
+    return "\n".join(out)
+
+
+def _ai_fields(j: dict, fallback_sev: str) -> dict:
+    sev = str(j.get("ai_severity") or "").lower()
+    conf = j.get("confidence")
+    conf = min(max(float(conf), 0.0), 1.0) if isinstance(conf, (int, float)) and not isinstance(conf, bool) else None
+    fix = j.get("ai_fix") if isinstance(j.get("ai_fix"), str) and j.get("ai_fix").strip() else None
+    return {"ai_severity": sev if sev in SEV_ORDER else fallback_sev,
+            "confidence": UNSTRUCTURED_CONFIDENCE if conf is None else conf, "ai_fix": fix}
+
+
+def _enrich(f: dict, ans: str) -> dict:
+    """Brief: ai_explanation + ai_fix/confidence/ai_severity. The original `severity` is never changed."""
+    text, j = parse_ai_json(ans)
+    fields = _ai_fields(j or {}, f["severity"])
+    if fields["ai_fix"] is None:
+        fields["ai_fix"] = text  # unstructured answer: the Markdown itself carries the fix
+    return {**f, "ai_explanation": text, **fields}
+
+
+def _enrich_from_file_review(related: list[dict], ans: str) -> list[dict]:
+    """Deep: per-finding AI fields from the file review's JSON line (only findings it mentions)."""
+    _, j = parse_ai_json(ans)
+    by_id = {x.get("id"): x for x in (j or {}).get("findings", []) if isinstance(x, dict)}
+    out = []
+    for f in related:
+        if f["id"] in by_id:
+            out.append({**f, **_ai_fields(by_id[f["id"]], f["severity"])})
+    return out
 
 
 class Paused(Exception):
@@ -73,6 +125,8 @@ def _findings_text(findings) -> str:
 
 
 def _context(src: Path, f: dict) -> str:
+    if f["tool"] == "gitleaks":  # never send the secret: only the masked snippet
+        return "```\n" + f["snippet"] + "\n```" if f.get("snippet") else ""
     p = src / f["file"]
     if not f.get("line") or not p.is_file() or not p.resolve().is_relative_to(src.resolve()):
         return ""
@@ -91,6 +145,7 @@ class Worker:
                              depth=cfg.depth, commit_sha=cfg.commit_sha or None)
         self.files: list[str] = []
         self.started_at = now()
+        self._ai_degraded = False
 
     # ---- progress ------------------------------------------------------------------------
     def _progress_doc(self, current=None, state="running") -> dict:
@@ -180,9 +235,13 @@ class Worker:
     # ---- AI --------------------------------------------------------------------------------
     def _ask(self, prompt: str) -> str | None:
         try:
+            if self._ai_degraded and hasattr(self.ai, "complete_once"):
+                return self.ai.complete_once(prompt)  # provider already failed after retries: don't hammer it
             return self.ai.complete(prompt)
         except Exception as exc:  # noqa: BLE001
-            (self.cp.dir / "logs" / "ai.log").open("a").write(f"{now()} {str(exc)[:300]}\n")
+            self._ai_degraded = True
+            with (self.cp.dir / "logs" / "ai.log").open("a") as fh:
+                fh.write(f"{now()} {type(exc).__name__}: {str(exc)[:300]}\n")
             return None
 
     def _ai_phase(self, src: Path):
@@ -199,10 +258,11 @@ class Worker:
                     continue
                 self._beat("ai", current=rel)
                 related = [f for f in findings if f["file"] == rel and f["tool"] != "ai"]
-                code = (src / rel).read_text(errors="replace")
+                code = _mask_secret_lines((src / rel).read_text(errors="replace"), related)
                 ans = self._ask(f"Review file `{rel}` for security issues.\nScanner findings:\n"
-                                f"{_findings_text(related)}\n\n```\n{code}\n```")
+                                f"{_findings_with_ids(related)}\n\n```\n{code}\n```\n\n{DEEP_JSON_HINT}")
                 if ans:
+                    self.cp.append_findings(_enrich_from_file_review(related, ans))
                     self.cp.append_findings([make_finding("ai", "ai_review", "ai.file_review", "info", rel, None,
                                                           f"AI review of {rel}", ans, ai_explanation=ans)])
                 cur["files_done"].append(rel)  # checkpoint after each file
@@ -212,9 +272,9 @@ class Worker:
                 if f.get("ai_explanation"):
                     continue  # enriched by an earlier attempt
                 ans = self._ask(f"Explain the risk and give a concrete fix for this finding in {cfg.repo_url}:\n"
-                                f"{_findings_text([f])}\n{_context(src, f)}")
+                                f"{_findings_text([f])}\n{_context(src, f)}\n\n{BRIEF_JSON_HINT}")
                 if ans:
-                    self.cp.append_findings([{**f, "ai_explanation": ans}])  # same id: last record wins
+                    self.cp.append_findings([_enrich(f, ans)])  # same id: last record wins
                 self._beat("ai", 50 + 4 * len([x for x in self.cp.findings() if x.get("ai_explanation")]))
         if not self.cp.summary_path.is_file():
             top = top_findings(self.cp.findings(), 30 if cfg.depth == "quick" else BRIEF_TOP)
@@ -225,16 +285,16 @@ class Worker:
 
     def _report(self) -> dict:
         prov = None
-        if self.ai:
-            prov = {"name": self.ai.provider, "model": self.ai.model,
-                    "kind": "onprem" if self.ai.provider in ONPREM else "cloud"}
+        if self.ai:  # kind = DB provider row's kind (AI_KIND), never derived from the adapter name
+            prov = {"name": getattr(self.ai, "name", "") or self.ai.provider, "model": self.ai.model or "unknown",
+                    "kind": "cloud" if getattr(self.ai, "is_cloud", True) else "onprem"}
         summary = self.cp.summary_path.read_text() if self.cp.summary_path.is_file() else None
         return build_report(review_id=self.cfg.review_id, repo_url=self.cfg.repo_url,
                             commit_sha=self.cp.state["commit_sha"], ref=self.cfg.ref or None, depth=self.cfg.depth,
                             attempt=self.cfg.attempt, budget_no=self.cfg.budget_no, started_at=self.started_at,
                             finished_at=now(), findings=self.cp.findings(), provider=prov,
                             executive_summary=summary, files_scanned=len(self.files),
-                            tool_versions=tool_versions())
+                            tool_versions=tool_versions(), private=self.cfg.repo_private)
 
 
 def make_ai(cfg: WorkerConfig) -> AIClient | None:
@@ -242,7 +302,8 @@ def make_ai(cfg: WorkerConfig) -> AIClient | None:
         return None
     try:
         model = cfg.ai_model or DEFAULT_MODELS.get(cfg.ai_provider, "")
-        return AIClient(cfg.ai_provider, model, cfg.ai_api_key, cfg.ai_base_url)
+        return AIClient(cfg.ai_provider, model, cfg.ai_api_key, cfg.ai_base_url, kind=cfg.ai_kind,
+                        name=cfg.ai_provider_name)
     except ValueError as exc:
         log.warning("AI disabled: %s", exc)
         return None

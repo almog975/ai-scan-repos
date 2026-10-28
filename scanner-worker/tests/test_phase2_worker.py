@@ -16,12 +16,16 @@ from tests.test_worker import RID, FakeAPI, cfg, fake_clone, fake_scanner
 
 KEY = "sk-test-SUPERSECRET-0123456789abcdef"
 PROVIDERS = [("openai_compatible", "/chat/completions"), ("ollama", "/chat/completions"),
-             ("azure_openai", "/chat/completions"), ("openai", "/chat/completions"), ("grok", "/chat/completions"),
+             ("azure_openai", "/chat/completions"), ("openai", "/chat/completions"),
              ("groq", "/chat/completions"), ("mistral", "/chat/completions"), ("anthropic", "/messages"),
              ("gemini", ":generateContent")]
 
 
+ONPREM_ROWS = ("openai_compatible", "ollama")  # kind of the (simulated) DB provider row, sent as AI_KIND
+
+
 def ai_cfg(tmp_path, mock, provider="openai_compatible", depth="quick", **kw):
+    kw.setdefault("ai_kind", "onprem" if provider in ONPREM_ROWS else "cloud")
     return dataclasses.replace(cfg(tmp_path, depth), ai_provider=provider, ai_model="m", ai_base_url=mock.url,
                                ai_api_key=KEY, **kw)
 
@@ -50,13 +54,14 @@ def test_worker_uses_mock_ai_for_every_provider_kind(tmp_path, provider, suffix)
     with MockAI() as m:
         c, api = ai_cfg(tmp_path, m, provider), FakeAPI()
         _, out = run(c, api=api)
-    assert out == "completed" and len(m.requests) == 1 and m.requests[0]["path"].endswith(suffix)
+    assert out == "completed" and len(m.requests) == 1 and m.requests[0]["path"].split("?")[0].endswith(suffix)
     rep = report(c)
     check("report.schema.json", rep)
     assert rep["executive_summary"] == "mock answer #1"
     assert rep["provider"]["kind"] == ("onprem" if provider in ("openai_compatible", "ollama") else "cloud")
     h = m.requests[0]["headers"]
-    sent = {"anthropic": h.get("x-api-key"), "gemini": h.get("x-goog-api-key")}.get(provider, h.get("authorization"))
+    sent = {"anthropic": h.get("x-api-key"), "gemini": h.get("x-goog-api-key"),
+            "azure_openai": h.get("api-key")}.get(provider, h.get("authorization"))
     assert sent in (KEY, f"Bearer {KEY}")
     assert KEY not in m.requests[0]["path"] and KEY not in m.requests[0]["body"]  # only in the auth header
     assert_no_key(c, api)
@@ -85,8 +90,6 @@ def test_ai_unreachable_server_still_reports(tmp_path):
 
 
 @pytest.mark.parametrize("code", [429, 503])
-@pytest.mark.xfail(strict=True, reason="no retry/backoff for transient AI errors (429/5xx): Worker._ask logs once "
-                                       "and gives up")
 def test_ai_transient_error_is_retried(tmp_path, code):
     with MockAI(plan=[code]) as m:
         c = ai_cfg(tmp_path, m)

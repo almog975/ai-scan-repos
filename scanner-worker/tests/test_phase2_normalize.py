@@ -35,7 +35,6 @@ def test_golden_matches(tool):
     assert got == want
 
 
-@pytest.mark.xfail(strict=True, reason=INFO_GAP)
 def test_golden_semgrep_info_record():
     got, want = _cmp("semgrep", skip_info=False)
     assert got == want
@@ -72,8 +71,7 @@ TRIVY_CASES = [("CRITICAL", "critical"), ("HIGH", "high"), ("MEDIUM", "medium"),
                ("UNKNOWN", "info"), ("bogus", "info")]
 
 
-@pytest.mark.parametrize("raw,want", [pytest.param(r, w, marks=pytest.mark.xfail(strict=True, reason=INFO_GAP))
-                                      if r == "INFO" else (r, w) for r, w in SEMGREP_CASES])
+@pytest.mark.parametrize("raw,want", SEMGREP_CASES)
 def test_semgrep_severity_mapping(raw, want):
     data = {"results": [{"check_id": "r", "path": "a.py", "start": {"line": 1}, "end": {"line": 1},
                          "extra": {"severity": raw, "message": "m"}}]}
@@ -142,9 +140,6 @@ def _capture(name, src, stdout="{}"):
     return runner, seen
 
 
-@pytest.mark.xfail(strict=True, reason="semgrep exits 2 'Cannot create auto config when metrics are off' "
-                                       "(verified with semgrep 1.182.1): tools.py passes --config auto + --metrics off, "
-                                       "so real semgrep never yields findings")
 def test_semgrep_cmd_is_runnable(tmp_path):
     runner, seen = _capture("semgrep", tmp_path)
     run_scanner("semgrep", tmp_path, 10, runner=runner, which=lambda n: True)
@@ -153,10 +148,7 @@ def test_semgrep_cmd_is_runnable(tmp_path):
 
 
 @pytest.mark.parametrize("tool", [
-    pytest.param("semgrep", marks=pytest.mark.xfail(strict=True, reason="semgrep/gitleaks report paths under the "
-                 "absolute temp clone dir; finding.file (and thus id) is not repo-relative -> unstable across attempts")),
-    pytest.param("gitleaks", marks=pytest.mark.xfail(strict=True, reason="same: gitleaks File is absolute")),
-    "trivy"])
+    "semgrep", "gitleaks", "trivy"])
 def test_finding_file_is_repo_relative(tmp_path, tool):
     src = tmp_path / "src-x" / "repo"
     out = {"semgrep": {"results": [{"check_id": "r", "path": f"{src}/app/a.py", "start": {"line": 1},

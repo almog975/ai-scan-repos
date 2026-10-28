@@ -8,6 +8,9 @@ from .checkpoint import atomic_write_json, atomic_write_text
 from .tools import SEV_ORDER
 
 
+NO_AI_PROVIDER = {"name": "none", "kind": "onprem", "model": "none"}  # report.provider is required
+
+
 def sev_key(f: dict):
     return (SEV_ORDER.index(f["severity"]), f["file"], f["line"] or 0, f["id"])
 
@@ -17,15 +20,18 @@ def top_findings(findings: list[dict], n: int) -> list[dict]:
 
 
 def build_report(*, review_id, repo_url, commit_sha, ref, depth, attempt, budget_no, started_at, finished_at,
-                 findings, provider=None, executive_summary=None, files_scanned=0, tool_versions=None) -> dict:
+                 findings, provider=None, executive_summary=None, files_scanned=0, tool_versions=None,
+                 private=None) -> dict:
     findings = sorted(findings, key=sev_key)
     counts = Counter(f["severity"] for f in findings)
     rep = {"schema": "report/v1", "review_id": review_id,
            "repo": {"url": repo_url, "commit_sha": commit_sha, "ref": ref},
-           "depth": depth, "provider": provider, "started_at": started_at, "finished_at": finished_at,
+           "depth": depth, "provider": provider or dict(NO_AI_PROVIDER), "started_at": started_at, "finished_at": finished_at,
            "attempt": attempt, "budget_no": budget_no,
            "summary": {**{s: counts.get(s, 0) for s in SEV_ORDER}, "files_scanned": files_scanned},
            "executive_summary": executive_summary, "findings": findings}
+    if private is not None:
+        rep["repo"]["private"] = bool(private)
     if tool_versions:
         rep["tool_versions"] = tool_versions
     return rep
@@ -58,7 +64,7 @@ def render_markdown(rep: dict) -> str:
               f" | commit: `{repo.get('commit_sha') or '-'}`{vis}",
               f"- attempt {rep['budget_no']}-{rep['attempt']} | started: {rep['started_at']} | finished: {rep['finished_at']}",
               f"- AI provider: **{prov.get('name') or 'none'}**"
-              + (f" | model: `{prov['model']}`" if prov.get("model") else "")
+              + (f" | model: `{prov['model']}`" if prov.get("model") and prov.get("name") != "none" else "")
               + ("" if cloud else f" {ONPREM_NOTE}"),
               "", "## Summary", "",
               "| critical | high | medium | low | info | files scanned |", "|---|---|---|---|---|---|",

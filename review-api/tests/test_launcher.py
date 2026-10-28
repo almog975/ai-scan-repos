@@ -165,3 +165,16 @@ def test_job_status():
     assert KubernetesJobLauncher(s, Api(St(f=1)), object()).status("j") == "failed"
     assert KubernetesJobLauncher(s, Api(St()), object()).status("j") == "active"
     assert KubernetesJobLauncher(s, Api(E()), object()).status("j") == "missing"
+
+
+def test_repo_private_from_github_check_reaches_worker_env():
+    """repo.private in report.json comes from the GitHub /repos check stored on the review (REPO_PRIVATE)."""
+    from types import SimpleNamespace
+
+    from app.launcher import JobSpec, contract_env
+    r = SimpleNamespace(id="r1", attempt=1, budget_no=1, depth="quick", repo_url="https://github.com/o/r",
+                        commit_sha=None, ref="main", repo_private=True)
+    env = {e["name"]: e["value"] for e in contract_env(JobSpec.of(r))}
+    assert env["REPO_PRIVATE"] == "true"
+    r.repo_private = False
+    assert {e["name"]: e["value"] for e in contract_env(JobSpec.of(r))}["REPO_PRIVATE"] == "false"

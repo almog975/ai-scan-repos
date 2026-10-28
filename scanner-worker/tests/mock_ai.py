@@ -24,7 +24,7 @@ class MockAI:
                 text = f"mock answer #{n}"
                 if code != 200:
                     payload = {"error": {"message": f"mock error {code}"}}
-                elif self.path.endswith("/chat/completions"):
+                elif self.path.split("?")[0].endswith("/chat/completions"):  # azure adds ?api-version=
                     payload = {"choices": [{"message": {"role": "assistant", "content": text}}]}
                 elif self.path.endswith("/messages"):
                     payload = {"content": [{"type": "text", "text": text}]}

@@ -247,10 +247,12 @@ def test_make_ai(tmp_path):
     assert make_ai(c) is None
     c.ai_provider, c.ai_model, c.ai_base_url = "ollama", "llama3", "http://ollama:11434/v1"
     ai = make_ai(c)
-    assert ai.base_url == "http://ollama:11434/v1" and not ai.is_cloud
-    c.ai_provider, c.ai_model, c.ai_base_url = "anthropic", "", ""
+    assert ai.base_url == "http://ollama:11434/v1" and ai.is_cloud  # no AI_KIND -> cloud (safe side)
+    c.ai_kind = "onprem"
+    assert not make_ai(c).is_cloud
+    c.ai_provider, c.ai_model, c.ai_base_url, c.ai_kind = "anthropic", "", "", "cloud"
     assert make_ai(c).model and make_ai(c).is_cloud
-    c.ai_provider = "bedrock"  # unsupported by the httpx client -> AI skipped, scan continues
+    c.ai_provider = "bedrock"  # removed adapter -> AI skipped, scan continues
     assert make_ai(c) is None
 
 

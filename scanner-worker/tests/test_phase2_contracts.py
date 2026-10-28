@@ -114,7 +114,6 @@ GAP_AI_FIELDS = ("brief/deep AI enrichment only fills ai_explanation; ai_fix / c
 
 
 @pytest.mark.parametrize("field", ["ai_fix", "confidence", "ai_severity"])
-@pytest.mark.xfail(strict=True, reason=GAP_AI_FIELDS)
 def test_brief_enrichment_populates_ai_fields(tmp_path, field):
     with MockAI() as m:
         c = ai_cfg(tmp_path, m, "openai_compatible", "brief")
@@ -135,8 +134,6 @@ def test_ai_never_changes_original_severity(tmp_path):
             assert f["severity"] == orig[f["id"]]
 
 
-@pytest.mark.xfail(strict=True, reason="report.repo.private (contract 7c00f77) is never written by the worker; "
-                                       "it has no token-clone path to know it")
 def test_report_repo_private_present(tmp_path):
     c = cfg(tmp_path)
     Worker(c, FakeAPI(), None, scanner_fn=fake_scanner, clone_fn=fake_clone).run()

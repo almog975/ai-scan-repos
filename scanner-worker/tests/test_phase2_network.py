@@ -16,7 +16,6 @@ from tests.test_worker import RID, FakeAPI, cfg
 pytestmark = [pytest.mark.network,
               pytest.mark.skipif(os.environ.get("AISCAN_NETWORK_TESTS") != "1", reason="set AISCAN_NETWORK_TESTS=1")]
 REPOS = p2("vulnerable_repos.json")["repos"]
-SEMGREP_GAP = pytest.mark.xfail(strict=True, reason="tools.py runs semgrep with --config auto --metrics off -> exit 2")
 
 
 @pytest.fixture(scope="module")
@@ -36,8 +35,6 @@ def cases():
         for k, n in r["expect"].items():
             tool = k.split("_")[0]
             marks = [pytest.mark.skipif(not shutil.which(tool), reason=f"{tool} not installed")]
-            if tool == "semgrep":
-                marks.append(SEMGREP_GAP)
             yield pytest.param(r["name"], k, n, marks=marks, id=f"{r['name']}-{k}")
 
 
@@ -64,9 +61,7 @@ def test_report_valid_pinned_and_clone_removed(scans, repo):
         assert rep["summary"][s] == sum(1 for f in rep["findings"] if f["severity"] == s)
 
 
-@pytest.mark.parametrize("repo", [pytest.param(r["name"], marks=pytest.mark.xfail(
-    strict=True, reason="gitleaks findings carry the absolute temp clone path in `file` (semgrep too, once it runs)"))
-    if "gitleaks_min" in r["expect"] else r["name"] for r in REPOS])
+@pytest.mark.parametrize("repo", [r["name"] for r in REPOS])
 def test_real_findings_are_repo_relative(scans, repo):
     _, rep = scans[repo]
     bad = [f["file"] for f in rep["findings"] if f["file"].startswith("/")]
