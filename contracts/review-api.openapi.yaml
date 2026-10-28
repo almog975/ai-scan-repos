@@ -262,6 +262,8 @@ paths:
     get:
       operationId: listReviewAttempts
       description: All review_attempts rows across budgets (not paginated; max 5 per budget).
+      parameters:
+        - {name: budget_no, in: query, required: false, schema: {type: integer, minimum: 1}, description: Only attempts of this retry budget}
       responses:
         '200': {description: OK, content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/ReviewAttempt'}}}}}
         '401': {$ref: '#/components/responses/Unauthorized'}
