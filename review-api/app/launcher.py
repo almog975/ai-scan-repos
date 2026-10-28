@@ -2,7 +2,7 @@
 
 Kubernetes: the Job is rendered from Infra's `scanner-job-template` ConfigMap (mounted file
 SCANNER_JOB_TEMPLATE, placeholders ${REVIEW_ID} ${ATTEMPT} ${DEPTH} ${REPO_URL} ${IMAGE}); review-api then
-enforces the contract fields: name scan-<id>-a<attempt>, labels app=scanner/review-id/attempt/budget-no,
+enforces the contract fields: name scan-<id>-b<budget>-a<attempt>, labels app=scanner/review-id/attempt/budget-no,
 activeDeadlineSeconds 21600, backoffLimit 0, the `reports` PVC, env DEPTH/REVIEW_ID/ATTEMPT/BUDGET_NO/COMMIT_SHA,
 and a pinned image (`:latest` rejected).
 Secrets are never put in args or the Job spec: the per-review AI key goes into a Secret owned by the Job.
@@ -51,14 +51,14 @@ class JobLauncher(Protocol):
 
     def delete(self, job_name: str) -> None: ...
 
-    def cleanup(self, review_id: str) -> None: ...
+    def cleanup(self, review_id: str, budget_no: int = 1) -> None: ...
 
     def status(self, job_name: str) -> str: ...  # active | succeeded | failed | missing
 
 
-def job_name_for(review_id: str, attempt: int) -> str:
-    """Deterministic: scan-<reviewId>-a<attempt> (idempotent create; <= 63 chars for a uuid)."""
-    return f"scan-{review_id}-a{attempt}"[:63].rstrip("-")
+def job_name_for(review_id: str, attempt: int, budget_no: int = 1) -> str:
+    """Deterministic: scan-<reviewId>-b<budget>-a<attempt> (idempotent create; 47 chars for a uuid, <= 63)."""
+    return f"scan-{review_id}-b{budget_no}-a{attempt}"[:63].rstrip("-")
 
 
 def check_image(image: str) -> None:
@@ -90,7 +90,7 @@ def render_template(text: str, s: Settings, spec: JobSpec) -> dict:
 
 def build_job_manifest(s: Settings, spec: JobSpec, ai_secret: str | None = None) -> dict:
     check_image(s.scanner_image)
-    name = job_name_for(spec.review_id, spec.attempt)
+    name = job_name_for(spec.review_id, spec.attempt, spec.budget_no)
     if s.scanner_job_template:
         with open(s.scanner_job_template) as f:
             m = render_template(f.read(), s, spec)
@@ -158,7 +158,7 @@ class LocalLauncher:
         self.procs: dict[str, object] = {}
 
     def launch(self, spec: JobSpec, secret_env: dict[str, str] | None = None) -> str:
-        name = job_name_for(spec.review_id, spec.attempt)
+        name = job_name_for(spec.review_id, spec.attempt, spec.budget_no)
         self.launched.append((spec.review_id, spec.attempt))
         cmd = shlex.split(self.s.local_worker_cmd) + ["--review-id", spec.review_id]
         env = {**os.environ, **{e["name"]: e["value"] for e in contract_env(spec)},
@@ -176,7 +176,7 @@ class LocalLauncher:
         if p is not None and hasattr(p, "terminate"):
             p.terminate()
 
-    def cleanup(self, review_id: str) -> None:
+    def cleanup(self, review_id: str, budget_no: int = 1) -> None:
         pass
 
     def status(self, job_name: str) -> str:
@@ -210,7 +210,7 @@ class KubernetesJobLauncher:
                 self.sleep(2)
 
     def launch(self, spec: JobSpec, secret_env: dict[str, str] | None = None) -> str:
-        name = job_name_for(spec.review_id, spec.attempt)
+        name = job_name_for(spec.review_id, spec.attempt, spec.budget_no)
         sec = f"{name}-ai" if secret_env else None
         job = self._create(build_job_manifest(self.s, spec, sec))
         if secret_env:
@@ -238,15 +238,17 @@ class KubernetesJobLauncher:
             if getattr(e, "status", None) != 404:
                 raise
 
-    def cleanup(self, review_id: str) -> None:
+    def cleanup(self, review_id: str, budget_no: int = 1) -> None:
         """Delete the per-attempt AI Secrets by their known names (RBAC: secrets delete only, no list).
         ownerReferences to the Job are the GC fallback."""
-        for n in range(1, MAX_ATTEMPTS + 1):
-            try:
-                self.core.delete_namespaced_secret(name=f"{job_name_for(review_id, n)}-ai", namespace=self.s.k8s_namespace)
-            except Exception as e:  # noqa: BLE001
-                if getattr(e, "status", None) != 404:
-                    log.warning("could not delete AI secret for %s attempt %d", review_id, n)
+        for b in range(1, budget_no + 1):
+            for n in range(1, MAX_ATTEMPTS + 1):
+                try:
+                    self.core.delete_namespaced_secret(name=f"{job_name_for(review_id, n, b)}-ai",
+                                                       namespace=self.s.k8s_namespace)
+                except Exception as e:  # noqa: BLE001
+                    if getattr(e, "status", None) != 404:
+                        log.warning("could not delete AI secret for %s budget %d attempt %d", review_id, b, n)
 
     def ready(self) -> None:
         """readyz: the k8s API answers and RBAC allows `get jobs` (a 404 for a probe name is fine)."""

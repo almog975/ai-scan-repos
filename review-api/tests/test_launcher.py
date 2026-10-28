@@ -25,7 +25,7 @@ def env(c):
 def test_manifest_contract(template, tmp_path):
     s = Settings(scanner_job_template=template, scanner_image="reg/ai-scan/scanner-worker:abc123")
     m = build_job_manifest(s, SPEC, ai_secret="scan-x-ai")
-    assert m["metadata"]["name"] == f"scan-{RID}-a2" and len(m["metadata"]["name"]) <= 63
+    assert m["metadata"]["name"] == f"scan-{RID}-b3-a2" and len(m["metadata"]["name"]) <= 63
     assert m["metadata"]["labels"] == {"app": "scanner", "review-id": RID, "attempt": "2", "budget-no": "3"}
     assert m["spec"]["activeDeadlineSeconds"] == 21600 and m["spec"]["backoffLimit"] == 0
     pod = m["spec"]["template"]["spec"]
@@ -104,6 +104,9 @@ def test_k8s_launcher_secret_owned_and_conflict_retry():
     k.delete(name)  # 404 ignored
     k.cleanup(RID)  # by known names only (RBAC has no list/deletecollection)
     assert c.deleted == [f"{job_name_for(RID, n)}-ai" for n in range(1, 6)]
+    c.deleted.clear()
+    k.cleanup(RID, 2)
+    assert c.deleted == [f"{job_name_for(RID, n, b)}-ai" for b in (1, 2) for n in range(1, 6)]
 
 
 def test_make_launcher():

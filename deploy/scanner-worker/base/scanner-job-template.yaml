@@ -1,4 +1,4 @@
-# Placeholders: ${REVIEW_ID} ${ATTEMPT} ${DEPTH} ${REPO_URL} ${IMAGE}
+# Placeholders: ${REVIEW_ID} ${BUDGET_NO} ${ATTEMPT} ${DEPTH} ${REPO_URL} ${IMAGE}
 # ${IMAGE} <- review-api env SCANNER_IMAGE (ConfigMap scanner-image, generated per overlay)
 apiVersion: v1
 kind: ConfigMap
@@ -8,18 +8,18 @@ data:
     apiVersion: batch/v1
     kind: Job
     metadata:
-      name: scan-${REVIEW_ID}-a${ATTEMPT}
+      name: scan-${REVIEW_ID}-b${BUDGET_NO}-a${ATTEMPT}
       namespace: ai-scan-repos
-      labels: {app: scanner, review-id: "${REVIEW_ID}", attempt: "${ATTEMPT}"}
+      labels: {app: scanner, review-id: "${REVIEW_ID}", attempt: "${ATTEMPT}", budget-no: "${BUDGET_NO}"}
     spec:
-      # Retries are owned by the review-api reconciler (new Job scan-<id>-a<N+1>),
+      # Retries are owned by the review-api reconciler (new Job scan-<id>-b<B>-a<N+1>),
       # NOT the Job controller: keep backoffLimit 0 and the 6h activeDeadlineSeconds.
       backoffLimit: 0
       ttlSecondsAfterFinished: 3600
       activeDeadlineSeconds: 21600
       template:
         metadata:
-          labels: {app: scanner, review-id: "${REVIEW_ID}", attempt: "${ATTEMPT}"}
+          labels: {app: scanner, review-id: "${REVIEW_ID}", attempt: "${ATTEMPT}", budget-no: "${BUDGET_NO}"}
         spec:
           restartPolicy: Never
           serviceAccountName: scanner

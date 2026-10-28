@@ -18,12 +18,12 @@ def test_create_get_list(client, H, A, launcher):
     assert r.status_code == 201, r.text
     body = r.json()
     check("Review", body)
-    assert (body["state"], body["attempt"], body["budget_no"], body["ref"]) == ("running", 1, 1, "HEAD")
+    assert (body["state"], body["attempt"], body["budget_no"], body["ref"]) == ("queued", 1, 1, "HEAD")
     assert len(body["commit_sha"]) == 40 and r.headers["location"] == f"/reviews/{body['id']}"
     assert launcher.launched == [(body["id"], 1)]
     with dbmod.session_factory()() as db:
         a = db.query(ReviewAttempt).one()
-        assert (a.budget_no, a.n, a.job_name) == (1, 1, f"scan-{body['id']}-a1")
+        assert (a.budget_no, a.n, a.job_name) == (1, 1, f"scan-{body['id']}-b1-a1")
     g = client.get(f"/reviews/{body['id']}", headers=H)
     assert g.status_code == 200
     check("Review", g.json())

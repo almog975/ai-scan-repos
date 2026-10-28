@@ -9,8 +9,8 @@ metadata: {name: review-api-job-launcher, namespace: ai-scan-repos}
 rules:
   - apiGroups: [batch]
     resources: [jobs]
-    verbs: [create, get, delete]     # launch, status by known name scan-<id>-a<n>, delete (Background GC removes pods)
-  - apiGroups: [""]           # per-review AI-key Secret scan-<id>-a<n>-ai, owned by the scanner Job
+    verbs: [create, get, delete]     # launch, status by known name scan-<id>-b<b>-a<n>, delete (Background GC removes pods)
+  - apiGroups: [""]           # per-review AI-key Secret scan-<id>-b<b>-a<n>-ai, owned by the scanner Job
     resources: [secrets]
     verbs: [create, update, delete]
 ---
