@@ -54,7 +54,7 @@ Out of scope: UI designs, tags, and per-depth estimates. Findings are not paged 
 
 ### 7. Checkpoint, reports layout, scanner-worker
 - Volume layout: `/reports/<review_id>/attempts/<budget_no>-<n>/{checkpoint.json, findings.partial.jsonl, logs/}`, plus `/reports/<review_id>/report.json|report.md` (final).
-- `checkpoint/v1` keys: `schema, review_id, commit_sha, attempt, budget_no, stage, cursor, progress, updated_at, partial_findings: "findings.partial.jsonl"`. The worker resumes only when `commit_sha` matches.
+- `checkpoint/v1` keys (contract is closed): `schema, review_id, commit_sha, depth, attempt, budget_no, stage, cursor{scanners_done, files_total, files_done, findings_offset}, progress, updated_at`. Partial findings always live in the sibling `findings.partial.jsonl`; only the first `cursor.findings_offset` lines are trusted. The worker resumes from the newest earlier attempt (any budget) only when `commit_sha` and `depth` match.
 - Files: `scanner-worker/scanner/{checkpoint.py,report.py,run.py}`. Finding id = sha1 recipe from `finding.schema.json`. `report.json` includes `attempt` and `budget_no`, and Brief = top 10 by severity.
 - Acceptance: worker output validates against `checkpoint`, `report` and `finding` schemas (reuse `contracts/tests` registry). Kill-and-resume test: same findings and no duplicate ids.
 
