@@ -309,7 +309,15 @@ def make_ai(cfg: WorkerConfig) -> AIClient | None:
         return None
 
 
+def _on_sigterm(signum, frame):
+    # Job deleted (cancel/pause/supersede): raise so Worker.run()'s finally removes the /work clone.
+    # SystemExit is not an Exception -> no outcome=error is reported for a deliberate stop.
+    raise SystemExit(128 + signum)
+
+
 def main(argv=None) -> int:
+    import signal
+    signal.signal(signal.SIGTERM, _on_sigterm)
     logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"))
     ap = argparse.ArgumentParser()
     ap.add_argument("--review-id")

@@ -178,3 +178,16 @@ def test_repo_private_from_github_check_reaches_worker_env():
     assert env["REPO_PRIVATE"] == "true"
     r.repo_private = False
     assert {e["name"]: e["value"] for e in contract_env(JobSpec.of(r))}["REPO_PRIVATE"] == "false"
+
+
+def test_k8s_launcher_creates_job_from_configmap_template():
+    b, c = FakeBatch(), FakeCore()
+    s = Settings(scanner_job_template=str(TPL), scanner_image="reg/ai-scan/scanner-worker:abc123")
+    name = KubernetesJobLauncher(s, batch_api=b, core_api=c, sleep=lambda s: None).launch(SPEC, secret_env={"AI_API_KEY": "sk"})
+    pod = b.created[0]["spec"]["template"]["spec"]
+    ctr = pod["containers"][0]
+    assert [x["secretRef"]["name"] for x in ctr["envFrom"]] == ["scanner-secrets", f"{name}-ai"]
+    assert pod["securityContext"]["runAsNonRoot"] and pod["securityContext"]["seccompProfile"] == {"type": "RuntimeDefault"}
+    assert ctr["securityContext"]["allowPrivilegeEscalation"] is False and ctr["securityContext"]["capabilities"] == {"drop": ["ALL"]}
+    assert {"name": "reports", "persistentVolumeClaim": {"claimName": "reports"}} in pod["volumes"]
+    assert "sk" not in json.dumps(b.created[0])
