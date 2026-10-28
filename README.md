@@ -5,9 +5,8 @@ depth; the **review-api** launches a short-lived **scanner-worker** run that clo
 **Semgrep, Gitleaks and Trivy**, optionally asks an AI model for a risk explanation + fixes, and
 writes `report.json` / `report.md` to a shared reports volume.
 
-Standalone repository for AI Scan Repos.
-The sibling project `devsecops-shop-*` holds the existing Jenkins / Helm / Argo CD / monitoring work;
-see [`../README.md`](../README.md).
+Technion DevOps final project. Standalone repo `almog975/ai-scan-repos`; all paths are relative to the repo root
+([ADR-0001](docs/adr/0001-repo-layout.md)). `contracts/` is the source of truth — code follows it.
 
 ## Layout (Phase 0 / Foundation)
 
@@ -18,10 +17,12 @@ see [`../README.md`](../README.md).
   gateway/         FastAPI, :8000  (/healthz /readyz /metrics)
   review-api/      FastAPI, :8001  (/healthz /readyz /metrics) – Alembic migrations in review-api/alembic/
   scanner-worker/  Python Job image; probe server :8002 (/healthz /readyz /metrics)
-  deploy/k8s/      kustomize base: namespace, Secret placeholder, postgres StatefulSet+PVC+headless svc, deployments+services, Job template
+  deploy/k8s/      (current) kustomize base: namespace, Secret placeholder, postgres StatefulSet+PVC+headless svc, deployments+services, Job template
   infra/db/        target PostgreSQL schema v1 (schema.sql, migrations/001_init.sql)
   infra/           other infra-level assets
-  docs/            architecture notes, ADRs, runbooks
+  deploy/argocd-app.yaml  Argo CD Applications → deploy/<component>/overlays/<target> (target layout, see deploy/README.md)
+  docs/            adr/, diagrams/, runbooks/, ci.md
+  Jenkinsfile      CI: detect changes → test → build → Trivy → push → deploy (tag bump)
   Makefile         `make test` runs every service's `make test` (passes when a suite is empty); `make contracts` validates contracts
 ```
 
@@ -38,7 +39,7 @@ Deferred past v0.1: per-depth estimates and server-side findings paging (see con
 
 Scan depths (`quick` / `brief` / `deep`):
 - **quick** – scanners + short AI bullet summary of the top 30 findings.
-- **brief** – scanners + AI explanation/fix for the top `BRIEF_TOP_FINDINGS` (10) findings with ±5 lines of code context.
+- **brief** – scanners + AI explanation/fix for the **top 10 findings** (`BRIEF_TOP_FINDINGS`) with ±5 lines of code context (adopted into the plan/contracts).
 - **deep** – additionally an AI review of up to `DEEP_MAX_FILES` (40) code files (≤60 KB each), checkpointed per file.
 
 AI providers: `openai_compatible` (on-prem LM Studio/Ollama/vLLM via `AI_BASE_URL`), `openai`, `grok`,
@@ -47,7 +48,7 @@ AI providers: `openai_compatible` (on-prem LM Studio/Ollama/vLLM via `AI_BASE_UR
 ## Quickstart (local, no Kubernetes)
 
 ```bash
-cd ai-scan-repos
+git clone https://github.com/almog975/ai-scan-repos.git && cd ai-scan-repos
 python3 -m venv .venv && . .venv/bin/activate
 pip install -r review-api/requirements.txt -r review-api/requirements-dev.txt \
             -r scanner-worker/requirements.txt -r scanner-worker/requirements-dev.txt
@@ -88,7 +89,7 @@ Both run as UID 10001. review-api runs `alembic upgrade head` then uvicorn on :8
 ## API summary
 
 All non-probe endpoints require `X-Internal-Token`; user endpoints also take `X-User-Id`
-(meant to be set by a future gateway). Full detail: [docs/architecture.md](docs/architecture.md).
+(meant to be set by a future gateway). Full detail: [docs/diagrams/architecture.md](docs/diagrams/architecture.md).
 
 | Method | Path | Purpose |
 |---|---|---|
@@ -99,14 +100,19 @@ All non-probe endpoints require `X-Internal-Token`; user endpoints also take `X-
 | PUT/GET | `/ai-keys` | store (Fernet-encrypted) / list per-user AI keys |
 | GET/POST | `/internal/reviews/{id}`, `/internal/reviews/{id}/progress` | worker heartbeat/progress |
 
+## Folder READMEs
+[contracts](contracts/README.md) · [frontend](frontend/README.md) · [gateway](gateway/README.md) · [review-api](review-api/README.md) · [scanner-worker](scanner-worker/README.md) · [deploy](deploy/README.md) · [infra](infra/README.md)
+
 ## Docs
-- [docs/architecture.md](docs/architecture.md) – components, data flow, security design
-- [docs/runbook.md](docs/runbook.md) – deploy, operate, troubleshoot
-- [docs/demo-script.md](docs/demo-script.md) – presentation demo
+- [docs/adr/](docs/adr/) – [template](docs/adr/0000-template.md), [0001 repo layout](docs/adr/0001-repo-layout.md), [0002 Job per review](docs/adr/0002-k8s-job-per-review.md)
+- [docs/diagrams/architecture-v1.md](docs/diagrams/architecture-v1.md) – target architecture ([SVG](docs/diagrams/architecture-v1.svg))
+- [docs/diagrams/architecture.md](docs/diagrams/architecture.md) – Phase 1 backend as built: data flow, security, config
+- [docs/runbooks/runbook.md](docs/runbooks/runbook.md) – deploy, operate, troubleshoot
+- [docs/runbooks/demo-script.md](docs/runbooks/demo-script.md) – presentation demo
+- [docs/ci.md](docs/ci.md) – CI/CD and GitOps
 
 ## Gaps / TODO
-- TODO: gateway with GitHub OAuth (models `GithubAccount`/`Session` exist, unused).
-- TODO: web UI (only static mockups in `/workspace/ai-scan-ui`).
-- TODO: Helm chart / K8s manifests (Namespace, Deployment, Service, RBAC for Job creation, PVC, Secrets, NetworkPolicy).
-- TODO: Jenkinsfile and Argo CD Application for AI Scan Repos.
-- TODO: per-user AI keys are stored but not yet passed to the worker (worker uses `AI_API_KEY` env).
+- TODO: split `deploy/k8s/` into `deploy/<component>/{base,overlays/{local,k3s,eks}}` (what `deploy/argocd-app.yaml` and the Jenkinsfile expect).
+- TODO: align code with `contracts/` (states, checkpoint, report/finding shapes, endpoints) — see [ADR-0002](docs/adr/0002-k8s-job-per-review.md).
+- TODO: per-user AI keys are stored but not passed to the worker (worker uses `AI_API_KEY` env).
+- TODO: Jenkins push step is a stub (see [docs/ci.md](docs/ci.md)).

@@ -22,13 +22,12 @@ What the code expects to exist (derive manifests from this, defaults from `revie
 - ServiceAccount `scanner-worker` (token not mounted).
 - Secret `scanner-worker-env` with `INTERNAL_API_TOKEN`, `AI_PROVIDER`, `AI_MODEL`, `AI_BASE_URL`, `AI_API_KEY`.
 - Secret for review-api: `INTERNAL_API_TOKEN` (same value), `AI_KEYS_ENCRYPTION_KEY`, `DATABASE_URL`.
-- Service `review-api:8000` (ClusterIP, not exposed) — matches `REVIEW_API_INTERNAL_URL`.
+- Service `review-api:8001` (ClusterIP, not exposed) — matches `REVIEW_API_INTERNAL_URL`.
 - `SCANNER_IMAGE` pointing at the pushed worker image.
 - Probes: liveness `/healthz`, readiness `/readyz`.
 - Egress for Jobs: github.com, AI endpoint, and trivy/semgrep rule/DB downloads.
 
-CI/CD (Jenkins) and GitOps (Argo CD) for this project: **TODO** — existing ones cover only the shop
-app (`devsecops-shop-devops/jenkins/Jenkinsfile`, `devsecops-shop-devops/argocd/application-shop.yaml`).
+CI/CD (Jenkins) and GitOps (Argo CD) for this project: **TODO** (Pipelines owns this).
 
 ## 2. Operate
 

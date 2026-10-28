@@ -1,5 +1,10 @@
 # Architecture — AI Scan Repos (as implemented, Phase 1)
 
+> Snapshot of the Phase 1 backend (review-api + scanner-worker). Since then `frontend/`, `gateway/`,
+> `contracts/`, `deploy/` and `infra/` were added; the target picture is [architecture-v1.md](architecture-v1.md).
+> `contracts/` is the source of truth; where this page and the contracts differ, code follows the contracts
+> (exception: Brief = top 10 findings, as below).
+
 ## Component & data-flow diagram
 
 Solid = implemented. Dashed = planned / not in repo (TODO).
@@ -12,7 +17,7 @@ flowchart LR
   curl([curl / tests]) -- "X-Internal-Token + X-User-Id" --> api
 
   subgraph cluster[Kubernetes namespace ai-scan-repos - manifests TODO]
-    api[review-api<br/>FastAPI :8000<br/>+ watchdog loop]
+    api[review-api<br/>FastAPI :8001<br/>+ watchdog loop]
     db[(Postgres / SQLite<br/>reviews, ai_keys, ...)]
     pvc[(reports volume<br/>PVC ai-scan-reports)]
     job[scanner-worker Job<br/>semgrep / gitleaks / trivy]
@@ -71,8 +76,7 @@ with `--redact` and secret values are never stored.
 ## Observability
 `/metrics`: `ai_scan_reviews_created_total{depth}`, `_retried_total`, `_failed_total`,
 `_completed_total`, gauge `ai_scan_reviews_running`. Probes `/healthz` (liveness), `/readyz` (DB).
-TODO: ServiceMonitor / Grafana dashboard for AI Scan Repos (the shop project has its own under
-`devsecops-shop-devops/monitoring/`).
+TODO: ServiceMonitor / Grafana dashboard for AI Scan Repos.
 
 ## Configuration
 review-api env: `DATABASE_URL`, `INTERNAL_API_TOKEN`, `AI_KEYS_ENCRYPTION_KEY`, `JOB_LAUNCHER`,

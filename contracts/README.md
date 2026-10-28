@@ -20,4 +20,9 @@ cloud provider requires `ack_cloud: true`, else 422 `CLOUD_ACK_REQUIRED`. User r
 
 **Deferred past v0.1:** per-depth time/cost estimates; server-side paging of findings inside reports.
 
+Adopted exception (plan + code): **Brief depth sends the top 10 findings** (with code context) to the AI.
+See [ADR-0001](../docs/adr/0001-repo-layout.md) and [ADR-0002](../docs/adr/0002-k8s-job-per-review.md).
+
+Owners: AI Scan Planner (A/R); Coder, Tester, UI Designer consulted.
+
 Validate: `make contracts` (from the repo root): openapi-spec-validator + JSON Schema 2020-12 meta-validation.
