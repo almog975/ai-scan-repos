@@ -22,7 +22,7 @@ Mention: fixtures for semgrep/gitleaks/trivy, mocked AI transport, watchdog + cr
 ## 3. Start the API (1 min)
 ```bash
 export INTERNAL_API_TOKEN=dev-token REPORTS_DIR=$PWD/reports LOCAL_WORKER_CWD=$PWD/scanner-worker
-export AI_KEYS_ENCRYPTION_KEY=$(python -c "from cryptography.fernet import Fernet;print(Fernet.generate_key().decode())")
+export AI_KEYS_ENCRYPTION_KEY=$(openssl rand -hex 32)
 export AI_PROVIDER=openai_compatible AI_BASE_URL=http://<llm-host>:1234/v1 AI_MODEL=<model>   # or AI_PROVIDER=none
 (cd review-api && uvicorn --factory app.main:get_app --port 8001) &
 curl -s localhost:8001/healthz; curl -s localhost:8001/readyz

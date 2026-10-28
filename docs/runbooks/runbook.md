@@ -98,4 +98,4 @@ cleaned up — TODO retention policy.
 | Report "AI step skipped or unavailable" | `AI_PROVIDER=none`, invalid provider, missing `AI_BASE_URL` for `openai_compatible`, or API error (see `ai.error` in report.json) |
 | `/report` 404 "report not ready" | Review not `completed` or file missing on the reports volume (PVC not shared?) |
 | Pause has no effect | API and worker don't share the same reports volume |
-| PUT /ai-keys 500 | `AI_KEYS_ENCRYPTION_KEY` empty/invalid Fernet key |
+| POST /admin/ai-providers 500, /readyz 503 | `AI_KEYS_ENCRYPTION_KEY` empty or not 32 bytes (hex/base64) |

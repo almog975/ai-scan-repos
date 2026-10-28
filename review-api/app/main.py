@@ -14,7 +14,8 @@ from .config import Settings, get_settings
 from .errors import ApiError
 from .github import HttpGitHub
 from .launcher import make_launcher
-from .routers import reviews
+from .crypto import parse_key
+from .routers import providers, reviews
 
 
 class ReviewLauncher:
@@ -54,6 +55,10 @@ def create_app(settings: Settings | None = None, **deps) -> FastAPI:
             db.execute(text("SELECT 1"))
         except Exception:
             raise ApiError(503, "INTERNAL", "database not ready")
+        try:
+            parse_key(settings.ai_keys_encryption_key)
+        except ValueError as e:
+            raise ApiError(503, "INTERNAL", f"not ready: {e}")
         return {"status": "ready"}
 
     @app.get("/metrics")
@@ -61,6 +66,7 @@ def create_app(settings: Settings | None = None, **deps) -> FastAPI:
         return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
     app.include_router(reviews.router)
+    app.include_router(providers.router)
     return app
 
 

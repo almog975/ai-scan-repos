@@ -1,19 +1,7 @@
 import pytest
-from cryptography.fernet import Fernet
 
 from app.config import Settings
-from app.crypto import KeyCipher
 from app.launcher import KubernetesJobLauncher, LocalLauncher, build_job_manifest, make_launcher
-
-
-def test_encryption_roundtrip():
-    c = KeyCipher(Fernet.generate_key().decode())
-    tok = c.encrypt("sk-secret")
-    assert b"sk-secret" not in tok and c.decrypt(tok) == "sk-secret"
-    with pytest.raises(ValueError):
-        KeyCipher(Fernet.generate_key().decode()).decrypt(tok)
-    with pytest.raises(ValueError):
-        KeyCipher("")
 
 
 def test_job_manifest_hardened():

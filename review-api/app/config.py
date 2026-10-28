@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./review-api.db"
     # Shared secret between gateway/worker and review-api. Required in prod.
     internal_api_token: str = "change-me-dev-only"
-    # Fernet key (urlsafe base64, 32 bytes). Generate: python -c "from cryptography.fernet import Fernet;print(Fernet.generate_key().decode())"
+    # AES-256-GCM master key from Secret ai-keys-master: 32 bytes, hex or base64. Generate: openssl rand -hex 32
     ai_keys_encryption_key: str = ""
     # local | kubernetes
     # Optional GitHub token for API calls (repo metadata / ref resolution)
