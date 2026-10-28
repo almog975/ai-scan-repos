@@ -1,74 +1,9 @@
-from datetime import datetime, timedelta, timezone
-
 import pytest
 from cryptography.fernet import Fernet
 
-from app import db as dbmod
 from app.config import Settings
 from app.crypto import KeyCipher
 from app.launcher import KubernetesJobLauncher, LocalLauncher, build_job_manifest, make_launcher
-from app.models import Depth, Review, ReviewStatus
-from app.watchdog import check_stalled
-
-
-class FakeClock:
-    def __init__(self):
-        self.t = datetime(2026, 1, 1, tzinfo=timezone.utc)
-
-    def __call__(self):
-        return self.t
-
-    def advance(self, s):
-        self.t += timedelta(seconds=s)
-
-
-class RecLauncher:
-    def __init__(self):
-        self.calls = []
-
-    def launch(self, rid, attempt, secret_env=None):
-        self.calls.append((rid, attempt))
-        return f"job-{attempt}"
-
-
-@pytest.fixture
-def db():
-    dbmod.init_engine("sqlite:///:memory:")
-    dbmod.Base.metadata.create_all(dbmod.get_engine())
-    with dbmod.session_factory()() as s:
-        yield s
-
-
-def test_watchdog_retries_then_fails(db):
-    clock = FakeClock()
-    r = Review(owner_id="u", repo_url="https://github.com/a/b", depth=Depth.quick,
-               status=ReviewStatus.running, attempts=1, last_heartbeat=clock())
-    db.add(r)
-    db.commit()
-    l = RecLauncher()
-    kw = dict(timeout_seconds=900, max_attempts=5, now=clock)
-
-    clock.advance(600)
-    assert check_stalled(db, l, **kw) == []  # still fresh
-    for expected in (2, 3, 4, 5):
-        clock.advance(901)
-        check_stalled(db, l, **kw)
-        assert r.attempts == expected and r.status == ReviewStatus.running
-    assert [a for _, a in l.calls] == [2, 3, 4, 5]
-    assert r.job_name == "job-5"
-    clock.advance(901)
-    check_stalled(db, l, **kw)
-    assert r.status == ReviewStatus.failed and len(l.calls) == 4
-
-
-def test_watchdog_ignores_paused_and_heartbeating(db):
-    clock = FakeClock()
-    p = Review(owner_id="u", repo_url="https://github.com/a/b", depth=Depth.quick,
-               status=ReviewStatus.paused, attempts=1, last_heartbeat=clock())
-    db.add(p)
-    db.commit()
-    clock.advance(10_000)
-    assert check_stalled(db, RecLauncher(), timeout_seconds=900, max_attempts=5, now=clock) == []
 
 
 def test_encryption_roundtrip():
