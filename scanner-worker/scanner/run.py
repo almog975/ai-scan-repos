@@ -25,7 +25,7 @@ from .checkpoint import (Checkpoint, atomic_write_json, atomic_write_text, attem
                          review_dir)
 from .config import WorkerConfig
 from .report import build_report, top_findings, write_report
-from .tools import SCANNERS, make_finding, run_scanner
+from .tools import SCANNERS, make_finding, run_scanner, tool_versions
 
 log = logging.getLogger("scanner")
 CODE_EXT = {".py", ".js", ".ts", ".tsx", ".jsx", ".go", ".java", ".rb", ".php", ".cs", ".rs", ".kt", ".c", ".cpp",
@@ -233,7 +233,8 @@ class Worker:
                             commit_sha=self.cp.state["commit_sha"], ref=self.cfg.ref or None, depth=self.cfg.depth,
                             attempt=self.cfg.attempt, budget_no=self.cfg.budget_no, started_at=self.started_at,
                             finished_at=now(), findings=self.cp.findings(), provider=prov,
-                            executive_summary=summary, files_scanned=len(self.files))
+                            executive_summary=summary, files_scanned=len(self.files),
+                            tool_versions=tool_versions())
 
 
 def make_ai(cfg: WorkerConfig) -> AIClient | None:

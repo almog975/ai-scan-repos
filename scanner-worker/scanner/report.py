@@ -35,26 +35,58 @@ def _cell(v) -> str:
     return str(v if v is not None else "").replace("|", "\\|").replace("\n", " ")
 
 
+# Banner wording (docs/report-md-spec.md section 3). Private-repo wording is NOT confirmed yet: change it here only.
+CLOUD_BANNER = "> ⚠️ cloud AI — code/findings were sent outside your network"
+CLOUD_BANNER_PRIVATE = "> ⚠️ cloud AI — code/findings from this private repository were sent outside your network"
+ONPREM_NOTE = "(on-prem / no code left the network)"
+
+
+def _pct(c) -> str:
+    return f"{round(c * 100)}%" if isinstance(c, (int, float)) else ""
+
+
 def render_markdown(rep: dict) -> str:
     prov = rep.get("provider") or {}
+    repo = rep["repo"]
     s = rep["summary"]
-    lines = [f"# Security review: {rep['repo']['url']}", "",
-             f"- Review: `{rep['review_id']}` | depth: **{rep['depth']}** | commit: `{rep['repo'].get('commit_sha') or '-'}`"
-             f" | attempt {rep['budget_no']}-{rep['attempt']} | finished: {rep['finished_at']}",
-             f"- AI provider: **{prov.get('name') or 'none'}**"
-             + (" ⚠️ cloud AI — code/findings were sent outside your network" if prov.get("kind") == "cloud"
-                else " (on-prem / no code left the network)"),
-             "", "## Summary", "",
-             "| critical | high | medium | low | info | files scanned |", "|---|---|---|---|---|---|",
-             f"| {s['critical']} | {s['high']} | {s['medium']} | {s['low']} | {s['info']} | {s.get('files_scanned', 0)} |",
-             "", rep.get("executive_summary") or "_AI step skipped or unavailable._"]
+    cloud = prov.get("kind") == "cloud"
+    lines = [f"# Security review: {repo['url']}", ""]
+    if cloud:
+        lines += [CLOUD_BANNER_PRIVATE if repo.get("private") else CLOUD_BANNER, ""]
+    vis = "" if repo.get("private") is None else f" | visibility: {'private' if repo['private'] else 'public'}"
+    lines += [f"- Review: `{rep['review_id']}` | depth: **{rep['depth']}** | ref: `{repo.get('ref') or '-'}`"
+              f" | commit: `{repo.get('commit_sha') or '-'}`{vis}",
+              f"- attempt {rep['budget_no']}-{rep['attempt']} | started: {rep['started_at']} | finished: {rep['finished_at']}",
+              f"- AI provider: **{prov.get('name') or 'none'}**"
+              + (f" | model: `{prov['model']}`" if prov.get("model") else "")
+              + ("" if cloud else f" {ONPREM_NOTE}"),
+              "", "## Summary", "",
+              "| critical | high | medium | low | info | files scanned |", "|---|---|---|---|---|---|",
+              f"| {s['critical']} | {s['high']} | {s['medium']} | {s['low']} | {s['info']} | {s.get('files_scanned', 0)} |",
+              "", rep.get("executive_summary") or "_AI step skipped or unavailable._"]
+    tv = rep.get("tool_versions") or {}
+    if tv:
+        lines += ["", "## Tool versions", "", "| tool | version |", "|---|---|"]
+        lines += [f"| {_cell(k)} | {_cell(v)} |" for k, v in sorted(tv.items())]
     scan = [f for f in rep["findings"] if f["tool"] != "ai"]
     if scan:
-        lines += ["", "## Findings", "", "| Severity | Tool | Rule | Location | Title | Description |", "|---|---|---|---|---|---|"]
+        lines += ["", "## Findings", "",
+                  "| Severity | Tool | Rule | Location | Title | Description | AI severity | Confidence | AI fix |",
+                  "|---|---|---|---|---|---|---|---|---|"]
         lines += [f"| {f['severity']} | {f['tool']} | {_cell(f['rule'])} | {_cell(f['file'])}"
-                  f"{':' + str(f['line']) if f.get('line') else ''} | {_cell(f['title'])} | {_cell(f['description'][:300])} |" for f in scan]
-    for f in (f for f in scan if f.get("ai_explanation")):
-        lines += ["", f"### {f['severity']}: {f['title']} ({f['file']})", "", f["ai_explanation"]]
+                  f"{':' + str(f['line']) if f.get('line') else ''} | {_cell(f['title'])} | {_cell(f['description'][:300])}"
+                  f" | {_cell(f.get('ai_severity'))} | {_pct(f.get('confidence'))} | {'yes' if f.get('ai_fix') else ''} |"
+                  for f in scan]
+    for f in (f for f in scan if f.get("ai_explanation") or f.get("ai_fix") or f.get("snippet")):
+        lines += ["", f"### {f['severity']}: {f['title']} ({f['file']})"]
+        if f.get("ai_severity") or f.get("confidence") is not None:
+            lines += ["", f"AI severity: {f.get('ai_severity') or '-'} · confidence: {_pct(f.get('confidence')) or '-'}"]
+        if f.get("snippet"):
+            lines += ["", "```", f["snippet"].replace("```", "ˋˋˋ"), "```"]
+        if f.get("ai_explanation"):
+            lines += ["", f["ai_explanation"]]
+        if f.get("ai_fix"):
+            lines += ["", "**Suggested fix**", "", f["ai_fix"]]
     for f in (f for f in rep["findings"] if f["tool"] == "ai"):
         lines += ["", f"### AI review: {f['file']}", "", f["description"]]
     return "\n".join(lines) + "\n"

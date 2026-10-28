@@ -104,3 +104,24 @@ def run_scanner(name: str, src: Path, timeout: int, runner=_run, which=shutil.wh
 
 
 SCANNERS = ["semgrep", "gitleaks", "trivy"]
+
+
+_VERSION_CMDS = {"semgrep": ["semgrep", "--version"], "gitleaks": ["gitleaks", "version"],
+                 "trivy": ["trivy", "--version"], "git": ["git", "--version"]}
+
+
+def tool_versions(runner=None, which=shutil.which) -> dict[str, str]:
+    """{tool: version} for installed tools (report.tool_versions); missing/broken tools are omitted."""
+    import re
+    out: dict[str, str] = {}
+    for name, cmd in _VERSION_CMDS.items():
+        if not which(name):
+            continue
+        try:
+            p = (runner or (lambda c: subprocess.run(c, capture_output=True, text=True, timeout=20)))(cmd)
+            m = re.search(r"\d+\.\d+(?:\.\d+)?", (p.stdout or "") + (p.stderr or ""))
+            if m and getattr(p, "returncode", 0) == 0:
+                out[name] = m.group(0)
+        except Exception:  # noqa: BLE001
+            pass
+    return out
