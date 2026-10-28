@@ -11,7 +11,7 @@ from contract import check
 from phase3_harness import ROOT, URL, WORKER_PY, Stack
 
 pytestmark = pytest.mark.skipif(not WORKER_PY or not Path(WORKER_PY).exists(), reason="AISCAN_WORKER_PYTHON not set")
-KEY = "xai-TEST-key-0123456789abcdefSECRET"
+KEY = "xai-TEST-key-0123456789abcdefSECRET"  # gitleaks:allow (fake key for the mock AI server)
 
 _spec = importlib.util.spec_from_file_location("mock_ai", ROOT / "scanner-worker" / "tests" / "mock_ai.py")
 mock_ai = importlib.util.module_from_spec(_spec)
