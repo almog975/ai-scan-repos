@@ -1,168 +1,182 @@
-"""Job launchers: start a scanner-worker run for a review.
+"""Scanner Job launchers: one batch/v1 Job per review attempt.
 
-Secrets are NEVER put in args: the K8s Job gets them via envFrom a Secret,
-the local launcher via the inherited process environment.
+Kubernetes: the Job is rendered from Infra's `scanner-job-template` ConfigMap (mounted file
+SCANNER_JOB_TEMPLATE, placeholders ${REVIEW_ID} ${ATTEMPT} ${DEPTH} ${REPO_URL} ${IMAGE}); review-api then
+enforces the contract fields: name scan-<id>-a<attempt>, labels app=scanner/review-id/attempt/budget-no,
+activeDeadlineSeconds 21600, backoffLimit 0, the `reports` PVC, env DEPTH/REVIEW_ID/ATTEMPT/BUDGET_NO/COMMIT_SHA,
+and a pinned image (`:latest` rejected).
+Secrets are never put in args or the Job spec: the per-review AI key goes into a Secret owned by the Job.
 """
 from __future__ import annotations
 
 import logging
 import os
+import re
 import shlex
 import subprocess
+import time
+from dataclasses import dataclass
+from string import Template
 from typing import Protocol
+
+import yaml
 
 from .config import Settings
 
 log = logging.getLogger(__name__)
+SECRET_LABEL = "ai-scan-repos/per-review-secret"
+_SAFE = re.compile(r"^[A-Za-z0-9:/._@-]*$")
+
+
+@dataclass
+class JobSpec:
+    review_id: str
+    attempt: int
+    budget_no: int
+    depth: str
+    repo_url: str
+    commit_sha: str | None = None
+    ref: str = "HEAD"
+
+    @classmethod
+    def of(cls, r) -> "JobSpec":
+        return cls(r.id, r.attempt, r.budget_no, getattr(r.depth, "value", r.depth), r.repo_url, r.commit_sha, r.ref)
 
 
 class JobLauncher(Protocol):
-    def launch(self, review_id: str, attempt: int, secret_env: dict[str, str] | None = None) -> str: ...
+    def launch(self, spec: JobSpec, secret_env: dict[str, str] | None = None) -> str: ...
+
+    def delete(self, job_name: str) -> None: ...
 
     def cleanup(self, review_id: str) -> None: ...
 
 
 def job_name_for(review_id: str, attempt: int) -> str:
-    """Deterministic: scan-<reviewId>-a<attempt> (no random suffix -> idempotent create)."""
+    """Deterministic: scan-<reviewId>-a<attempt> (idempotent create; <= 63 chars for a uuid)."""
     return f"scan-{review_id}-a{attempt}"[:63].rstrip("-")
+
+
+def check_image(image: str) -> None:
+    tag = image.rsplit("/", 1)[-1]
+    if "@sha256:" in image:
+        return
+    if ":" not in tag or tag.endswith(":latest"):
+        raise ValueError("SCANNER_IMAGE must be pinned to a tag other than :latest")
+
+
+def contract_env(spec: JobSpec) -> list[dict]:
+    env = {"REVIEW_ID": spec.review_id, "ATTEMPT": str(spec.attempt), "BUDGET_NO": str(spec.budget_no),
+           "DEPTH": spec.depth, "REPO_URL": spec.repo_url, "REF": spec.ref, "COMMIT_SHA": spec.commit_sha or ""}
+    return [{"name": k, "value": v} for k, v in env.items()]
+
+
+def render_template(text: str, s: Settings, spec: JobSpec) -> dict:
+    values = {"REVIEW_ID": spec.review_id, "ATTEMPT": str(spec.attempt), "DEPTH": spec.depth,
+              "REPO_URL": spec.repo_url, "IMAGE": s.scanner_image, "BUDGET_NO": str(spec.budget_no)}
+    for k, v in values.items():
+        if not _SAFE.match(v):
+            raise ValueError(f"unsafe value for ${{{k}}}")
+    doc = yaml.safe_load(Template(text).safe_substitute(values))
+    if doc.get("kind") == "ConfigMap":  # accept the whole ConfigMap file too
+        doc = yaml.safe_load(Template(doc["data"]["job.yaml"]).safe_substitute(values))
+    return doc
+
+
+def build_job_manifest(s: Settings, spec: JobSpec, ai_secret: str | None = None) -> dict:
+    check_image(s.scanner_image)
+    name = job_name_for(spec.review_id, spec.attempt)
+    if s.scanner_job_template:
+        with open(s.scanner_job_template) as f:
+            m = render_template(f.read(), s, spec)
+    else:
+        m = _built_in_manifest(s)
+    labels = {"app": "scanner", "review-id": spec.review_id, "attempt": str(spec.attempt),
+              "budget-no": str(spec.budget_no)}
+    md = m.setdefault("metadata", {})
+    md.update(name=name, namespace=s.k8s_namespace)
+    md.setdefault("labels", {}).update(labels)
+    js = m.setdefault("spec", {})
+    js.pop("suspend", None)
+    js.update(backoffLimit=0, activeDeadlineSeconds=s.scanner_active_deadline_seconds)  # retries = watchdog
+    js.setdefault("ttlSecondsAfterFinished", 3600)
+    pod = js.setdefault("template", {})
+    pod.setdefault("metadata", {}).setdefault("labels", {}).update(labels)
+    ps = pod.setdefault("spec", {})
+    ps["restartPolicy"] = "Never"
+    ps["serviceAccountName"] = s.scanner_service_account
+    ps["automountServiceAccountToken"] = False
+    c = ps.setdefault("containers", [{}])[0]
+    c.setdefault("name", "scanner")
+    c["image"] = s.scanner_image
+    c["args"] = ["--review-id", spec.review_id]
+    ours = contract_env(spec) + [{"name": "REPORTS_DIR", "value": "/reports"},
+                                 {"name": "REVIEW_API_URL", "value": s.review_api_internal_url}]
+    names = {e["name"] for e in ours}
+    c["env"] = [e for e in c.get("env", []) if e["name"] not in names] + ours
+    c["envFrom"] = [{"secretRef": {"name": s.scanner_secret_name}}] + (
+        [{"secretRef": {"name": ai_secret}}] if ai_secret else [])
+    mounts = [v for v in c.get("volumeMounts", []) if v["name"] != "reports"]
+    c["volumeMounts"] = mounts + [{"name": "reports", "mountPath": "/reports"}]
+    vols = [v for v in ps.get("volumes", []) if v["name"] != "reports"]
+    ps["volumes"] = vols + [{"name": "reports", "persistentVolumeClaim": {"claimName": s.reports_pvc}}]
+    return m
+
+
+def _built_in_manifest(s: Settings) -> dict:
+    """Fallback when no template is mounted (dev/tests); same hardening as the ConfigMap."""
+    return {
+        "apiVersion": "batch/v1", "kind": "Job", "metadata": {},
+        "spec": {"ttlSecondsAfterFinished": 3600, "template": {"metadata": {}, "spec": {
+            "securityContext": {"runAsNonRoot": True, "runAsUser": 10001, "runAsGroup": 10001, "fsGroup": 10001,
+                                "seccompProfile": {"type": "RuntimeDefault"}},
+            "containers": [{
+                "name": "scanner",
+                "env": [{"name": "WORK_DIR", "value": "/work"}, {"name": "HOME", "value": "/tmp"}],
+                "securityContext": {"allowPrivilegeEscalation": False, "readOnlyRootFilesystem": True,
+                                    "runAsNonRoot": True, "runAsUser": 10001, "capabilities": {"drop": ["ALL"]}},
+                "resources": {"requests": {"cpu": "250m", "memory": "512Mi"}, "limits": {"cpu": "2", "memory": "2Gi"}},
+                "volumeMounts": [{"name": "work", "mountPath": "/work"}, {"name": "tmp", "mountPath": "/tmp"}],
+            }],
+            "volumes": [{"name": "work", "emptyDir": {"sizeLimit": "2Gi"}}, {"name": "tmp", "emptyDir": {"sizeLimit": "1Gi"}}],
+        }}},
+    }
 
 
 class LocalLauncher:
     """Dev/test launcher: runs the worker as a subprocess."""
 
     def __init__(self, settings: Settings, popen=subprocess.Popen):
-        self.s = settings
-        self._popen = popen
+        self.s, self._popen = settings, popen
         self.launched: list[tuple[str, int]] = []
+        self.deleted: list[str] = []
+        self.procs: dict[str, object] = {}
 
-    def launch(self, review_id: str, attempt: int, secret_env: dict[str, str] | None = None) -> str:
-        name = job_name_for(review_id, attempt)
-        self.launched.append((review_id, attempt))
-        cmd = shlex.split(self.s.local_worker_cmd) + ["--review-id", review_id]
-        env = {**os.environ, "REVIEW_ID": review_id, "ATTEMPT": str(attempt),
+    def launch(self, spec: JobSpec, secret_env: dict[str, str] | None = None) -> str:
+        name = job_name_for(spec.review_id, spec.attempt)
+        self.launched.append((spec.review_id, spec.attempt))
+        cmd = shlex.split(self.s.local_worker_cmd) + ["--review-id", spec.review_id]
+        env = {**os.environ, **{e["name"]: e["value"] for e in contract_env(spec)},
                "REPORTS_DIR": self.s.reports_dir, "REVIEW_API_URL": os.environ.get("REVIEW_API_URL", "http://localhost:8001"),
-               **(secret_env or {})}  # per-review AI key: env only, never argv
+               **(secret_env or {})}  # AI key: env only, never argv
         try:
-            self._popen(cmd, cwd=self.s.local_worker_cwd or None, env=env)
+            self.procs[name] = self._popen(cmd, cwd=self.s.local_worker_cwd or None, env=env)
         except FileNotFoundError:
             log.warning("local worker command not found: %s", cmd)
         return name
 
+    def delete(self, job_name: str) -> None:
+        self.deleted.append(job_name)
+        p = self.procs.pop(job_name, None)
+        if p is not None and hasattr(p, "terminate"):
+            p.terminate()
+
     def cleanup(self, review_id: str) -> None:
-        pass  # env dies with the subprocess
-
-
-def ai_secret_name(job_name: str) -> str:
-    return f"{job_name}-ai"
-
-
-def _load_template(s: Settings) -> dict | None:
-    if not s.scanner_job_template:
-        return None
-    import yaml
-    with open(s.scanner_job_template) as f:
-        return yaml.safe_load(f)
-
-
-def build_job_manifest(s: Settings, review_id: str, attempt: int, name: str, ai_secret: str | None = None,
-                       depth: str | None = None) -> dict:
-    """batch/v1 Job manifest (plain dict) for one scanner attempt.
-
-    If SCANNER_JOB_TEMPLATE points at the mounted scanner-job-template ConfigMap, it is used as the
-    base and the per-review fields (name, labels, image, args, env, deadline) are overlaid.
-    """
-    if ":" not in s.scanner_image.rsplit("/", 1)[-1] or s.scanner_image.endswith(":latest"):
-        raise ValueError("SCANNER_IMAGE must be pinned to a tag other than :latest")
-    m = _built_in_manifest(s, review_id, attempt, name, ai_secret)
-    c = m["spec"]["template"]["spec"]["containers"][0]
-    if depth:
-        c["env"].append({"name": "DEPTH", "value": depth})
-    tpl = _load_template(s)
-    if tpl:
-        tpl.setdefault("metadata", {}).update(m["metadata"])
-        spec = tpl.setdefault("spec", {})
-        spec.pop("suspend", None)
-        spec["activeDeadlineSeconds"] = s.scanner_active_deadline_seconds
-        pod = spec.setdefault("template", {})
-        pod.setdefault("metadata", {}).setdefault("labels", {}).update(m["spec"]["template"]["metadata"]["labels"])
-        tc = pod.setdefault("spec", {}).setdefault("containers", [{}])[0]
-        tc.update({"image": c["image"], "args": c["args"]})
-        tc["env"] = [e for e in tc.get("env", []) if e["name"] not in {x["name"] for x in c["env"]}] + c["env"]
-        tc["envFrom"] = c["envFrom"]
-        pod["spec"]["serviceAccountName"] = s.scanner_service_account
-        return tpl
-    return m
-
-
-def _built_in_manifest(s: Settings, review_id: str, attempt: int, name: str, ai_secret: str | None) -> dict:
-    return {
-        "apiVersion": "batch/v1",
-        "kind": "Job",
-        "metadata": {"name": name, "namespace": s.k8s_namespace,
-                     "labels": {"app": "scanner", "review-id": review_id[:63], "attempt": str(attempt)}},
-        "spec": {
-            "backoffLimit": 0,
-            "activeDeadlineSeconds": s.scanner_active_deadline_seconds,  # retries are owned by the watchdog, not by K8s
-            "ttlSecondsAfterFinished": 3600,
-            "template": {
-                "metadata": {"labels": {"app": "scanner", "review-id": review_id[:63]}},
-                "spec": {
-                    "restartPolicy": "Never",
-                    "serviceAccountName": s.scanner_service_account,
-                    "automountServiceAccountToken": False,
-                    "securityContext": {"runAsNonRoot": True, "runAsUser": 10001, "runAsGroup": 10001,
-                                        "fsGroup": 10001, "seccompProfile": {"type": "RuntimeDefault"}},
-                    "containers": [{
-                        "name": "scanner",
-                        "image": s.scanner_image,
-                        "args": ["--review-id", review_id],
-                        "env": [
-                            {"name": "REVIEW_ID", "value": review_id},
-                            {"name": "ATTEMPT", "value": str(attempt)},
-                            {"name": "REPORTS_DIR", "value": "/reports"},
-                            {"name": "WORK_DIR", "value": "/work"},
-                            {"name": "REVIEW_API_URL", "value": s.review_api_internal_url},
-                            {"name": "HOME", "value": "/tmp"},
-                        ],
-                        # INTERNAL_API_TOKEN + AI provider keys come from a Secret
-                        # Later entries win: the per-review AI secret overrides defaults.
-                        "envFrom": [{"secretRef": {"name": s.scanner_secret_name}}]
-                                   + ([{"secretRef": {"name": ai_secret}}] if ai_secret else []),
-                        "securityContext": {"allowPrivilegeEscalation": False, "readOnlyRootFilesystem": True,
-                                            "runAsNonRoot": True, "runAsUser": 10001,
-                                            "capabilities": {"drop": ["ALL"]}},
-                        "resources": {"requests": {"cpu": "250m", "memory": "512Mi"},
-                                      "limits": {"cpu": "2", "memory": "2Gi"}},
-                        "volumeMounts": [
-                            {"name": "work", "mountPath": "/work"},
-                            {"name": "tmp", "mountPath": "/tmp"},
-                            {"name": "reports", "mountPath": "/reports"},
-                        ],
-                    }],
-                    "volumes": [
-                        {"name": "work", "emptyDir": {"sizeLimit": "2Gi"}},
-                        {"name": "tmp", "emptyDir": {"sizeLimit": "1Gi"}},
-                        {"name": "reports", "persistentVolumeClaim": {"claimName": s.reports_pvc}},
-                    ],
-                },
-            },
-        },
-    }
-
-
-SECRET_LABEL = "ai-scan-repos/per-review-secret"
+        pass
 
 
 class KubernetesJobLauncher:
-    """Creates the Job, then (if a user AI key exists) a per-review Secret owned by the Job.
-
-    The Secret is garbage-collected with the Job (ownerReference + ttlSecondsAfterFinished)
-    and also deleted explicitly by cleanup() when the review completes/fails.
-    The pod waits in CreateContainerConfigError until the Secret exists (seconds).
-    """
-
-    def __init__(self, settings: Settings, batch_api=None, core_api=None):
-        self.s = settings
+    def __init__(self, settings: Settings, batch_api=None, core_api=None, sleep=time.sleep):
+        self.s, self.sleep = settings, sleep
         if batch_api is None or core_api is None:
             from kubernetes import client, config
             config.load_incluster_config()
@@ -170,26 +184,51 @@ class KubernetesJobLauncher:
             core_api = core_api or client.CoreV1Api()
         self.api, self.core = batch_api, core_api
 
-    def launch(self, review_id: str, attempt: int, secret_env: dict[str, str] | None = None) -> str:
-        name = job_name_for(review_id, attempt)
-        sec = ai_secret_name(name) if secret_env else None
-        job = self.api.create_namespaced_job(namespace=self.s.k8s_namespace,
-                                             body=build_job_manifest(self.s, review_id, attempt, name, sec))
+    def _create(self, body: dict):
+        """Create; if a same-named Job from an earlier budget lingers, delete it and retry (<= ~30s)."""
+        for i in range(16):
+            try:
+                return self.api.create_namespaced_job(namespace=self.s.k8s_namespace, body=body)
+            except Exception as e:  # kubernetes.client.ApiException
+                if getattr(e, "status", None) != 409 or i == 15:
+                    raise
+                if i == 0:
+                    self.delete(body["metadata"]["name"])
+                self.sleep(2)
+
+    def launch(self, spec: JobSpec, secret_env: dict[str, str] | None = None) -> str:
+        name = job_name_for(spec.review_id, spec.attempt)
+        sec = f"{name}-ai" if secret_env else None
+        job = self._create(build_job_manifest(self.s, spec, sec))
         if secret_env:
             uid = getattr(getattr(job, "metadata", None), "uid", None)
             meta = {"name": sec, "namespace": self.s.k8s_namespace,
-                    "labels": {SECRET_LABEL: "true", "review-id": review_id[:63]}}
+                    "labels": {SECRET_LABEL: "true", "review-id": spec.review_id}}
             if uid:
                 meta["ownerReferences"] = [{"apiVersion": "batch/v1", "kind": "Job", "name": name, "uid": uid,
                                             "blockOwnerDeletion": False}]
-            self.core.create_namespaced_secret(namespace=self.s.k8s_namespace, body={
-                "apiVersion": "v1", "kind": "Secret", "type": "Opaque", "metadata": meta, "stringData": secret_env})
+            body = {"apiVersion": "v1", "kind": "Secret", "type": "Opaque", "metadata": meta, "stringData": secret_env}
+            try:
+                self.core.create_namespaced_secret(namespace=self.s.k8s_namespace, body=body)
+            except Exception as e:
+                if getattr(e, "status", None) != 409:
+                    raise
+                self.core.replace_namespaced_secret(name=sec, namespace=self.s.k8s_namespace, body=body)
         return name
+
+    def delete(self, job_name: str) -> None:
+        """Delete a Job and its pods (watchdog relaunch, pause, cancel). Missing Job is fine."""
+        try:
+            self.api.delete_namespaced_job(name=job_name, namespace=self.s.k8s_namespace,
+                                           propagation_policy="Background")
+        except Exception as e:
+            if getattr(e, "status", None) != 404:
+                raise
 
     def cleanup(self, review_id: str) -> None:
         try:
             self.core.delete_collection_namespaced_secret(
-                namespace=self.s.k8s_namespace, label_selector=f"{SECRET_LABEL}=true,review-id={review_id[:63]}")
+                namespace=self.s.k8s_namespace, label_selector=f"{SECRET_LABEL}=true,review-id={review_id}")
         except Exception:  # noqa: BLE001 - GC via ownerReference is the fallback
             log.warning("could not delete per-review secrets for %s", review_id)
 

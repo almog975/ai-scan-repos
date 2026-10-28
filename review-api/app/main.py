@@ -13,22 +13,10 @@ from . import errors
 from .config import Settings, get_settings
 from .errors import ApiError
 from .github import HttpGitHub
+from .jobs import ReviewJobs
 from .launcher import make_launcher
 from .crypto import parse_key
 from .routers import misc, providers, reviews
-
-
-class ReviewLauncher:
-    """Adapts the Phase-0 launcher (review_id, attempt) to launch(review)."""
-
-    def __init__(self, inner):
-        self.inner = inner
-
-    def launch(self, r) -> str:
-        return self.inner.launch(r.id, r.attempt)
-
-log = logging.getLogger(__name__)
-logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"))
 
 
 def create_app(settings: Settings | None = None, **deps) -> FastAPI:
@@ -40,7 +28,7 @@ def create_app(settings: Settings | None = None, **deps) -> FastAPI:
     app = FastAPI(title="AI Scan Repos — review-api", version="0.1.0")
     app.state.settings = settings
     deps.setdefault("github", None) or deps.update(github=HttpGitHub(settings.github_token))
-    deps["launcher"] = ReviewLauncher(deps.get("launcher") or make_launcher(settings))
+    deps["launcher"] = ReviewJobs(deps.get("launcher") or make_launcher(settings), settings)
     app.state.deps = deps
     app.dependency_overrides[get_settings] = lambda: settings
     errors.install(app)

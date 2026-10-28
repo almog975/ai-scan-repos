@@ -11,8 +11,11 @@ rules:
     resources: [jobs]
     verbs: [create, get, list, watch, delete]
   - apiGroups: [""]
-    resources: [pods]
+    resources: [pods, pods/log]
     verbs: [get, list]
+  - apiGroups: [""]           # per-review AI-key Secret, owned by the scanner Job
+    resources: [secrets]
+    verbs: [create, update, delete, deletecollection]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
