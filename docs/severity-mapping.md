@@ -1,32 +1,33 @@
 # Severity mapping
 
 Every finding carries a normalized `severity` from `contracts/common.schema.json#/$defs/severity`:
-`critical | high | medium | low | info` (lowercase). Normalization happens in
-`scanner-worker/scanner/tools.py` → `_norm_sev()`: lowercase the value, map `error→high`, `warning→medium`,
-`note→low`, `unknown→info`; anything else is kept if it's a valid severity, otherwise **`info`**.
-Reports sort by `SEV_ORDER = [critical, high, medium, low, info]` (`scanner/report.py`).
+`critical | high | medium | low | info` (lowercase). Normalization is in
+`scanner-worker/scanner/tools.py` → `_norm_sev()`; reports sort by `SEV_ORDER` (`scanner/report.py`).
 
-| Tool | Native level | Normalized | Source | Matches plan? |
+This page describes the **decided** Phase 2 behavior. Where the code on `feat/phase-2-scanner` differs,
+the row says **decided, implementation pending (Phase 2)**.
+
+| Tool | Native level | Normalized (decided) | Code today | Source |
 |---|---|---|---|---|
-| semgrep | `ERROR` | `high` | `tools.py` `parse_semgrep` → `_norm_sev` | yes |
-| semgrep | `WARNING` | `medium` | same | yes |
-| semgrep | `INFO` | **`info`** | same (passes through) | **no — plan says INFO→low** |
-| semgrep | other/missing | `info` | `_norm_sev` fallback | not specified |
-| gitleaks | any (no native level) | `high` (hard-coded) | `tools.py` `parse_gitleaks` | yes; secret value never stored (`secret_redacted: true`) |
-| trivy (vulns + misconfig) | `CRITICAL` | `critical` | `tools.py` `parse_trivy` → `_norm_sev` | yes |
-| trivy | `HIGH` | `high` | same | yes |
-| trivy | `MEDIUM` | `medium` | same | yes |
-| trivy | `LOW` | `low` | same | yes |
-| trivy | `UNKNOWN` | `info` | `_norm_sev` (`unknown→info`) | plan: "keeps its own levels" — UNKNOWN isn't in the contract enum, so `info` is the code's choice |
-| (SARIF-style) | `NOTE` | `low` | `_norm_sev` | not used by current parsers |
-| AI (Deep, per-file review) | — | `info` (fixed), tool `ai`, rule `ai.file_review` | `scanner/run.py` `_ai_phase` | plan has no AI findings severity |
-| AI enrichment of a scanner finding | — | unchanged (only `ai_explanation` added) | `scanner/run.py` `_ai_phase` | yes |
+| semgrep | `ERROR` | `high` | `high` | `tools.py` `parse_semgrep` → `_norm_sev` |
+| semgrep | `WARNING` | `medium` | `medium` | same |
+| semgrep | `INFO` | **`low`** | `info` — **decided, implementation pending (Phase 2)** | same |
+| gitleaks | any (no native level) | `high` (always) | `high`, secret never stored (`secret_redacted: true`) | `tools.py` `parse_gitleaks` |
+| trivy (vulns + misconfig) | `CRITICAL` | `critical` | `critical` | `tools.py` `parse_trivy` → `_norm_sev` |
+| trivy | `HIGH` | `high` | `high` | same |
+| trivy | `MEDIUM` | `medium` | `medium` | same |
+| trivy | `LOW` | `low` | `low` | same |
+| trivy | `UNKNOWN` | `info` + **warning logged** | `info`, no warning — **decided, implementation pending (Phase 2)** | `_norm_sev` |
+| any | unrecognised/missing | `info` + **warning logged** | `info`, no warning — **decided, implementation pending (Phase 2)** | `_norm_sev` fallback |
+| AI (Deep, per-file review) | — | `info`, tool `ai`, rule `ai.file_review` | same | `scanner/run.py` `_ai_phase` |
 
-## AI-adjusted severity
-None. The AI never changes a severity; the contract's Finding has `ai_explanation`, `ai_fix`, `confidence`
-but no AI severity field. TODO: `ai_fix` and `confidence` are not populated by the worker yet.
+## AI-adjusted severity (decided)
+At **Brief and Deep** depth the AI fills, per finding: `ai_explanation`, `ai_fix`, `confidence` (0–1) and
+`ai_severity`. `severity` stays the scanner's normalized value; `ai_severity` is the AI's opinion next to it,
+using the same enum. Code today: only `ai_explanation` is set (`run.py` `_ai_phase`) — **decided, implementation pending (Phase 2)**.
 
-## Code vs contract/plan disagreements
-1. **semgrep INFO**: code → `info`, plan → `low`. Decide and align (TODO).
-2. **trivy UNKNOWN**: plan says Trivy keeps its own levels, but the contract enum has no `unknown`; code maps it to `info`.
-3. Unknown/garbage levels silently become `info` (not surfaced as an error).
+## Disagreements
+1. **`ai_severity` is not in the contract.** `contracts/finding.schema.json` has `ai_explanation`, `ai_fix`,
+   `confidence` but no `ai_severity`, and `additionalProperties: false`, so adding it without a contract
+   change makes reports fail validation. Contract update needed.
+2. semgrep INFO and the UNKNOWN/unrecognised warning: see table (code pending).

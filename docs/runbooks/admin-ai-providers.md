@@ -2,7 +2,8 @@
 
 Based on the code on `feat/phase-1-backend` (review-api `app/routers/providers.py`, `app/providers/`,
 `app/crypto.py`, `app/jobs.py`, `app/launcher.py`; scanner-worker `scanner/ai_client.py`, `scanner/run.py`)
-and the contract `contracts/review-api.openapi.yaml`. Anything the code doesn't do yet is marked **TODO**.
+and the contract `contracts/review-api.openapi.yaml`. Planner decisions for Phase 2 are described as the intended behavior; where the code on
+`feat/phase-2-scanner` doesn't do it yet it is marked **decided, implementation pending (Phase 2)**. Other gaps are marked **TODO**.
 
 > ⚠️ **Cloud providers send your source code outside the network.** With a provider of kind `cloud`,
 > the scanner Job sends scanner findings **and source-code snippets / whole files** (Brief: code context
@@ -14,7 +15,7 @@ Only users with `role = admin` (`require_admin`; non-admins get 403). The first 
 (see [contracts/README.md](../../contracts/README.md)). Admin routes are reached through the gateway at
 `/api/admin/...` with the session cookie (gateway `app/routes.py` allow-list).
 
-**UI:** TODO — the frontend has no admin AI-providers screen yet; use the API.
+**UI:** the admin AI-providers screen is planned for **Phase 4**. Until then use the API. (The Phase 2 frontend only reads `GET /api/ai-providers` and sends `provider_id` + `ack_cloud`; it has no key entry.)
 
 ## 2. API
 
@@ -34,7 +35,7 @@ Create body (`AIProviderWrite`, unknown fields rejected):
 |---|---|---|
 | `name` | yes | display name |
 | `kind` | yes | `onprem` or `cloud` — drives `cloud_warning` and the `ack_cloud` check |
-| `base_url` | no* | must start with `http://` or `https://`. *In practice required: the **adapter is chosen from the host** of `base_url` (below); with no `base_url` a `cloud` provider becomes `openai` and an `onprem` one becomes `ollama` (`http://ollama:11434`). |
+| `base_url` | no* | must start with `http://` or `https://`. *The **adapter is chosen from the host** of `base_url` (below); with no `base_url` a `cloud` provider becomes `openai` and an `onprem` one becomes `ollama` (`http://ollama:11434`). Decided: adapters normalize `base_url` themselves (e.g. add `/v1`), so the bare host is enough — **decided, implementation pending (Phase 2)**; until then use the exact URLs in the table. |
 | `model` | yes | e.g. `qwen2.5-coder:14b`, `gpt-4o-mini` |
 | `api_key` | no | encrypted at rest; required by all cloud adapters for `/test` |
 | `enabled` | no (default `true`) | disabled providers are hidden from users |
@@ -48,13 +49,13 @@ curl -s -b "$COOKIES" -H 'Content-Type: application/json' -X PUT https://<host>/
 ```
 (`$COOKIES` = your browser session cookies. State-changing calls through the gateway also need the `X-CSRF-Token` header — see `contracts/gateway.openapi.yaml`.)
 
-**`/test` is a stub:** it only checks that a key is present (when the adapter needs one) and a base URL is
-known. It makes **no network call** (`app/providers/base.py`). TODO: real connectivity test. Verify
-connectivity yourself (section 3.4).
+**`/test` (decided):** makes a real network call to the provider with the stored key and model.
+Code today: still a stub that only checks a key/base URL is present, no network call (`app/providers/base.py`) —
+**decided, implementation pending (Phase 2)**. Until then verify connectivity yourself (section 3, step 5).
 
 ### Adapter selection (by `base_url` host, `app/providers/__init__.py`)
 
-| Host contains | Adapter | Worker treats as | `base_url` to use (worker appends the path) |
+| Host contains | Adapter | Default `kind` to choose | `base_url` to use today (worker appends the path) |
 |---|---|---|---|
 | `:11434` | `ollama` | on-prem | `http://<host>:11434/v1` (worker calls `/chat/completions`) |
 | `api.openai.com` | `openai` | cloud | `https://api.openai.com/v1` |
@@ -63,7 +64,6 @@ connectivity yourself (section 3.4).
 | `api.groq.com` | `groq` | cloud | `https://api.groq.com/openai/v1` |
 | `api.mistral.ai` | `mistral` | cloud | `https://api.mistral.ai/v1` |
 | `.openai.azure.com` | `azure_openai` | cloud | your Azure deployment URL (TODO: Azure `api-version`/`api-key` header not verified in worker) |
-| `bedrock-runtime.` | `bedrock` | cloud | **not supported by the worker** (needs AWS SigV4) — AI step is skipped, scanners still run |
 | anything else (vLLM, LM Studio, **x.ai**) | `openai_compatible` | on-prem | `http://<host>:<port>/v1` |
 
 ## 3. On-prem provider over Tailscale (recommended)
@@ -77,7 +77,7 @@ code never leaves your tailnet.
    - Bind only to the Tailscale interface or firewall the port from the LAN/internet.
 2. **Tailscale on both sides:** install Tailscale on the GPU host (`tailscale up`) and give the cluster
    access to the tailnet — either Tailscale on the K3s node(s) or the Tailscale Kubernetes operator /
-   subnet router. TODO: no Tailscale manifests or runbook exist in `infra/` / `deploy/` yet.
+   subnet router. Owned by **Infra** (Tailscale manifests/runbook in `infra/`, not yet present).
 3. **Address:** use the MagicDNS name (`gpu-box.<tailnet>.ts.net`) or the `100.x.y.z` address
    (`tailscale ip -4` on the GPU host). MagicDNS from pods requires the node/cluster DNS to forward
    `*.ts.net` to `100.100.100.100`; if it doesn't, use the `100.x` IP.
@@ -94,8 +94,7 @@ code never leaves your tailnet.
      curl -sS http://100.x.y.z:11434/v1/chat/completions -H 'Content-Type: application/json' \
      -d '{"model":"qwen2.5-coder:14b","messages":[{"role":"user","content":"ping"}]}'
    ```
-   If NetworkPolicies are added, allow egress from scanner Jobs to that address/port. TODO: no egress
-   NetworkPolicy for the AI endpoint exists yet.
+   Egress NetworkPolicy from scanner Jobs to the AI endpoint is owned by **Infra** (not yet present).
 6. Create the provider with `kind: "onprem"` and that `base_url` (section 2), then set it as default.
 
 ## 4. Cloud providers
@@ -105,13 +104,13 @@ Create with `kind: "cloud"`, the `base_url` from the adapter table and an `api_k
 How the product warns (as implemented):
 - **ack_cloud:** `POST /reviews` with a `cloud` provider and without `"ack_cloud": true` → **422
   `CLOUD_ACK_REQUIRED`** ("code will leave the cluster", `app/routers/reviews.py`). The UI must show the
-  warning and resend with `ack_cloud: true`. TODO: frontend confirm dialog not verified/implemented.
+  warning and resend with `ack_cloud: true`. The Phase 2 frontend sends `provider_id` + `ack_cloud` (commit ab209fd); the exact confirm UX is not verified here.
 - **Report:** `report.json` → `provider.kind` (`onprem`/`cloud`); `report.md` header shows
   "⚠️ cloud AI — code/findings were sent outside your network" (`scanner/report.py`).
-- ⚠️ **Gap:** the report's `kind` is derived by the worker from the adapter name, **not** from the admin's
-  `kind`. A cloud API whose host has no adapter (e.g. **x.ai/Grok**) maps to `openai_compatible` and is
-  reported as **on-prem** with no warning in the report, although `ack_cloud` was still enforced. TODO:
-  pass the admin `kind` to the worker. Until then, avoid such providers or check the report manually.
+- **Decided:** cloud vs on-prem is the provider `kind` stored in the DB, everywhere (ack check, `cloud_warning`,
+  report banner). Code today: review-api uses the DB `kind`, but the worker still derives the report's `kind`
+  from the adapter name, so a cloud API with no matching adapter (e.g. **x.ai/Grok** → `openai_compatible`)
+  is reported as on-prem — **decided, implementation pending (Phase 2)**. Until then, check such reports manually.
 
 ## 5. Key storage and rotation
 - Provider `api_key` is encrypted with **AES-256-GCM** (`app/crypto.py`): key `AI_KEYS_ENCRYPTION_KEY`
@@ -121,12 +120,17 @@ How the product warns (as implemented):
   `ai-scan-repos/per-review-secret`) consumed via `envFrom` as `AI_API_KEY` — never in argv; the Secret is
   deleted by the launcher's cleanup, with ownerReference GC as fallback (`app/launcher.py`). The worker never writes the key to the volume.
 - **Rotate a provider key:** `PATCH /api/admin/ai-providers/{id}` with `{"api_key":"<new>"}`; new Jobs use it.
-- **Rotate the master key:** TODO — no re-encryption tool. Changing `ai-keys-master` makes stored keys
-  undecryptable (review-api logs "cannot decrypt AI key" and the scan runs without a key). Procedure today:
-  create the new secret, restart review-api, then re-enter every provider key with PATCH. See
-  [secrets-runbook.md](../secrets-runbook.md).
+- **Rotate the master key:** in the **backlog** — see [ADR-0003](../adr/0003-ai-key-rotation.md) (Deferred).
+  Changing `ai-keys-master` makes stored keys undecryptable. Interim: create the new secret, restart
+  review-api, then re-enter every provider key with PATCH. See [secrets-runbook.md](../secrets-runbook.md).
 
-## 6. TODO summary
-Admin UI; real `/test` connectivity check; Tailscale manifests/runbook; egress NetworkPolicy for AI;
-pass admin `kind` to the worker (report labelling); Bedrock/Azure in worker; master-key re-encryption tool;
-the plan's `openrouter`/`lmstudio`/`vllm` names are covered only via `openai_compatible`.
+## 6. Status summary
+| Item | Status |
+|---|---|
+| Cloud/on-prem from DB `kind` in worker/report | **decided, implementation pending (Phase 2)** |
+| Adapters normalize `base_url` | **decided, implementation pending (Phase 2)** |
+| `/test` real network call | **decided, implementation pending (Phase 2)** |
+| Master-key rotation / re-encryption | backlog — [ADR-0003](../adr/0003-ai-key-rotation.md) |
+| Admin UI | Phase 4 |
+| Tailscale, egress NetworkPolicy | Infra |
+| Azure OpenAI in worker | TODO (unverified) |
