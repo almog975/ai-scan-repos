@@ -153,9 +153,12 @@ def _delete_job(db, r: Review, jobs):
 
 @router.post("/reviews/{id}/pause", status_code=202)
 def pause_review(id: str, request: Request, user: User = Depends(current_user), db=Depends(get_db)):
-    """queued|running|retrying -> paused. The worker checkpoints after every file (atomic), so the Job is
-    deleted right away; the attempt stays open and resume relaunches the same attempt from its checkpoint."""
+    """running -> paused (Planner decision: Pause only for running; 409 CONFLICT otherwise). The worker
+    checkpoints after every file (atomic), so the Job is deleted right away; the attempt stays open and resume
+    relaunches the same attempt from its checkpoint."""
     r = _locked(db, id, user)
+    if r.state != State.running:
+        raise ApiError(409, "CONFLICT", f"pause is only allowed from running (state is {r.state.value})")
     transition(r, State.paused, by=user.id)
     _delete_job(db, r, _jobs(request))
     db.commit()

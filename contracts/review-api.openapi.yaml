@@ -311,6 +311,7 @@ paths:
     parameters: [{$ref: '#/components/parameters/ReviewId'}]
     post:
       operationId: pauseReview
+      description: Allowed only from running; 409 CONFLICT from any other state. The attempt stays open; resume continues it from the checkpoint.
       responses: {'400': {$ref: '#/components/responses/BadRequest'}, '202': {$ref: '#/components/responses/Accepted'}, '401': {$ref: '#/components/responses/Unauthorized'}, '404': {$ref: '#/components/responses/NotFound'}, '409': {$ref: '#/components/responses/InvalidState'}}
   /reviews/{id}/resume:
     parameters: [{$ref: '#/components/parameters/ReviewId'}]

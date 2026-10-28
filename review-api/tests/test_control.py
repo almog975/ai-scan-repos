@@ -151,6 +151,8 @@ def test_files_pagination(client, H, k8s, settings):
 
 def test_pause_resume_cancel(client, H, k8s):
     rid = create(client, H)["id"]
+    assert client.post(f"/reviews/{rid}/pause", headers=H).status_code == 409  # Pause only from running
+    assert beat(client, rid).json()["state"] == "running"
     r = client.post(f"/reviews/{rid}/pause", headers=H)
     assert r.status_code == 202 and r.json()["state"] == "paused"
     check("Review", r.json())
@@ -301,7 +303,8 @@ def test_resume_provider_checks(client, H, A, k8s):
         db.commit()
         pid = p.id
     rid = client.post("/reviews", json={"repo_url": URL, "depth": "quick", "provider_id": pid}, headers=H).json()["id"]
-    client.post(f"/reviews/{rid}/pause", headers=H)
+    beat(client, rid)
+    assert client.post(f"/reviews/{rid}/pause", headers=H).status_code == 202
     with dbmod.session_factory()() as db:
         db.get(AIProvider, pid).enabled = False
         db.commit()
