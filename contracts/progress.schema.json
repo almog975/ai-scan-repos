@@ -3,36 +3,108 @@
   "$id": "https://github.com/almog975/FinalProject/ai-scan-repos/contracts/progress.schema.json",
   "title": "progress.json (v1) – per-file live progress on the reports volume (atomic tmp+rename); also the SSE 'progress' event payload",
   "type": "object",
-  "required": ["review_id", "state", "stage", "attempt", "budget_no", "updated_at", "totals", "files"],
+  "required": [
+    "review_id",
+    "attempt",
+    "budget_no",
+    "updated_at",
+    "totals",
+    "files"
+  ],
   "properties": {
-    "schema": {"const": "progress/v1"},
-    "review_id": {"$ref": "common.schema.json#/$defs/uuid"},
-    "state": {"$ref": "common.schema.json#/$defs/state"},
-    "stage": {"$ref": "common.schema.json#/$defs/stage"},
-    "attempt": {"$ref": "common.schema.json#/$defs/attempt"},
-    "budget_no": {"$ref": "common.schema.json#/$defs/budget_no"},
-    "current_file": {"type": ["string", "null"]},
-    "updated_at": {"$ref": "common.schema.json#/$defs/timestamp", "description": "doubles as heartbeat"},
+    "schema": {
+      "const": "progress/v1"
+    },
+    "review_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "state": {
+      "$ref": "common.schema.json#/$defs/state"
+    },
+    "stage": {
+      "$ref": "common.schema.json#/$defs/stage"
+    },
+    "attempt": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 5
+    },
+    "budget_no": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "retry budget number; starts at 1, +1 per POST /reviews/{id}/retry"
+    },
+    "current_file": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "updated_at": {
+      "$ref": "common.schema.json#/$defs/timestamp",
+      "description": "doubles as heartbeat"
+    },
     "totals": {
-      "type": "object", "required": ["files", "done", "skipped", "error"],
+      "type": "object",
+      "required": [
+        "files",
+        "done",
+        "skipped",
+        "error"
+      ],
       "properties": {
-        "files": {"type": "integer", "minimum": 0}, "done": {"type": "integer", "minimum": 0},
-        "skipped": {"type": "integer", "minimum": 0}, "error": {"type": "integer", "minimum": 0},
-        "findings": {"type": "integer", "minimum": 0}
+        "files": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "done": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "skipped": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "error": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "findings": {
+          "type": "integer",
+          "minimum": 0
+        }
       }
     },
     "files": {
       "type": "array",
       "items": {
-        "type": "object", "required": ["path", "status", "findings_count"],
+        "type": "object",
+        "required": [
+          "path",
+          "status",
+          "findings_count"
+        ],
         "properties": {
-          "path": {"type": "string"},
-          "status": {"$ref": "common.schema.json#/$defs/file_status"},
-          "findings_count": {"type": "integer", "minimum": 0},
-          "started_at": {"$ref": "common.schema.json#/$defs/nullable_timestamp"},
-          "finished_at": {"$ref": "common.schema.json#/$defs/nullable_timestamp"}
+          "path": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "common.schema.json#/$defs/file_status"
+          },
+          "findings_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "started_at": {
+            "$ref": "common.schema.json#/$defs/nullable_timestamp"
+          },
+          "finished_at": {
+            "$ref": "common.schema.json#/$defs/nullable_timestamp"
+          }
         }
       }
     }
-  }
+  },
+  "additionalProperties": false
 }
