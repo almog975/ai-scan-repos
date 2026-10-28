@@ -53,7 +53,7 @@ pipeline {
       sh 'export PATH="$PWD/.ci-venv/bin:$PATH" && make contracts && python3 -m pytest -q contracts/tests'
     } }
     stage('Test') { when { expression { !skipBuild && changed } } steps { script {
-      changed.each { s -> dir(SERVICES[s][0]) { sh "export PATH=\"\$WORKSPACE/${s == 'scanner-worker' ? '.ci-venv-worker' : '.ci-venv'}/bin:\$PATH\" && make test" } }
+      changed.each { s -> dir(SERVICES[s][0]) { sh "export AISCAN_WORKER_PYTHON=\$WORKSPACE/.ci-venv-worker/bin/python PATH=\"\$WORKSPACE/${s == 'scanner-worker' ? '.ci-venv-worker' : '.ci-venv'}/bin:\$PATH\" && make test" } }
     } } }
     stage('DB parity (Postgres)') { when { expression { !skipBuild } } steps {
       sh 'export PATH="$PWD/.ci-venv/bin:$PATH" && ci/db-parity.sh'   // alembic head == infra/db/schema.sql via pg_dump, plus downgrade/upgrade round trip
