@@ -19,6 +19,36 @@ from .auth import current_user, require_internal
 from .config import Settings, get_settings
 from .crypto import KeyCipher
 from .launcher import make_launcher
+
+log = logging.getLogger(__name__)
+
+
+class KeyedLauncher:
+    """Looks up the review owner's stored AI key and hands it to the real launcher
+    as secret env (K8s: per-review Secret; local: process env). Used by the API and the watchdog."""
+
+    def __init__(self, inner, settings):
+        self.inner, self.s = inner, settings
+
+    def secret_env_for(self, review_id: str) -> dict | None:
+        with dbmod.session_factory()() as db:
+            r = db.get(Review, review_id)
+            if not r or not r.ai_provider:
+                return None
+            k = db.scalars(select(AIKey).where(AIKey.owner_id == r.owner_id, AIKey.provider == r.ai_provider)).first()
+            env = {"AI_PROVIDER": r.ai_provider}
+            if k:
+                try:
+                    env["AI_API_KEY"] = KeyCipher(self.s.ai_keys_encryption_key).decrypt(k.encrypted_key)
+                except ValueError:
+                    log.error("cannot decrypt AI key for review %s", review_id)
+            return env
+
+    def launch(self, review_id: str, attempt: int) -> str:
+        return self.inner.launch(review_id, attempt, secret_env=self.secret_env_for(review_id))
+
+    def cleanup(self, review_id: str) -> None:
+        self.inner.cleanup(review_id)
 from .metrics import REVIEWS_COMPLETED, REVIEWS_CREATED, REVIEWS_FAILED, REVIEWS_RUNNING
 from .models import AIKey, Review, ReviewStatus
 from .schemas import AIKeyIn, ProgressIn, ReviewCreate, ReviewOut
@@ -32,7 +62,8 @@ def create_app(settings: Settings | None = None, launcher=None, start_watchdog: 
     dbmod.init_engine(settings.database_url)
     if settings.database_url.startswith("sqlite"):
         dbmod.Base.metadata.create_all(dbmod.get_engine())  # postgres uses Alembic
-    launcher = launcher or make_launcher(settings)
+    base_launcher = launcher or make_launcher(settings)
+    launcher = KeyedLauncher(base_launcher, settings)
     run_wd = settings.watchdog_enabled if start_watchdog is None else start_watchdog
 
     @asynccontextmanager
@@ -80,7 +111,7 @@ def create_app(settings: Settings | None = None, launcher=None, start_watchdog: 
         r = Review(owner_id=user, repo_url=body.repo_url, depth=body.depth, ai_provider=body.ai_provider,
                    status=ReviewStatus.running, attempts=1, last_heartbeat=datetime.now(timezone.utc))
         db.add(r)
-        db.flush()
+        db.commit()
         r.job_name = launcher.launch(r.id, 1)
         db.commit()
         REVIEWS_CREATED.labels(depth=body.depth.value).inc()
@@ -178,6 +209,8 @@ def create_app(settings: Settings | None = None, launcher=None, start_watchdog: 
             elif body.status == ReviewStatus.failed:
                 REVIEWS_FAILED.inc()
         db.commit()
+        if r.status in (ReviewStatus.completed, ReviewStatus.failed):
+            launcher.cleanup(r.id)
         return r
 
     return app

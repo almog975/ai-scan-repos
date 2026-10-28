@@ -141,6 +141,9 @@ def test_make_ai(tmp_path):
     assert make_ai(c) is None
     c.ai_base_url = "http://x/v1"
     assert make_ai(c).is_cloud is False
+    c.ai_provider, c.ai_api_key = "anthropic", "k"
+    a = make_ai(c)
+    assert a.is_cloud and a.model.startswith("claude") and "anthropic.com" in a.base_url
 
 
 def test_api_client_and_main(tmp_path, monkeypatch):

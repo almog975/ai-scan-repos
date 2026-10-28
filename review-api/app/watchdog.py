@@ -36,6 +36,8 @@ def check_stalled(db, launcher, *, timeout_seconds: int, max_attempts: int,
             r.status = ReviewStatus.failed
             r.message = f"no progress for {timeout_seconds}s after {r.attempts} attempts"
             REVIEWS_FAILED.inc()
+            if hasattr(launcher, "cleanup"):
+                launcher.cleanup(r.id)
             log.warning("review %s failed after %s attempts", r.id, r.attempts)
         else:
             r.attempts += 1

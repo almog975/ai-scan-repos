@@ -26,7 +26,7 @@ class RecLauncher:
     def __init__(self):
         self.calls = []
 
-    def launch(self, rid, attempt):
+    def launch(self, rid, attempt, secret_env=None):
         self.calls.append((rid, attempt))
         return f"job-{attempt}"
 
@@ -102,7 +102,7 @@ def test_k8s_launcher_uses_api():
         def create_namespaced_job(self, namespace, body):
             self.ns, self.body = namespace, body
     api = FakeBatch()
-    name = KubernetesJobLauncher(Settings(), batch_api=api).launch("rid", 1)
+    name = KubernetesJobLauncher(Settings(), batch_api=api, core_api=object()).launch("rid", 1)
     assert api.ns == "ai-scan-repos" and api.body["metadata"]["name"] == name
 
 

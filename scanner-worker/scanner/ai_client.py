@@ -19,6 +19,9 @@ CLOUD_BASES = {
     "gemini": "https://generativelanguage.googleapis.com/v1beta",
 }
 PROVIDERS = {"openai_compatible", *CLOUD_BASES}
+# Used when AI_MODEL is left at its on-prem default but a cloud provider is selected per review.
+DEFAULT_MODELS = {"openai": "gpt-4o-mini", "grok": "grok-2-latest", "anthropic": "claude-3-5-sonnet-latest",
+                  "gemini": "gemini-1.5-pro"}
 
 SYSTEM_PROMPT = ("You are a senior application-security reviewer. Given scanner findings and code, "
                  "explain real risks, rank them, and give concrete fixes. Be concise. Use Markdown.")

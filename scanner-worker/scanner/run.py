@@ -10,7 +10,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from .ai_client import AIClient
+from .ai_client import DEFAULT_MODELS, AIClient
 from .api_client import ReviewAPI
 from .checkpoint import Checkpoint
 from .config import WorkerConfig
@@ -161,7 +161,11 @@ def make_ai(cfg: WorkerConfig) -> AIClient | None:
     if cfg.ai_provider in ("", "none"):
         return None
     try:
-        return AIClient(cfg.ai_provider, cfg.ai_model, cfg.ai_api_key, cfg.ai_base_url)
+        model = cfg.ai_model
+        if model == "local-model" and cfg.ai_provider in DEFAULT_MODELS:
+            model = DEFAULT_MODELS[cfg.ai_provider]
+        base = cfg.ai_base_url if cfg.ai_provider == "openai_compatible" else ""
+        return AIClient(cfg.ai_provider, model, cfg.ai_api_key, base)
     except ValueError as exc:
         log.warning("AI disabled: %s", exc)
         return None
