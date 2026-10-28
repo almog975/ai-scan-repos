@@ -35,7 +35,7 @@ Deferred past v0.1: per-depth estimates and server-side findings paging (see con
 | Component | Path | Tech | Role |
 |---|---|---|---|
 | review-api | `review-api/` | FastAPI, SQLAlchemy 2, Alembic, Postgres/SQLite | Review CRUD, pause/resume, launches scanner jobs, watchdog, report serving, encrypted AI-key storage, Prometheus `/metrics` |
-| scanner-worker | `scanner-worker/` | Python CLI (`python -m scanner.run --review-id X`) + semgrep, gitleaks 8.21.2, trivy 0.58.1 | Clone → scan → AI → report, with checkpoint/resume and pause support |
+| scanner-worker | `scanner-worker/` | Python CLI (`python -m scanner.run --review-id X`) + semgrep, gitleaks 8.21.2, trivy 0.76.1 | Clone → scan → AI → report, with checkpoint/resume and pause support |
 
 Scan depths (`quick` / `brief` / `deep`):
 - **quick** – scanners + short AI bullet summary of the top 30 findings.
