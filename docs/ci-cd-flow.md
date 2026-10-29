@@ -1,62 +1,53 @@
 # CI/CD flow: Jenkins → registry → Git tag bump → Argo CD
 
-How a commit becomes a running deployment on k3s. Source of truth: the root [`Jenkinsfile`](../Jenkinsfile) and [`deploy/argocd/`](../deploy/argocd/). Pipeline details and the webhook relay: [ci.md](ci.md) (owned by Pipelines). Decision record: [ADR-0004](adr/0004-gitops.md).
+How a commit becomes a running deployment on k3s. Source of truth: the root [`Jenkinsfile`](../Jenkinsfile) and [`deploy/argocd/`](../deploy/argocd/). Pipeline details, agent and webhook relay: [ci.md](ci.md) (owned by Pipelines); make targets: [ci-cd.md](ci-cd.md). Decision record: [ADR-0004](adr/0004-gitops.md).
 
 ```mermaid
 flowchart LR
-  dev[git push] -->|GitHub webhook via smee.io| J[Jenkins]
-  subgraph Jenkins pipeline
-    G[Loop guard<br/>skip on '[skip ci]' or deploy/-only] --> D[Detect changes<br/>git diff → services]
-    D --> C[Contracts + Test<br/>make test / vitest]
-    C --> P[DB parity + Schemathesis]
-    P --> B[docker build<br/>&lt;registry&gt;/ai-scan/&lt;svc&gt;:&lt;sha&gt;]
-    B --> T[Trivy image<br/>fail on HIGH/CRITICAL]
-    T --> R[docker push<br/>main only]
-    R --> K[Deploy: tag bump in<br/>deploy/&lt;svc&gt;/overlays/k3s<br/>commit '[skip ci]']
+  dev[git push] -->|webhook via smee-client<br/>or pollSCM H/5| G
+  subgraph J[Jenkins – k8s agent pod ai-scan-agent]
+    G[Loop guard<br/>skip: bot author, '[skip ci]', deploy/-only] --> T[Test<br/>contracts, ci/tests, vitest,<br/>pytest, schemathesis, db-parity]
+    T --> B[Build<br/>kaniko → image tarball]
+    B --> S[Scan<br/>trivy --input, fail on HIGH/CRITICAL]
+    S --> P[Push – main only<br/>crane push]
+    P --> K[Deploy – main only<br/>tag bump in deploy/&lt;svc&gt;/overlays/k3s<br/>commit '[skip ci]']
   end
-  J --> G
-  K -->|git push – TODO stub| GH[(GitHub main)]
+  P --> REG[(Registry)]
+  K -.->|git push: OPEN ITEM<br/>stub| GH[(GitHub main)]
   GH -->|poll| A[Argo CD ai-scan-root]
   A --> Apps[ai-scan-&lt;component&gt;-k3s<br/>ns ai-scan-repos]
-  R --> REG[(Registry)]
   Apps -->|pull image| REG
 ```
 
-## 1. Jenkins: build, test, scan
+## 1. Jenkins: test, build, scan, push
 
-Triggered by `githubPush()` (webhook relayed by smee.io). Parameter `TARGET` = `k3s` (default) | `local` | `eks`; registry host per target, e.g. `registry.registry:5000` for k3s (in-cluster Service, plain HTTP; crane push uses `--insecure`).
+Runs on the Kubernetes agent pod template `ai-scan-agent` (containers `tools` and `kaniko`; no Docker daemon). Triggers: `githubPush()` (GitHub webhook via the smee-client Deployment) and `pollSCM('H/5 * * * *')` as fallback. Parameter `TARGET` = `k3s` (default) | `local` | `eks`; registry host per target (k3s: `registry.registry:5000`, the in-cluster Service over plain HTTP; `crane push --insecure`, kaniko builds with `--no-push`).
 
 | Stage | What it does |
 |---|---|
-| Loop guard | Skips (NOT_BUILT) if the last commit message has `[skip ci]` or only `deploy/` changed – so Jenkins' own tag-bump commits don't re-trigger it |
-| Detect changes | `git diff` since the last successful build → changed services among frontend, gateway, review-api, scanner-worker |
-| Install CI deps | Two venvs (scanner-worker separate because of a semgrep/schemathesis dependency conflict) |
-| Contracts | `make contracts` + `pytest contracts/tests` |
-| Test | `make test` in each changed Python service |
-| DB parity (Postgres) | `ci/db-parity.sh`: alembic head == `infra/db/schema.sql`, downgrade/upgrade round trip |
-| Schemathesis | `ci/schemathesis.sh 50` – review-api against `contracts/review-api.openapi.yaml` |
-| Build / Trivy scan | gateway, review-api: `docker build` then `trivy image --exit-code 1 --severity HIGH,CRITICAL` |
-| Scanner worker image | build + Trivy (+ push on `main`) |
-| Frontend image | `npm ci`, vitest (JUnit report published), `npm run build`, docker build + Trivy (+ push on `main`) |
-| Push | gateway, review-api pushed on `main` (`registry-creds`) |
-| Deploy | tag bump (below), `main` only |
+| Loop guard | Skips (NOT_BUILT) if the last commit is by the CI bot (`ci-bot@ai-scan.local`), has `[skip ci]`, or only touches `deploy/`. Picks the changed components (all of them if `contracts/`, `mk/`, `Makefile` changed or the diff base is missing) |
+| Test | CI venvs → **Contracts** (`make contracts`, `contracts/tests`, `ci/tests`) → per changed component: frontend `npm ci` + vitest + build; gateway `make test`; review-api `make test` + `ci/schemathesis.sh 50` + `ci/db-parity.sh`; scanner-worker `make test`. JUnit reports published |
+| Build | kaniko builds each changed component to a tarball (no push) |
+| Scan | `trivy image --input <tar> --exit-code 1 --severity CRITICAL,HIGH` |
+| Push | `main` only: `crane push` to `<registry>/ai-scan/<svc>:<short sha>` with credential `registry-push` |
+| Deploy | `main` only: tag bump (below) |
 
-Images are always `<registry>/ai-scan/<svc>:<short git sha>`, never `latest`. postgres and platform have no image built here.
+Images are never `latest`. postgres and platform have no image built here.
 
 ## 2. Tag bump in `deploy/<component>/overlays/k3s`
 
-Overlays ship with `newTag: GIT_SHA_PLACEHOLDER`. For each changed service the Deploy stage runs, in `deploy/<svc>/overlays/${TARGET}`:
+Overlays ship with `newTag: GIT_SHA_PLACEHOLDER`. For each changed component, in `deploy/<svc>/overlays/${TARGET}`:
 
 - frontend, gateway, review-api: `kustomize edit set image ai-scan/<svc>=<registry>/ai-scan/<svc>:<sha>`
-- scanner-worker: sets `SCANNER_IMAGE=<registry>/ai-scan/scanner-worker:<sha>` in the `scanner-image` configMapGenerator (`kustomize edit set configmap`, fallback `yq`, then `sed`). review-api reads it via `configMapKeyRef` and uses it for the per-review Jobs.
+- scanner-worker: `kustomize edit set configmap scanner-image --from-literal=SCANNER_IMAGE=<registry>/ai-scan/scanner-worker:<sha>`. review-api reads it via `configMapKeyRef` and uses it for each review's Job.
 
-Then it commits as `jenkins` with message `ci(<target>): <svcs> -> <sha> [skip ci]`.
+Then it commits as `ai-scan-ci-bot` with `ci(<target>): <svcs> -> <sha> [skip ci]`.
 
-> **Current state:** the `git push` of that commit is a commented-out **TODO stub** in the Jenkinsfile **Open item, awaiting Almog's decision:** either Jenkins commits the tag bump directly to `main`, or it opens an automatic PR. Until it is enabled, the tag bump stays on the Jenkins workspace and Argo CD (which tracks `main`) does not see it.
+> **Open item, awaiting Almog's decision:** the `git push` of that commit is a commented-out stub (`TODO(push)`, credential `github-bot` not created). The choice is between Jenkins committing the tag bump directly to `main` and opening an automatic PR. Until then the bump stays in the Jenkins workspace, and tags in `deploy/` are bumped manually through a PR (the installer's `images` step prints the diff).
 
 ## 3. Argo CD sync
 
-App-of-apps, bootstrapped once: `kubectl apply -n argocd -f deploy/argocd/root-app.yaml`.
+App-of-apps: `kubectl apply -n argocd -f deploy/argocd/root-app.yaml` (the installer does this in `gitops` mode, with Argo CD chart 10.11.6 and AppProjects `ai-scan` / `ai-scan-ci`).
 
 - Root `ai-scan-root` (ns `argocd`) syncs `deploy/argocd/apps/` on `main`.
 - One child Application per component, project `ai-scan`, source `deploy/<component>/overlays/k3s` on `main`, destination namespace `ai-scan-repos`, auto-sync with `prune` + `selfHeal`, `CreateNamespace=true`:
@@ -68,4 +59,4 @@ App-of-apps, bootstrapped once: `kubectl apply -n argocd -f deploy/argocd/root-a
 | `ai-scan-review-api-k3s` | 2 |
 | `ai-scan-gateway-k3s`, `ai-scan-frontend-k3s`, `ai-scan-scanner-worker-k3s` | 3 |
 
-When a tag-bump commit lands on `main`, Argo CD renders the overlay with Kustomize and rolls out the new image. Because `selfHeal` is on, manual `kubectl` changes are reverted – change Git instead. Rollback: [runbooks/rollback.md](runbooks/rollback.md).
+When a tag-bump commit lands on `main`, Argo CD renders the overlay and rolls out the new image. `selfHeal` reverts manual `kubectl` changes – change Git instead. Rollback: [runbooks/rollback.md](runbooks/rollback.md).
