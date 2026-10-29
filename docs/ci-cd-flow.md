@@ -64,4 +64,4 @@ When a tag-bump commit lands on `main`, Argo CD renders the overlay and rolls ou
 ## Troubleshooting
 
 - No build after a push: Jenkins also polls (`pollSCM H/5`); otherwise use **Build Now**.
-- GitHub **Redeliver** to the gateway auto-review webhook returns 409 (replay protection). See [runbook.md](runbooks/runbook.md#github-webhooks-redeliver-returns-409).
+- GitHub **Redeliver** to the gateway auto-review webhook returns 409 within 24 h of the original (replay protection; after that, an old push is rejected as stale, and the delivery-id expiry is a planned gateway change). See [runbook.md](runbooks/runbook.md#github-webhooks-redeliver-returns-409).
