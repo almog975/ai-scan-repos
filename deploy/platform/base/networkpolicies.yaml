@@ -1,6 +1,6 @@
 # Ingress lockdown for ns ai-scan-repos: default-deny, then only the paths the app needs.
 # Traefik is selected by namespace (kube-system on K3s, also used by the installer for local/EKS) + its standard pod
-# label; Prometheus by namespace "monitoring". Change them in an overlay if Traefik/Prometheus live elsewhere.
+# label; Prometheus by namespace "monitoring" + app.kubernetes.io/name=prometheus. Change them in an overlay if Traefik/Prometheus live elsewhere.
 # Kubelet probes are node traffic and are not affected. Egress is unchanged here (scanner/reports-cleanup have their own).
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -19,6 +19,7 @@ spec:
     - from:
         - podSelector: {matchLabels: {app: review-api}}
         - podSelector: {matchLabels: {app: gateway}}
+        - podSelector: {matchLabels: {app: review-api-migrate}}   # migrations Job (alembic upgrade head)
       ports: [{protocol: TCP, port: 5432}]
 ---
 apiVersion: networking.k8s.io/v1
@@ -34,6 +35,7 @@ spec:
       ports: [{protocol: TCP, port: 8001}]
     - from:   # /metrics scrape (ServiceMonitor review-api)
         - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: monitoring}}
+          podSelector: {matchLabels: {app.kubernetes.io/name: prometheus}}
       ports: [{protocol: TCP, port: 8001}]
 ---
 apiVersion: networking.k8s.io/v1
@@ -47,8 +49,12 @@ spec:
         - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: kube-system}}
           podSelector: {matchLabels: {app.kubernetes.io/name: traefik}}
       ports: [{protocol: TCP, port: 8000}]
+    - from:   # nginx in the frontend proxies /api,/auth,/me,/webhooks to the gateway (same nginx.conf as compose)
+        - podSelector: {matchLabels: {app: frontend}}
+      ports: [{protocol: TCP, port: 8000}]
     - from:   # /metrics scrape (ServiceMonitor gateway)
         - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: monitoring}}
+          podSelector: {matchLabels: {app.kubernetes.io/name: prometheus}}
       ports: [{protocol: TCP, port: 8000}]
 ---
 apiVersion: networking.k8s.io/v1
