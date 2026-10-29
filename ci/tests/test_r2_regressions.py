@@ -109,6 +109,10 @@ def test_default_deny_ingress_present(k3s):
     ("traefik", "postgres", 5432, False),
     ("scanner", "gateway", 8000, False),
     ("frontend", "gateway", 8000, True),            # nginx proxy (frontend/nginx.conf)
+    ("migrate", "postgres", 5432, True),            # migrations Job (alembic upgrade head)
+    ("grafana", "gateway", 8000, False),            # other monitoring pods: ns AND pod selector
+    ("grafana", "review-api", 8001, False),
+    ("migrate", "review-api", 8001, False),
 ])
 def test_np_matrix(k3s, src, dst, port, ok):
     pods, nps = pods_and_policies(k3s)
@@ -117,6 +121,10 @@ def test_np_matrix(k3s, src, dst, port, ok):
         sl, ns = TRAEFIK
     elif src == "prometheus":
         sl, ns = PROM
+    elif src == "grafana":
+        sl, ns = {"app.kubernetes.io/name": "grafana"}, "monitoring"
+    elif src == "migrate":
+        sl = pods["review-api-migrate"]
     elif src == "scanner":
         sl = SCANNER
     else:
@@ -138,3 +146,18 @@ def test_gateway_forwarded_allow_ips_is_cidr(k3s):
 def test_postgres_automount_false(k3s):
     pg = next(d for d in k3s if d["kind"] == "StatefulSet" and d["metadata"]["name"] == "postgres")
     assert pg["spec"]["template"]["spec"]["automountServiceAccountToken"] is False
+
+
+@pytest.mark.parametrize("overlay", ["k3s", "local", "eks"])
+def test_np_structure_all_overlays(overlay):
+    """Prometheus allow is ONE from-item (namespaceSelector AND podSelector); migrate allowed on postgres; in every overlay."""
+    import yaml
+    out = subprocess.run(["kustomize", "build", str(ROOT / "deploy/platform/overlays" / overlay)], capture_output=True, text=True, check=True).stdout
+    nps = {d["metadata"]["name"]: d["spec"] for d in yaml.safe_load_all(out) if d and d["kind"] == "NetworkPolicy"}
+    peers = [p for r in nps["postgres-ingress"]["ingress"] for p in r["from"]]
+    assert {"podSelector": {"matchLabels": {"app": "review-api-migrate"}}} in peers
+    for name in ("gateway-ingress", "review-api-ingress"):
+        for r in nps[name]["ingress"]:
+            for p in r["from"]:
+                if "namespaceSelector" in p:   # never a bare namespace peer (that would OR-in the whole namespace)
+                    assert "podSelector" in p, (name, p)
