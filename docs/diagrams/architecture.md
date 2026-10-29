@@ -1,7 +1,7 @@
 # Architecture — AI Scan Repos (as implemented, Phase 1)
 
 > Snapshot of the Phase 1 backend (review-api + scanner-worker). Since then `frontend/`, `gateway/`,
-> `contracts/`, `deploy/` and `infra/` were added; the target picture is [architecture-v1.md](architecture-v1.md).
+> `contracts/`, `deploy/` and `infra/` were added (deployment is via the CLI installer `infra/installer/aiscan-install.sh` + Argo CD; there is no web installer); the target picture is [architecture-v1.md](architecture-v1.md).
 > `contracts/` is the source of truth; where this page and the contracts differ, code follows the contracts
 > (exception: Brief = top 10 findings, as below).
 

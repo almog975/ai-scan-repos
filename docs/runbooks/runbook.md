@@ -18,6 +18,11 @@ docker build -t <host>/ai-scan/frontend:$SHA frontend
 docker push <host>/ai-scan/<svc>:$SHA
 ```
 
+### K3s / EKS (supported path)
+Use the CLI installer `infra/installer/aiscan-install.sh` (no web UI; the old web wizard was removed in Phase 9):
+it bootstraps the cluster, creates secrets, installs Argo CD and the app-of-apps. See [installer.md](../installer.md).
+The manual per-component steps below are for debugging only.
+
 ### Kubernetes (Kustomize, per component)
 Manifests live in `deploy/<component>/{base,overlays/{local,k3s,eks}}`; deploy each with
 `kubectl apply -k deploy/<component>/overlays/$OVERLAY`. Apply order (from [infra-README.md](../infra-README.md)):
@@ -78,8 +83,9 @@ Jenkins (smee relay → test → build → Trivy → push → tag bump) and the 
 Tunables: `HEARTBEAT_TIMEOUT_SECONDS` (900), `MAX_ATTEMPTS` (5), `WATCHDOG_INTERVAL_SECONDS` (60),
 `SCANNER_TIMEOUT_SECONDS` (900 per tool), `CLONE_TIMEOUT_SECONDS` (300).
 
-Finished Jobs are deleted by K8s after 1 h (`ttlSecondsAfterFinished`). Report files on the PVC are not
-cleaned up — TODO retention policy.
+Finished Jobs are deleted by K8s after 1 h (`ttlSecondsAfterFinished`). Report directories older than
+`REPORT_RETENTION_DAYS` (ConfigMap `reports-retention`, default 30) are deleted by CronJob `reports-cleanup`
+(daily 03:00 Asia/Jerusalem); the API then returns 410 `REPORT_EXPIRED`. See [admin-guide.md](../admin-guide.md#7-reports-retention-backups-and-cleanup).
 
 ## 3. Troubleshoot
 
@@ -99,3 +105,26 @@ cleaned up — TODO retention policy.
 | `/report` 404 "report not ready" | Review not `completed` or file missing on the reports volume (PVC not shared?) |
 | Pause has no effect | API and worker don't share the same reports volume |
 | POST /admin/ai-providers 500, /readyz 503 | `AI_KEYS_ENCRYPTION_KEY` empty or not 32 bytes (hex/base64) |
+
+### GitHub webhooks: "Redeliver" returns 409
+
+Two different webhooks exist. Don't confuse them:
+
+| Webhook | Receiver | Dedupe |
+|---|---|---|
+| CI (push → Jenkins build) | smee-client → Jenkins `/github-webhook/` | none in our code. Jenkins also polls (`pollSCM H/5`) |
+| Auto-review (push → review, only with `WEBHOOK_AUTO_REVIEW=true`) | gateway `POST /webhooks/github` | replay protection (below) |
+
+The gateway (`gateway/app/main.py`, `WEBHOOK_REPLAY_WINDOW_SECONDS`, default 86400 = 24 h) checks each signed delivery like this. Every rejection is **409 CONFLICT**.
+
+1. **Same `X-GitHub-Delivery` already stored** → `"duplicate delivery"`. GitHub's **Redeliver** keeps the original delivery GUID. Delivery-id rows are never expired, so this 409 is **permanent, not 24 h**. It applies whenever the first attempt reached the gateway with a valid signature, even when the review itself could not be created: the response is still 202, with the status `review_api_unavailable`, `unknown_sender` or `review_rejected_<code>`.
+2. **Same body under a new delivery id within the window** → `"duplicate payload (replay)"`. This check is a sha256 of the body, kept for 24 h.
+3. **`push` whose `repository.pushed_at` is older than the window** → `"stale delivery (outside the replay window)"`. Even an unseen delivery of a push older than 24 h is refused.
+
+Redeliver therefore only works if the original never got past signature or header checks (for example the gateway was down, or returned 401/400/5xx before storing anything) **and** the push is less than 24 h old. Check the gateway metric `ai_scan_gateway_webhooks_total{result="duplicate"|"replay"|"stale"}` or the GitHub delivery's response body to see which case hit.
+
+**What to do instead of Redeliver:**
+- **Start the review by hand:** in the UI use **New review** with the repo URL, and put the pushed commit SHA in *Branch, tag or commit*. Or call `POST /api/reviews` with `ref` = that SHA.
+- **Or push a new commit** (an empty commit works: `git commit --allow-empty -m "rescan"`). It produces a new delivery id, body and `pushed_at`.
+- **CI didn't build:** wait for `pollSCM` (≤ 5 min) or use **Build Now** in Jenkins. Redelivering to smee/Jenkins is not deduped by our code.
+- Don't lower `WEBHOOK_REPLAY_WINDOW_SECONDS` or delete `webhook_deliveries` rows just to redeliver, because that reopens replay attacks.
