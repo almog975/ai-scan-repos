@@ -1,6 +1,11 @@
 apiVersion: v1
 kind: PersistentVolumeClaim
-metadata: {name: postgres-data, namespace: ai-scan-repos, labels: {app: postgres}}
+metadata:
+  name: postgres-data
+  namespace: ai-scan-repos
+  labels: {app: postgres}
+  # data survives Argo CD app deletion/prune (installer uninstall without --purge)
+  annotations: {argocd.argoproj.io/sync-options: "Delete=false,Prune=false"}
 spec:
   accessModes: [ReadWriteOnce]
   storageClassName: local-path
