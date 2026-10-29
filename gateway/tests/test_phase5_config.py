@@ -5,6 +5,14 @@ from app.config import Settings
 TOKEN = "t" * 40
 
 
+@pytest.fixture(autouse=True)
+def _clean_env(monkeypatch):
+    # Settings reads the process env: a developer/CI shell with GITHUB_CLIENT_ID etc. set must not change the result
+    for name, f in Settings.model_fields.items():
+        for k in {name.upper(), (f.alias or name).upper(), *[a.upper() for a in getattr(f.validation_alias, "choices", []) if isinstance(a, str)]}:
+            monkeypatch.delenv(k, raising=False)
+
+
 def test_dev_ok():
     assert Settings().problems() == []
 
