@@ -28,7 +28,8 @@ is no signed timestamp header. So:
 
 - **Delivery id**: a repeated `X-GitHub-Delivery` → 409 CONFLICT.
 - **Payload hash**: sha256 of `event + "\n" + body` (row `sha256:<hex>` in `webhook_deliveries`, shared by all replicas,
-  no schema change). It is checked before processing and **stored only after the event was processed successfully**.
+  no schema change). It is **claimed before processing** as a `pending` row under the primary key (so of two concurrent identical
+  deliveries only one is processed; the other gets 409), marked done on success and deleted on failure.
   The same event+body under a new delivery id within `WEBHOOK_REPLAY_WINDOW_SECONDS` (default 86400) → 409, so a
   captured delivery can't retrigger a review.
 - **Failed deliveries** (review-api unreachable or 5xx) → 502, and neither the delivery id nor the hash is kept, so
@@ -37,6 +38,9 @@ is no signed timestamp header. So:
   strings and ISO 8601 are also parsed, anything else → 400). Older than the window → 409. Together with the hash TTL
   this closes replays after the hash expires. Other events have no usable signed timestamp and rely on the hash
   alone, which is enough because only `push` can trigger a review.
+  A **far-future** `pushed_at` is accepted on purpose: only an upper age bound is enforced, the value is inside the
+  HMAC-signed body (only GitHub or a holder of the webhook secret can set it), and a future value cannot re-open a
+  replay because the event+body hash still blocks the same body for the window.
 - **Purge**: rows (delivery ids and hashes) older than the window are deleted periodically: a background task every
   min(window, 1 h) and, piggybacked on webhook traffic, at most every min(window, 300 s) per replica. Delivery-id
   dedupe therefore also lasts for the window only.
