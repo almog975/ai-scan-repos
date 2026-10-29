@@ -81,20 +81,17 @@ def test_no_secret_in_output_or_leftover_tmp(sb):
     assert set(pathlib.Path("/tmp").glob("tmp.*")) - before == set()
 
 
-@pytest.mark.xfail(strict=True, reason="aiscan-install.sh:170-171 htpasswd -Bbn puts registry passwords on argv (ps)")
 def test_no_secret_in_argv(sb):
     r = sb.run("registry")
     assert not [c for c in r.calls if "S3CRET" in c]
 
 
-@pytest.mark.xfail(strict=True, reason="aiscan-install.sh:215-217,234 ': ${X:=$(gen)}' ignores openssl failure -> empty passwords/master key")
 def test_generator_failure_aborts(sb):
     d = sb.tmp / "badssl"; d.mkdir(); (d / "openssl").write_text("#!/bin/bash\nexit 127\n"); (d / "openssl").chmod(0o755)
     r = sb.run("secrets", env={"INTERNAL_API_TOKEN": "x" * 64}, path_prefix=str(d))
     assert r.returncode != 0
 
 
-@pytest.mark.xfail(strict=True, reason="aiscan-install.sh:91 exists() treats any 'get' error as absent -> replaces ai-keys-master")
 def test_get_error_does_not_replace_existing(sb):
     assert sb.run("secrets").returncode == 0
     first = sb.secrets()
@@ -102,7 +99,6 @@ def test_get_error_does_not_replace_existing(sb):
     assert r.returncode != 0 or sb.secrets() == first
 
 
-@pytest.mark.xfail(strict=True, reason="aiscan-install.sh:307-309 uninstall without --purge deletes the postgres overlay incl. PVC postgres-data")
 def test_uninstall_keeps_pvcs(sb):
     r = sb.run("--yes", "--mode", "direct", "uninstall")
     assert r.returncode == 0

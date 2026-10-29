@@ -19,7 +19,7 @@ SENTINELS = [v for v in SECRETS.values() if "SENTINEL" in v]
 FAKE_KUBECTL = r"""#!/usr/bin/env bash
 # records calls; `get` succeeds for objects listed in $FAKE_STATE; secrets created via apply are remembered
 echo "kubectl $*" >> "$FAKE_LOG"
-if [ "$1" = -n ] && [ "$3" = get ]; then grep -qx "$2/$4/$5" "$FAKE_STATE" 2>/dev/null; exit; fi
+if [ "$1" = -n ] && [ "$3" = get ]; then grep -qx "$2/$4/$5" "$FAKE_STATE" 2>/dev/null && exit 0; echo "Error from server (NotFound): $4 \"$5\" not found" >&2; exit 1; fi
 if [ "$1" = -n ] && [ "$3" = create ] && [ "$4" = secret ]; then
   echo "$2/secret/$6" >> "$FAKE_STATE"
   for a in "$@"; do case "$a" in --from-env-file=*|--from-file=*) f="${a#*=}"; f="${f#*=}"; cat "$f" >> "$FAKE_SECRETS";; esac; done
@@ -31,7 +31,8 @@ exit 0
 
 
 def sh(*args, env=None, cwd=None, check=True):
-    e = {**os.environ, **(env or {})}
+    # clean env: nothing from the developer's shell (KUBECONFIG, AWS_*, real secrets) leaks into the run
+    e = {"PATH": os.environ["PATH"], "HOME": os.environ.get("HOME", "/tmp"), **(env or {})}
     r = subprocess.run(["bash", str(SCRIPT), *args], capture_output=True, text=True, env=e, cwd=cwd)
     if check:
         assert r.returncode == 0, r.stdout + r.stderr
@@ -49,7 +50,7 @@ def fake(tmp_path):
         if tool == "kustomize" and shutil.which("kustomize"):
             continue
         t = b / tool
-        t.write_text('#!/usr/bin/env bash\necho "%s $*" >> "$FAKE_LOG"\n[ "$1" = -Bbn ] && echo "$2:\\$2y\\$hash"\n'
+        t.write_text('#!/usr/bin/env bash\necho "%s $*" >> "$FAKE_LOG"\n[ "$1" = -iBn ] && { cat >/dev/null; echo "$2:\\$2y\\$hash"; }\n'
                      '[ "$2" = get-login-password ] && echo ecr-token-SENTINEL-5\nexit 0\n' % tool)
         t.chmod(0o755)
     env = {"PATH": f"{b}:{os.environ['PATH']}", "FAKE_LOG": str(tmp_path / "log"),

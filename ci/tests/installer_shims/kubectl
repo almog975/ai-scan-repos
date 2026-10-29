@@ -6,7 +6,7 @@ while [ $# -gt 0 ]; do case "$1" in -n) ns=$2; shift 2;; *) args+=("$1"); shift;
 set -- "${args[@]}"
 [ -n "$SHIM_KUBECTL_FAIL" ] && [[ "$*" == *$SHIM_KUBECTL_FAIL* ]] && { echo "fake kubectl: forced failure" >&2; exit 1; }
 case "$1 $2" in
-  "get secret") [ -f "$S/$ns/$3" ] ;;
+  "get secret") [ -f "$S/$ns/$3" ] || { echo "Error from server (NotFound): secrets \"$3\" not found" >&2; exit 1; } ;;
   "create secret")
      name=$4; [ "$2 $3" = "secret docker-registry" ] && name=$4
      data=""; for a in "$@"; do case $a in --from-env-file=*) data+=$(cat "${a#*=}");; --from-file=*) data+=$(cat "${a#*=*=}" 2>/dev/null || cat "${a#*=}");; esac; done
