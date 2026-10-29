@@ -63,7 +63,7 @@ Within ≤ 60 s the watchdog sees `missing` and relaunches attempt n+1 (if the r
 | `paused` | `curl -X POST $API/reviews/$R/resume` (same attempt, own checkpoint) |
 | `stuck` (rare, transient) | `POST $API/reviews/$R/resume` (attempt n+1; 409 if budget exhausted) |
 | `failed` | `curl -X POST $API/reviews/$R/retry` (new budget, attempt 1; resumes from the last checkpoint of the same commit) |
-| `queued` with no Job | pause then resume: `POST …/pause` then `POST …/resume` |
+| `queued` with no Job | the reconciler recreates the Job after 15 min; otherwise `POST …/cancel` and start a new review (pause is only allowed from `running`, `queued` returns 409) |
 Resume/retry return 409 on capacity (`max_concurrent_reviews`) — wait or raise it in `PUT /api/admin/settings`.
 
 ### 3.4 Cancel

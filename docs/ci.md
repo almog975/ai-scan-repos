@@ -17,8 +17,8 @@
 - Deploy stage (in `deploy/<svc>/overlays/${TARGET}`):
   - frontend, gateway, review-api: `kustomize edit set image ai-scan/<svc>=<registry>/ai-scan/<svc>:<sha>`.
   - scanner-worker: sets `SCANNER_IMAGE=<registry>/ai-scan/scanner-worker:<sha>` in the `scanner-image`
-    configMapGenerator via `kustomize edit set configmap` (fallback yq, then sed). If the overlay has no such
-    generator yet, it falls back to `kustomize edit set image`.
+    configMapGenerator via `kustomize edit set configmap` (kustomize >= v5.1); fallback `yq` (mikefarah v4), then `sed`
+    on the `SCANNER_IMAGE=` literal.
   - Commits with `[skip ci]`; push is a TODO stub (`github-bot` credential).
 - Argo CD (app-of-apps): bootstrap once with `kubectl apply -n argocd -f deploy/argocd/root-app.yaml`.
   Root `ai-scan-root` syncs `deploy/argocd/apps/`, which holds 6 child Applications (frontend, gateway, review-api,

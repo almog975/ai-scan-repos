@@ -52,7 +52,7 @@ Overlays ship with `newTag: GIT_SHA_PLACEHOLDER`. For each changed service the D
 
 Then it commits as `jenkins` with message `ci(<target>): <svcs> -> <sha> [skip ci]`.
 
-> **Current state:** the `git push` of that commit is a commented-out **TODO stub** in the Jenkinsfile (branch name not agreed). Until it is enabled, the tag bump stays on the Jenkins workspace and Argo CD does not see it. Note that Argo CD tracks `main`, and pushing straight to `main` is not allowed by our rules – the agreed flow is expected to push to a branch and merge via PR.
+> **Current state:** the `git push` of that commit is a commented-out **TODO stub** in the Jenkinsfile **Open item, awaiting Almog's decision:** either Jenkins commits the tag bump directly to `main`, or it opens an automatic PR. Until it is enabled, the tag bump stays on the Jenkins workspace and Argo CD (which tracks `main`) does not see it.
 
 ## 3. Argo CD sync
 

@@ -86,7 +86,7 @@ Disabled buttons show why (e.g. *"Pause is only available while the review is ru
 ## 5. Pause, resume, cancel, retry
 
 - **Pause** – only while `running` (`POST /api/reviews/{id}/pause`). The worker checkpoints after every file, so finished work is kept.
-  The API enforces the same rule: pause from any other state returns 409 CONFLICT.
+  From any other state the API returns **409** (invalid state); the UI disables the button.
 - **Resume** – from `paused` or `stuck` (`POST /api/reviews/{id}/resume`).
   - paused → `queued`, continues from the checkpoint (does not use an attempt);
   - stuck → `retrying` immediately (next attempt);
