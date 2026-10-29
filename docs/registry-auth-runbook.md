@@ -17,11 +17,11 @@ kubectl -n registry rollout restart deploy/registry
 ```
 
 ## 2. Jenkins push credential (ns jenkins)
-The Jenkinsfile uses credential ID **`registry-creds`** (Username with password), via
-`withCredentials([usernamePassword(credentialsId: 'registry-creds', ...)])`.
+The Jenkinsfile uses credential ID **`registry-push`** (Username with password), via
+`withCredentials([usernamePassword(credentialsId: 'registry-push', ...)])`.
 Create it in Jenkins: *Manage Jenkins > Credentials > System > Global > Add* — Kind "Username with password",
-ID `registry-creds`, username `<PUSH_USER>`, password `<PUSH_PASSWORD>`.
-Optional (only for kaniko/buildkit agents that need a docker config file): Secret **`registry-push`**:
+ID `registry-push`, username `<PUSH_USER>`, password `<PUSH_PASSWORD>`.
+Same name for the Kubernetes Secret (needed by kaniko/buildkit agents that read a docker config file): **`registry-push`**:
 ```bash
 kubectl -n jenkins create secret docker-registry registry-push \
   --docker-server=<REGISTRY_HOST> --docker-username=<PUSH_USER> --docker-password='<PUSH_PASSWORD>'
