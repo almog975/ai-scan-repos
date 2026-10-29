@@ -10,3 +10,7 @@ node_modules/
 .schemathesis/
 .ci-venv/
 .ci-venv-worker/
+
+# installer config with real values (infra/installer/installer.env.example is the template)
+infra/installer/installer.env
+*.installer.env
