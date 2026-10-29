@@ -163,7 +163,7 @@ export default function ProgressView({ id }: { id: string }) {
           <table>
             <thead><tr><th scope="col">{t('col_file')}</th><th scope="col">{t('col_status')}</th><th scope="col">{t('col_findings')}</th></tr></thead>
             <tbody>{files.map(f => (
-              <tr key={f.path}><th scope="row"><Ltr>{f.path}</Ltr></th><td><Ltr>{f.status}</Ltr></td><td>{f.findings_count}</td></tr>
+              <tr key={f.path}><th scope="row"><Ltr>{f.path}</Ltr></th><td>{t(`fstatus.${f.status}`)}</td><td>{f.findings_count}</td></tr>
             ))}</tbody>
           </table>
         )}
@@ -174,7 +174,7 @@ export default function ProgressView({ id }: { id: string }) {
           <table>
             <thead><tr><th scope="col">{t('col_n')}</th><th scope="col">{t('col_outcome')}</th><th scope="col">{t('col_started')}</th><th scope="col">{t('col_error')}</th></tr></thead>
             <tbody>{attempts.map(a => (
-              <tr key={a.id}><th scope="row">{a.n}</th><td><Ltr>{a.outcome ?? '—'}</Ltr></td>
+              <tr key={a.id}><th scope="row">{a.n}</th><td>{a.outcome ? t(`outcome.${a.outcome}`) : '—'}</td>
                 <td><Ltr>{fmtTime(a.started_at)}</Ltr></td><td><Ltr>{a.error ?? ''}</Ltr></td></tr>
             ))}</tbody>
           </table>
