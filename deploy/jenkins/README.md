@@ -7,7 +7,7 @@ project `ai-scan-ci`).
 |---|---|
 | `values.yaml` | Values for Helm chart `jenkins/jenkins` 5.10.3: `fullnameOverride: jenkins` (Service `jenkins:8080`), `persistence.existingClaim: jenkins-home`, plugins, JCasC (multibranch job `ai-scan-repos`, 5 min indexing fallback, URL), agent pod template `ai-scan-agent` |
 | `manifests/` | `smee-client` Deployment (forwards to `http://jenkins.jenkins.svc:8080/github-webhook/`) and agent ServiceAccount `jenkins-agent` (no API access) |
-| `../../ci/agent/Dockerfile` | `tools` container image of the agent pod: node 20, python 3, trivy, kustomize, crane |
+| `../../ci/agent/Dockerfile` | `tools` container image of the agent pod: node 22, python 3, trivy, kustomize, crane |
 
 Why Helm values (not raw manifests): the upstream chart already handles the controller StatefulSet, plugin
 install, JCasC sidecar reload and agent RBAC; we only keep a small values file in git, rendered by Argo CD.

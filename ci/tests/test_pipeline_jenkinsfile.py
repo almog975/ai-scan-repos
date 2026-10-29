@@ -135,3 +135,10 @@ def test_shared_changes_test_dependents(repo, f):
 def test_push_is_stub_unverified():
     push = [l for l in JF.splitlines() if "git push" in l]
     assert push and all(l.strip().startswith("//") for l in push), "push is live now: re-verify the loop guard end to end"
+
+
+def test_insecure_flags_for_plain_http_registry_kaniko_and_crane():
+    jf = (ROOT / "Jenkinsfile").read_text()
+    assert "INSECURE_REGISTRIES = ['registry.registry:5000']" in jf
+    assert "--insecure-registry=${env.REGISTRY}" in jf and "${kInsecure}--cleanup" in jf  # kaniko
+    assert "crane push ${insecure}" in jf  # crane

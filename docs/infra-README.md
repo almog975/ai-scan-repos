@@ -11,4 +11,4 @@ See kustomize-layout.md, storage-plan.md, secrets-runbook.md.
 6. `kubectl apply -k deploy/scanner-worker/overlays/$OVERLAY` (RBAC + job template)
 7. review-api, gateway, frontend overlays (images are set by Pipelines)
 
-Installer: `docker build -t ai-scan-installer infra/installer && docker run -p 8088:8088 ai-scan-installer`, then open http://localhost:8088.
+Installer: `infra/installer/aiscan-install.sh` (CLI, no web UI; see [installer.md](installer.md)). The former unauthenticated web wizard (port 8088) was removed in Phase 9.

@@ -1,0 +1,19 @@
+# argo/argo-cd chart values (installer: infra/installer/scripts/install-argocd.sh). Phase 9: requests/limits on every
+# component + restricted container securityContext (chart defaults already runAsNonRoot/drop ALL/RuntimeDefault).
+configs:
+  params:
+    server.insecure: true   # TLS terminates at Traefik (infra/ingress, secret argocd-ingress-tls)
+controller:
+  resources: {requests: {cpu: 250m, memory: 512Mi}, limits: {cpu: "1", memory: 1Gi}}
+server:
+  resources: {requests: {cpu: 50m, memory: 128Mi}, limits: {cpu: 500m, memory: 256Mi}}
+repoServer:
+  resources: {requests: {cpu: 100m, memory: 256Mi}, limits: {cpu: "1", memory: 1Gi}}
+applicationSet:
+  resources: {requests: {cpu: 25m, memory: 64Mi}, limits: {cpu: 200m, memory: 256Mi}}
+notifications:
+  resources: {requests: {cpu: 25m, memory: 64Mi}, limits: {cpu: 100m, memory: 128Mi}}
+redis:
+  resources: {requests: {cpu: 50m, memory: 64Mi}, limits: {cpu: 200m, memory: 256Mi}}
+dex:
+  resources: {requests: {cpu: 10m, memory: 32Mi}, limits: {cpu: 100m, memory: 128Mi}}

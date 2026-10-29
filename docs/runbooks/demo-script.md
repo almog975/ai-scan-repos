@@ -1,65 +1,39 @@
-# Demo script — AI Scan Repos (≈10 min)
+# Live demo walkthrough (timed, ~15 min)
 
-Shows the backend flow (review-api :8001 + scanner-worker) via curl; frontend/gateway via `docker compose up` are optional. Prepare beforehand: venv with both requirement sets,
-`semgrep` installed (pip), optionally `gitleaks`/`trivy` on PATH, and optionally an on-prem LLM
-(LM Studio/Ollama) reachable at `AI_BASE_URL`.
+A final, step-by-step live demo of AI Scan Repos on the K3s deployment. The times are cumulative. Screens match the current UI ([user-guide.md](../user-guide.md), screenshots in `docs/images/user-guide/`). The recorded version is [demo-video-script.md](../demo-video-script.md).
 
-## 0. Slide: the problem (1 min)
-"Paste a GitHub URL → get a prioritized, AI-explained security report, without the code leaving your
-network unless you choose a cloud model." Show UI mockups from `/workspace/ai-scan-ui/` (outside the repo) (`index.html`,
-`02-new-scan.html`, `03-depth.html`, `05-results.html`) — state clearly they are **design mockups**.
+## Before the demo (T-30 min)
 
-## 1. Architecture (1 min)
-Show the mermaid diagram in [`docs/diagrams/architecture.md`](../diagrams/architecture.md): review-api → K8s Job per scan → reports PVC,
-heartbeat + watchdog, pluggable AI provider. Point out dashed boxes = roadmap.
+- [ ] `kubectl -n ai-scan-repos get pods` shows all pods Running, and `argocd app list | grep ai-scan` shows everything Synced/Healthy.
+- [ ] Grafana dashboard "AI Scan Repos" is open in a tab ([monitoring.md](../monitoring.md)).
+- [ ] An on-prem provider (e.g. Ollama over Tailscale) passes **Test connection**. A cloud provider (Grok, `openai_compatible`, `https://api.x.ai/v1`, `kind: cloud`) is configured ([admin-ai-providers.md](admin-ai-providers.md)).
+- [ ] A finished **brief** review of `https://github.com/OWASP/NodeGoat` already exists, so you can fall back to it if the network is slow.
+- [ ] You are logged in as the admin in browser window A, and window B is a private window, not logged in.
+- [ ] A terminal is open with `kubectl -n ai-scan-repos get jobs -w` ready.
+- [ ] Jenkins and the Argo CD UI are open in tabs.
 
-## 2. Tests (1 min)
-```bash
-(cd review-api && pytest -q) ; (cd scanner-worker && pytest -q)
-```
-Mention: fixtures for semgrep/gitleaks/trivy, mocked AI transport, watchdog + crypto + launcher tests.
+## Walkthrough
 
-## 3. Start the API (1 min)
-```bash
-export INTERNAL_API_TOKEN=dev-token REPORTS_DIR=$PWD/reports LOCAL_WORKER_CWD=$PWD/scanner-worker
-export AI_KEYS_ENCRYPTION_KEY=$(openssl rand -hex 32)
-export AI_PROVIDER=openai_compatible AI_BASE_URL=http://<llm-host>:1234/v1 AI_MODEL=<model>   # or AI_PROVIDER=none
-(cd review-api && uvicorn --factory app.main:get_app --port 8001) &
-curl -s localhost:8001/healthz; curl -s localhost:8001/readyz
-```
+| Time | Step | Do | Say |
+|---|---|---|---|
+| 0:00–1:00 | Intro | Show the README architecture diagram | "Paste a GitHub repo, and a Kubernetes Job per review runs Semgrep, Gitleaks and Trivy, then AI explains and fixes. On-prem AI by default." |
+| 1:00–2:00 | Login | Window B: `https://<host>` → **Log in with GitHub** | "GitHub OAuth only. Sessions are cookies with CSRF, and no tokens are kept in the browser." |
+| 2:00–3:00 | Admin: providers | Window A → sidebar **AI providers** → **Test connection** on the on-prem provider | "The admin decides which AI is used. The DB `kind` field decides cloud vs on-prem. Keys are AES-256-GCM encrypted and the UI shows only the last 4." |
+| 3:00–4:30 | Start review | **New review**: Repository URL `https://github.com/OWASP/NodeGoat`, depth **Deep**, the on-prem provider → **Start review** | Explain the depths: Quick, Brief (AI on the top 10 findings), Deep (AI on every code file). |
+| 4:30–6:00 | Live progress | Review page: progress bar, files done/total, "Last update"; terminal shows the new Job | "One Job per review. Updates arrive over SSE, with polling every 5 s as a fallback." |
+| 6:00–7:00 | Pause / resume | **Pause** → state *paused* → **Resume** | "The checkpoint is saved after every file, so resume continues from there. Pause works only while running; otherwise the API returns 409." |
+| 7:00–8:00 | Cloud warning | **New review**, pick Grok (cloud) → show the warning and the **Start review** button disabled until the checkbox is ticked | "Code leaves the network only after an explicit acknowledgement (`ack_cloud`), and the report carries a cloud banner." Do not start it. |
+| 8:00–10:00 | Report | Open the prepared NodeGoat brief report: summary, severity counts, filters, a finding with its AI explanation and fix, **Download report.md** | "The scanners find, the AI explains. Everything is also in report.json and report.md." |
+| 10:00–11:30 | Recovery | Show [stuck-review.md](stuck-review.md) and the Grafana panel for stuck reviews and heartbeats | "The reconciler detects a missing heartbeat, marks the review stuck and retries from the checkpoint, up to 5 attempts." |
+| 11:30–13:30 | CI/CD | Jenkins: last `main` run, with the stages Loop guard → Test → Build → Scan → Push → Deploy; Argo CD: `ai-scan-root` and the child apps | "Trivy blocks HIGH and CRITICAL. The tag bump goes in Git and Argo CD syncs it. Rollback is a git revert." Say the open item out loud: the bump push is pending Almog's decision. |
+| 13:30–14:00 | Hebrew | Footer language switch → עברית (RTL) | "Fully localised, with accessibility checks run with axe." |
+| 14:00–15:00 | Wrap-up | README → Status | Point out the open items: tag-bump push, key re-encryption, backups. |
 
-## 4. Security of the API (1 min)
-```bash
-curl -i -X POST localhost:8001/reviews -d '{}'                         # rejected: no internal token
-H='-H X-Internal-Token:dev-token -H X-User-Id:alice -H Content-Type:application/json'
-curl -s $H -X POST localhost:8001/reviews -d '{"repo_url":"file:///etc/passwd"}'   # 422 validation
-```
+## If something breaks
 
-## 5. Run a scan (3 min)
-```bash
-ID=$(curl -s $H -X POST localhost:8001/reviews \
-  -d '{"repo_url":"https://github.com/OWASP/NodeGoat","depth":"brief"}' | python -c 'import sys,json;print(json.load(sys.stdin)["id"])')
-watch -n2 "curl -s $H localhost:8001/reviews/$ID"     # progress 5 → 25 → 40 → 55 → 97 → 100
-```
-Explain stages while it runs: clone → semgrep → gitleaks → trivy → AI → report.
-
-## 6. Pause / resume (1 min) — on a second, `deep` review
-```bash
-curl -s $H -X POST localhost:8001/reviews/$ID2/pause ; cat reports/$ID2/checkpoint.json
-curl -s $H -X POST localhost:8001/reviews/$ID2/resume   # attempts=2, continues from checkpoint
-```
-
-## 7. Report (1 min)
-```bash
-curl -s $H localhost:8001/reviews/$ID/report.md | less
-```
-Highlight: severity summary, per-scanner tables, redacted secrets, AI recommendations, and the
-"on-prem / no code left the network" vs ⚠️ cloud banner.
-
-## 8. Ops hooks (30 s)
-`curl -s localhost:8001/metrics | grep ai_scan_` and show `build_job_manifest` in
-`review-api/app/launcher.py` (hardened K8s Job spec). Mention watchdog (15 min heartbeat, 5 attempts).
-
-## 9. Roadmap (30 s)
-Gateway + GitHub OAuth, UI, Helm chart + Argo CD app, Jenkins pipeline, per-user AI keys to worker,
-Grafana dashboard. TODO: replace with live K8s demo once manifests exist.
+| Problem | Fallback |
+|---|---|
+| GitHub is slow, or the clone fails | Use the prepared completed review |
+| AI provider is down | Start the review with the empty provider ("Default provider"; with none configured, only the scanners run) |
+| A Job is stuck or pending | `kubectl -n ai-scan-repos describe job <name>`, then [stuck-review.md](stuck-review.md); move on to the report |
+| The UI is down | `kubectl -n ai-scan-repos rollout restart deploy/frontend deploy/gateway`; meanwhile show the screenshots in the [user guide](../user-guide.md) |

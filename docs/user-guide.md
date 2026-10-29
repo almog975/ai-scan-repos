@@ -2,7 +2,7 @@
 
 For people who run security reviews of GitHub repositories in the web UI. Operators: [runbook](runbooks/runbook.md). Admins managing AI providers: [admin: AI providers](runbooks/admin-ai-providers.md).
 
-> **Screenshots** were captured from the real frontend (`frontend/`, Vite dev server, headless Chromium via Playwright) with a **mocked backend** (sample repos, providers and report). TODO: re-capture against a live k3s deployment.
+> **Screenshots** were captured with Playwright (headless Chromium) against a **real local stack**: the built SPA under the `frontend/nginx.conf` headers → gateway → review-api (SQLite, local launcher) → scanner-worker, using the full-stack e2e harness (`frontend/e2e/test_fullstack.py`). Only GitHub OAuth and the scanner binaries are stand-ins (a fake GitHub and the test shims), so the findings shown are fixture data. The two providers in the cloud screenshot were inserted directly into the database (no key).
 
 The UI is available in English and Hebrew (language selector in the sidebar / top right). Each step names the API call behind it (gateway `/api/*` → review-api).
 
@@ -15,7 +15,9 @@ The UI is available in English and Hebrew (language selector in the sidebar / to
 1. Open the app. If you are not signed in you land on **/login** ("Sign in").
 2. Click **Log in with GitHub** → GitHub OAuth (`GET /auth/github/login`, scopes `read:user repo`). Approve.
 3. GitHub returns to `/auth/github/callback`; the gateway sets the session cookie and the CSRF cookie (`aiscan_csrf`) and redirects to `/`.
-4. Your `@login` and **Log out** (`POST /auth/logout`) are at the bottom of the sidebar.
+4. Your `@login`, the language selector and **Log out** (`POST /auth/logout`) are at the bottom of the sidebar. Admins also see **AI providers** in the sidebar.
+
+![After login](images/user-guide/home-empty.png)
 
 Login errors are shown on the login page:
 - *"The sign-in link expired or was opened twice."* – OAuth state mismatch; try again.
@@ -30,10 +32,10 @@ The first user ever to log in becomes `admin`. Sessions expire after `SESSION_TT
 
 On **New review** (`/`):
 
-1. **GitHub repository URL** – `https://github.com/<owner>/<repo>` (optional `.git` or trailing `/`). Anything else shows an inline error and **Start review** stays disabled, with the reason next to it.
-2. **Ref** – branch, tag or commit. Empty = default branch.
+1. **Repository URL** – `https://github.com/<owner>/<repo>` (optional `.git` or trailing `/`). Anything else shows an inline error and **Start review** stays disabled, with the reason next to it.
+2. **Branch, tag or commit (optional)** – empty = default branch (sent as `HEAD`).
 3. **Depth** – Quick, Brief or Deep (§3).
-4. **AI provider** – *No AI* or an enabled provider from `GET /api/ai-providers`, labelled on-prem or cloud.
+4. **AI provider** – *Default provider* (the admin's `default_provider_id`; if none is set, scanners only) or an enabled provider from `GET /api/ai-providers`, labelled `(on-prem)` or `(cloud)`.
 5. **Start review** → `POST /api/reviews` with `{repo_url, ref, depth, provider_id, ack_cloud}`. A confirmation appears and the review is added to **Recent reviews**.
 
 Errors appear in a box under the form:
@@ -47,13 +49,15 @@ Errors appear in a box under the form:
 
 | Depth | Scanners | AI (when a provider is selected) |
 |---|---|---|
-| **Quick** | Semgrep, Gitleaks, Trivy | Short AI summary |
-| **Brief** | same | The **top 10 findings** (with code context) go to the AI; it fills `ai_fix`, `confidence`, `ai_severity` |
-| **Deep** | same | AI review of each code file (up to `DEEP_MAX_FILES`, default 40), filling `ai_fix`, `confidence`, `ai_severity` |
+| **Quick** | Semgrep, Gitleaks, Trivy | Short AI summary (UI: *"Scanners + a short AI summary"*) |
+| **Brief** | same | *"AI on the top 10 findings"*: the top 10 findings with code context go to the AI; it fills `ai_fix`, `confidence`, `ai_severity` |
+| **Deep** | same | *"AI on every code file"*: AI review of each code file (up to `DEEP_MAX_FILES`, default 40), filling `ai_fix`, `confidence`, `ai_severity` |
 
-With *No AI* only the scanners run.
+With *Default provider* and no default configured by an admin, only the scanners run (the report says *"AI provider: none"*).
 
-**Cloud providers.** Each provider is `onprem` or `cloud` (set by an admin). Choosing a cloud provider (e.g. Grok, `api.x.ai`) shows: *"This provider is a cloud service: repository code leaves the cluster."* Tick **I understand that code is sent to a cloud AI provider** to enable **Start review** (`ack_cloud: true`). Without it the API returns 422 `CLOUD_ACK_REQUIRED`. Reports produced with a cloud provider carry a cloud banner (§6). Resuming a cloud review asks again (§5).
+> Known limitation: if the admin's default provider is a **cloud** provider, choosing *Default provider* shows no warning, and the request fails with *"CLOUD_ACK_REQUIRED"* (422). Select the cloud provider explicitly and confirm the warning instead.
+
+**Cloud providers.** Each provider is `onprem` or `cloud` (set by an admin). Choosing a cloud provider (e.g. Grok, `api.x.ai`) shows: *"This provider is a cloud service: repository code leaves the cluster."* Until you tick **I understand that code is sent to a cloud AI provider**, **Start review** stays disabled with *"Confirm the cloud warning first"*; ticking it sends `ack_cloud: true`. Without it the API returns 422 `CLOUD_ACK_REQUIRED`. Reports produced with a cloud provider carry a cloud banner (§6). Resuming a cloud review asks again (§5).
 
 ## 4. Watch progress
 
@@ -85,7 +89,10 @@ Disabled buttons show why (e.g. *"Pause is only available while the review is ru
 
 ## 5. Pause, resume, cancel, retry
 
-- **Pause** – only while `running` (`POST /api/reviews/{id}/pause`). The worker checkpoints after every file, so finished work is kept.
+- **Pause** – only while `running` (`POST /api/reviews/{id}/pause`).
+
+  ![Paused](images/user-guide/paused.png)
+ The worker checkpoints after every file, so finished work is kept.
   From any other state the API returns **409** (invalid state); the UI disables the button.
 - **Resume** – from `paused` or `stuck` (`POST /api/reviews/{id}/resume`).
   - paused → `queued`, continues from the checkpoint (does not use an attempt);

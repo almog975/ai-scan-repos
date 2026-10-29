@@ -1,67 +1,117 @@
-# Runbook: roll back a deployment
+# Runbook: roll back a deployment (git revert → Argo CD sync)
 
-Git is the source of truth ([ADR-0004](../adr/0004-gitops.md)): roll back by **reverting the tag-bump commit** and letting Argo CD sync. Do **not** `kubectl set image` (selfHeal reverts it), do **not** force-push, and do **not** push to `main` directly – go through a PR.
-
+Git is the source of truth ([ADR-0004](../adr/0004-gitops.md)): roll back by **reverting the tag-bump commit** and
+letting Argo CD sync. Do **not** `kubectl set image` (selfHeal undoes it within seconds), do **not** force-push.
 Flow background: [ci-cd-flow.md](../ci-cd-flow.md).
 
-## 1. Find the bad tag-bump commit
+## 0. Preconditions
+- Argo CD apps `ai-scan-<component>-k3s` are **Synced/Healthy** and track `main` (`deploy/argocd/apps/*.yaml`).
+- The known-good image (`<registry>/ai-scan/<component>:<good-sha>`) is still in the registry (never delete old tags
+  before a demo).
+- You can push to `almog975/ai-scan-repos` (PR to `main`, or direct push if branch protection allows it).
+- Tools: `git`, `kubectl` (context = the k3s cluster), optional `argocd` CLI logged in with
+  `argocd login argocd.ai-scan.127.0.0.1.nip.io --grpc-web` (argocd-server runs insecure behind Traefik).
 
+## 1. Find the bad tag-bump commit
 ```bash
 git fetch origin
-git log origin/main --oneline -- deploy/*/overlays/k3s/kustomization.yaml | head
-# Jenkins commits look like: ci(k3s): gateway,review-api -> abc1234 [skip ci]
-git show <bump-sha> -- deploy/          # confirm which newTag / SCANNER_IMAGE changed
-```
-
-Check what is running now:
-
-```bash
+git log origin/main --oneline -- deploy/<component>/overlays/k3s
+# Jenkins commits: "ci(k3s): gateway,scanner-worker -> bbbbbbb [skip ci]" by ai-scan-ci-bot <ci-bot@ai-scan.local>
+git show <bump-sha> -- deploy/          # which newTag / SCANNER_IMAGE changed
 kubectl -n ai-scan-repos get deploy -o custom-columns=NAME:.metadata.name,IMAGE:.spec.template.spec.containers[*].image
-kubectl -n ai-scan-repos get cm -o yaml | grep SCANNER_IMAGE   # image used for new scanner Jobs
-argocd app get ai-scan-<component>-k3s
+kubectl -n ai-scan-repos get cm scanner-image -o jsonpath='{.data.SCANNER_IMAGE}'; echo
 ```
+A Jenkins bump commit can touch several components (e.g. gateway + scanner-worker). Reverting it rolls back all of
+them; to roll back only one, edit that overlay back to the good tag instead (same `kustomize edit` commands as below).
 
-## 2. Revert on a branch and open a PR
-
+## 2. Revert and push
 ```bash
 git switch -c rollback/<component>-<bad-sha> origin/main
 git revert --no-edit <bump-sha>
-# keep [skip ci] so Jenkins' loop guard does not rebuild (only deploy/ changes anyway)
-git commit --amend -m "revert: ci(k3s) <bump-sha> – roll back <component> [skip ci]"
+kustomize build deploy/<component>/overlays/k3s | grep -E 'image:|SCANNER_IMAGE'   # must show the good tag
 git push -u origin rollback/<component>-<bad-sha>
-gh pr create --base main --title "Rollback <component> to previous image" --body "Reverts <bump-sha>."
+gh pr create --base main --title "Rollback <component> to <good-sha>" --body "Reverts <bump-sha>."
+# merge the PR (normal merge, no force). If direct pushes to main are allowed: git push origin HEAD:main
 ```
-
-If later tag bumps touched the same file, `git revert` may conflict: resolve by setting `newTag` (or `SCANNER_IMAGE`) to the last known-good tag, then `git revert --continue`.
-
-Merge the PR after review (normal merge, no force).
-
-## 3. Argo CD resync
-
-Auto-sync picks up `main` within the polling interval (~3 min). To apply now:
-
+If later bumps touched the same file, `git revert` conflicts: set the good tag by hand, then `git revert --continue`:
 ```bash
-argocd app get ai-scan-root --refresh
-argocd app sync ai-scan-<component>-k3s
-argocd app wait ai-scan-<component>-k3s --health --sync --timeout 300
+(cd deploy/<component>/overlays/k3s && kustomize edit set image ai-scan/<component>=<registry>/ai-scan/<component>:<good-sha>)
+# scanner-worker:
+(cd deploy/scanner-worker/overlays/k3s && kustomize edit set configmap scanner-image \
+   --from-literal=SCANNER_IMAGE=<registry>/ai-scan/scanner-worker:<good-sha>)
 ```
 
-Without the CLI: Argo CD UI → `ai-scan-<component>-k3s` → **Refresh** → **Sync**.
+## 3. Argo CD sync
+Auto-sync picks up `main` on its next poll (default ~3 min; immediately if a GitHub → Argo CD webhook is set). To speed up:
+```bash
+argocd app sync ai-scan-<component>-k3s --grpc-web
+argocd app wait ai-scan-<component>-k3s --sync --health --timeout 300 --grpc-web
+```
+Without the CLI: UI → `ai-scan-<component>-k3s` → **Refresh** → **Sync**.
 
 ## 4. Verify
-
 ```bash
 kubectl -n ai-scan-repos rollout status deploy/<component> --timeout=180s
 kubectl -n ai-scan-repos get deploy <component> -o jsonpath='{.spec.template.spec.containers[*].image}'; echo
-kubectl -n ai-scan-repos get pods
-curl -fsS https://<host>/healthz && curl -fsS https://<host>/readyz
+kubectl -n ai-scan-repos get cm scanner-image -o jsonpath='{.data.SCANNER_IMAGE}'; echo    # scanner-worker
+curl -fsS https://ai-scan.127.0.0.1.nip.io/healthz
+```
+Expect the good tag and Argo CD **Synced / Healthy**. scanner-worker has no Deployment: the rollback changes the
+`scanner-image` ConfigMap, which affects **new** scan Jobs only; running reviews keep their image.
+
+## Alternative: `argocd app rollback`
+```bash
+argocd app history ai-scan-<component>-k3s --grpc-web
+argocd app set ai-scan-<component>-k3s --sync-policy none --grpc-web     # REQUIRED first, see below
+argocd app rollback ai-scan-<component>-k3s <history-id> --grpc-web
+```
+Caveat: rollback is refused while auto-sync is on, and with auto-sync/selfHeal re-enabled Argo CD syncs back to `main`
+(the bad tag). It is a fast stop-gap only; still do the git revert, then re-enable auto-sync:
+`argocd app set ai-scan-<component>-k3s --sync-policy automated --self-heal --auto-prune --grpc-web`.
+Also, the root app `ai-scan-root` (selfHeal) re-applies the child Application spec, which may restore the child's
+sync policy; disable auto-sync on `ai-scan-root` too for the duration, or prefer the git revert.
+
+## Timing (estimate)
+| Step | Time |
+|---|---|
+| Find commit + revert + push/merge | 1–2 min |
+| Argo CD detects the change | ≤ 3 min poll (seconds with webhook or `argocd app sync`) |
+| Rollout (image cached on node) | 20–60 s |
+| **Total** | **~1.5 min with manual sync, ~5 min waiting for the poll** |
+
+## Gotchas
+- **No CI rebuild:** the revert touches only `deploy/**` and its subject contains `[skip ci]` (`Revert "ci(k3s): … [skip ci]"`),
+  so the Jenkins loop guard skips it (rehearsed; see below). Do not edit the message to drop `[skip ci]` and do not
+  mix code changes into the rollback commit. A PR merge commit also only changes `deploy/**`, so it is skipped too.
+- **Poll interval:** ~3 min (`timeout.reconciliation` in `argocd-cm`) unless the Argo CD webhook is configured.
+- **DB migrations do not roll back.** review-api's migrations Job only upgrades. If the bad release added an alembic
+  migration, the old image must be compatible with the new schema; a downgrade is a separate manual step.
+- **Next bump:** the following Jenkins build writes a new tag again; fix forward on a branch.
+- **Push stub:** until the `github-bot` credential is approved, Jenkins tag bumps are local to the agent; bumps on
+  `main` are made via PR, and rolled back the same way.
+
+## Demo script
+```bash
+C=gateway; R=registry.registry:5000
+BAD=$(git log origin/main --format=%h -1 -- deploy/$C/overlays/k3s)
+git show --stat $BAD
+git switch -c rollback/$C-$BAD origin/main && git revert --no-edit $BAD
+kustomize build deploy/$C/overlays/k3s | grep "image: $R/ai-scan/$C"
+git push -u origin HEAD && gh pr create --fill --base main && gh pr merge --merge
+argocd app sync ai-scan-$C-k3s --grpc-web && argocd app wait ai-scan-$C-k3s --sync --health --grpc-web
+kubectl -n ai-scan-repos rollout status deploy/$C --timeout=180s
+kubectl -n ai-scan-repos get deploy $C -o jsonpath='{.spec.template.spec.containers[0].image}'; echo
 ```
 
-- The image tag matches the known-good SHA; Argo CD shows **Synced / Healthy**.
-- scanner-worker rollback affects **new** review Jobs only; reviews already running keep their image. Pause/resume or retry a review to pick up the old image.
-- Database: a rollback does not downgrade the schema. If the bad release included an alembic migration, check compatibility first ([DB parity](../ci.md)); a schema downgrade is a separate, manual step.
-
-## 5. Afterwards
-
-- Fix forward on a feature branch; Jenkins builds a new image and a new tag bump.
-- Note: until the Jenkins tag-bump push is enabled (TODO stub, see [ci-cd-flow.md](../ci-cd-flow.md#2-tag-bump-in-deploycomponentoverlaysk3s)), tag bumps on `main` are made by hand via PR, and rolled back the same way.
+## Rehearsal (local, no cluster, 2026-10-29)
+Two simulated Jenkins bumps (author `ai-scan-ci-bot`, `[skip ci]`, same `kustomize edit` commands as the Jenkinsfile),
+then `git revert --no-edit <B>`:
+```
+after A : gateway:aaaaaaa  SCANNER_IMAGE=…/scanner-worker:aaaaaaa   guard: skip (bot author)
+after B : gateway:bbbbbbb  SCANNER_IMAGE=…/scanner-worker:bbbbbbb   guard: skip (bot author)
+revert  : author = human, subject 'Revert "ci(k3s): gateway,scanner-worker -> bbbbbbb [skip ci]"'
+          files = deploy/gateway/overlays/k3s/kustomization.yaml, deploy/scanner-worker/overlays/k3s/kustomization.yaml
+          guard: skip ([skip ci]; would also skip as deploy/**-only)
+build   : gateway:aaaaaaa  SCANNER_IMAGE=…/scanner-worker:aaaaaaa   (tree identical to A)
+```
+Not rehearsed: the Argo CD sync and rollout (needs a live cluster).

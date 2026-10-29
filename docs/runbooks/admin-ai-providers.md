@@ -14,7 +14,7 @@ Only users with `role = admin` (`require_admin`; non-admins get 403). The first 
 (see [contracts/README.md](../../contracts/README.md)). Admin routes are reached through the gateway at
 `/api/admin/...` with the session cookie (gateway `app/routes.py` allow-list).
 
-**UI:** the admin AI-providers screen is planned for **Phase 4**. Until then use the API. (The Phase 2 frontend only reads `GET /api/ai-providers` and sends `provider_id` + `ack_cloud`; it has no key entry.)
+**UI:** admins manage providers in the web UI under **AI providers** (`/admin/ai-providers`): add, edit, delete, **Test connection**, and a cloud acknowledgement checkbox for `kind: cloud`. The API below does the same. Overview: [admin-guide.md](../admin-guide.md).
 
 ## 2. API
 

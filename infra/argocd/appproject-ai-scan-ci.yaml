@@ -25,3 +25,4 @@ spec:
     - {group: apps, kind: Deployment}
     - {group: rbac.authorization.k8s.io, kind: Role}
     - {group: rbac.authorization.k8s.io, kind: RoleBinding}
+    - {group: networking.k8s.io, kind: NetworkPolicy}   # Phase 9 deploy/jenkins/manifests/networkpolicies.yaml

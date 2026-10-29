@@ -22,7 +22,7 @@ controller:
   numExecutors: 0                    # all builds run on Kubernetes agent pods
   resources:
     requests: {cpu: 500m, memory: 1Gi}
-    limits: {memory: 2Gi}
+    limits: {cpu: "2", memory: 2Gi}
   testEnabled: false                 # no helm test Pod (Argo CD would treat it as a hook)
   installLatestPlugins: false
   installLatestSpecifiedPlugins: false
@@ -109,14 +109,17 @@ agent:
             image: jenkins/inbound-agent:3395.v6e5377b_0fb_3c-1-jdk21
             resourceRequestCpu: 100m
             resourceRequestMemory: 256Mi
+            resourceLimitCpu: 500m
+            resourceLimitMemory: 512Mi
           - name: tools
-            # ci/agent/Dockerfile (node20, python3, trivy, kustomize, crane). Infra/Almog builds and pushes it once.
-            image: registry.ai-scan.127.0.0.1.nip.io/ai-scan/jenkins-agent:CHANGE_ME_AGENT_SHA
+            # ci/agent/Dockerfile (node22, python3, trivy, kustomize, crane). Infra/Almog builds and pushes it once.
+            image: registry.registry:5000/ai-scan/jenkins-agent:CHANGE_ME_AGENT_SHA   # kubelet pulls via the K3s mirror (infra/registry/registries.yaml.example)
             command: sleep
             args: infinity
             ttyEnabled: true
             resourceRequestCpu: 500m
             resourceRequestMemory: 1Gi
+            resourceLimitCpu: "2"
             resourceLimitMemory: 3Gi
             envVars:
               # ci/db-parity.sh -> postgres sidecar below (same pod network namespace).
@@ -133,6 +136,7 @@ agent:
               - envVar: {key: POSTGRES_INITDB_ARGS, value: "--auth-local=trust --auth-host=trust"}
             resourceRequestCpu: 100m
             resourceRequestMemory: 256Mi
+            resourceLimitCpu: "1"
             resourceLimitMemory: 512Mi
           - name: kaniko
             # Kaniko (debug tag has a shell for `sh` steps). No Docker socket, no privileged pod.
@@ -143,4 +147,5 @@ agent:
             runAsUser: 0
             resourceRequestCpu: 500m
             resourceRequestMemory: 1Gi
+            resourceLimitCpu: "2"
             resourceLimitMemory: 4Gi

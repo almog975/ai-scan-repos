@@ -7,7 +7,7 @@ ARGOCD_CHART_VERSION="${ARGOCD_CHART_VERSION:-10.11.6}"   # argo/argo-cd chart -
 run() { echo "+ $*"; [ "${DRY_RUN:-1}" = 1 ] || "$@"; }
 run helm repo add argo https://argoproj.github.io/argo-helm
 run helm upgrade --install argocd argo/argo-cd -n argocd --version "$ARGOCD_CHART_VERSION" \
-  --set 'configs.params.server\.insecure=true' --wait
+  -f "$ROOT/infra/argocd/values.yaml" --wait   # server.insecure + Phase 9 resources
 run kubectl -n argocd patch cm argocd-cm --type merge --patch-file "$ROOT/infra/argocd/argocd-cm-health-patch.yaml"
 echo "# repo credentials (if private): docs/argocd-repo-credentials.md"
 run kubectl apply -f "$ROOT/infra/argocd/appproject-ai-scan.yaml"       # 2a

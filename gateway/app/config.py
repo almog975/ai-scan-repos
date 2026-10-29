@@ -29,6 +29,12 @@ class Settings(BaseSettings):
     # 429 RATE_LIMITED: requests/minute per client IP on /auth/* + /webhooks/*, per user on /api/*
     rate_limit_auth_per_minute: int = 30
     rate_limit_api_per_minute: int = 300
+    # Webhook replay protection. GitHub signs only the body (no signed timestamp header), so:
+    #  - every accepted body's sha256 is remembered for this many seconds; the same body under a new
+    #    X-GitHub-Delivery id is a 409 (a replay can't retrigger a review);
+    #  - push payloads carry repository.pushed_at (inside the signed body); one older than the window is
+    #    rejected, so once a hash expires the old body is already too old. Other events rely on the hash.
+    webhook_replay_window_seconds: int = 86400
 
     def problems(self) -> list[str]:
         """Config errors that make a production start unsafe. Empty list = OK. Config only comes from env."""

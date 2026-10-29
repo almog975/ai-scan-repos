@@ -146,6 +146,7 @@ components:
         name: {type: string}
         kind: {$ref: 'common.schema.json#/$defs/provider_kind'}
         cloud_warning: {type: boolean}
+        is_default: {type: boolean, default: false, description: 'True for the provider used when createReview gets provider_id null (settings.default_provider_id). Lets the new-review form show the cloud warning for the default provider.'}
     CloudAck:
       type: object
       additionalProperties: false

@@ -6,7 +6,7 @@ from conftest import ROOT
 
 pytestmark = pytest.mark.skipif(not shutil.which("kustomize"), reason="kustomize not on PATH")
 BOT = ["-c", "user.name=ai-scan-ci-bot", "-c", "user.email=ci-bot@ai-scan.local"]
-HOST = "registry.ai-scan.127.0.0.1.nip.io"
+HOST = "registry.registry:5000"
 
 
 def sh(*a, cwd):

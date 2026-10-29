@@ -5,11 +5,24 @@ import { useI18n } from '../i18n'
 /** LTR island for codes, URLs, paths, logins, timestamps inside possibly-RTL text. */
 export const Ltr = ({ children }: { children: ReactNode }) => <bdi dir="ltr">{children}</bdi>
 
-export function fmtTime(iso?: string | null): string {
+/** Short date + time in the viewer's local time zone, formatted for the UI language. Render it inside <Ltr>. */
+export function fmtTime(iso?: string | null, lang?: string): string {
   if (!iso) return '—'
   const d = new Date(iso)
-  return isNaN(d.getTime()) ? iso : d.toISOString().replace('T', ' ').slice(0, 16) + ' UTC'
+  if (isNaN(d.getTime())) return iso
+  const l = lang ?? (typeof document !== 'undefined' ? document.documentElement.lang : '') ?? ''
+  return new Intl.DateTimeFormat(l || undefined, { dateStyle: 'short', timeStyle: 'short' }).format(d)
 }
+
+/** GitHub login as an LTR isolate: @login. */
+export const LoginTag = ({ login }: { login?: string | null }) => <bdi dir="ltr">@{login ?? '—'}</bdi>
+
+const svg = { width: 16, height: 16, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2,
+  strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, 'aria-hidden': true, focusable: false }
+export const PencilIcon = () => <svg {...svg} className="icon"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg>
+export const TrashIcon = () => <svg {...svg} className="icon"><path d="M3 6h18" /><path d="M8 6V4h8v2" /><path d="M19 6l-1 14H6L5 6" /><path d="M10 11v6M14 11v6" /></svg>
+export const CheckIcon = () => <svg {...svg} className="icon"><path d="M20 6 9 17l-5-5" /></svg>
+export const XIcon = () => <svg {...svg} className="icon"><path d="M18 6 6 18M6 6l12 12" /></svg>
 
 export function StateBadge({ state }: { state: string }) {
   const { t } = useI18n()

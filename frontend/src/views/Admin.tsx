@@ -1,7 +1,7 @@
 import { useEffect, useId, useState, type FormEvent } from 'react'
 import { api, ApiError, type AIProvider, type AIProviderPatch, type AIProviderWrite, type Me, type ProviderTestResult } from '../api/client'
 import { useI18n } from '../i18n'
-import { Confirm, ErrorBox, fmtTime, KindBadge, Ltr } from '../ui'
+import { CheckIcon, Confirm, ErrorBox, fmtTime, KindBadge, Ltr, PencilIcon, TrashIcon, XIcon } from '../ui'
 
 type Kind = 'onprem' | 'cloud'
 interface Form { name: string; kind: Kind; base_url: string; model: string; api_key: string; enabled: boolean; ack: boolean }
@@ -82,13 +82,13 @@ export default function Admin({ me }: { me: Me }) {
                 </td>
                 <td><Ltr>{p.model}</Ltr></td>
                 <td><Ltr>{p.key_masked ?? '—'}</Ltr></td>
-                <td>{p.enabled ? '✓' : '✕'}<span className="sr-only">{p.enabled ? t('enabled') : ''}</span></td>
+                <td><span className={`badge ${p.enabled ? 'state-completed' : 'state-cancelled'}`}>{p.enabled ? <CheckIcon /> : <XIcon />}{p.enabled ? t('enabled') : t('disabled')}</span></td>
                 <td>
                   <div className="row">
                     <button type="button" className="btn small" aria-label={t('test_p', { name: p.name })} disabled={rt.busy}
                       onClick={() => testRow(p)}>{rt.busy ? t('testing') : t('test')}</button>
-                    <button type="button" className="btn small" aria-label={t('edit_p', { name: p.name })} onClick={() => setEditing(p)}>✎</button>
-                    <button type="button" className="btn small danger" aria-label={t('delete_p', { name: p.name })} onClick={() => setDel(p)}>🗑</button>
+                    <button type="button" className="btn small" aria-label={t('edit_p', { name: p.name })} onClick={() => setEditing(p)}><PencilIcon /></button>
+                    <button type="button" className="btn small danger" aria-label={t('delete_p', { name: p.name })} onClick={() => setDel(p)}><TrashIcon /></button>
                   </div>
                   <div aria-live="polite"><TestResult res={rt.res ?? null} err={rt.err} /></div>
                 </td>
@@ -112,6 +112,8 @@ function ProviderForm({ p, onClose, onSaved }: { p: AIProvider | null; onClose: 
   const [test, setTest] = useState<{ busy?: boolean; res?: ProviderTestResult; err?: unknown }>({})
   const hid = useId(), reasonId = useId(), ackId = useId(), keyHint = useId()
   const set = <K extends keyof Form>(k: K, v: Form[K]) => setF(s => ({ ...s, [k]: v }))
+  const dirty = !!p && (f.name !== p.name || f.kind !== p.kind || f.base_url !== (p.base_url ?? '') || f.model !== p.model
+    || f.api_key !== '' || f.enabled !== p.enabled || (f.kind === 'cloud' && f.ack !== (p.kind === 'cloud' && p.cloud_ack.acknowledged)))
   const switchedToCloud = !!p && p.kind !== 'cloud' && f.kind === 'cloud'
   const reason = !f.name.trim() || !f.model.trim() ? t('save_disabled_fields') : f.kind === 'cloud' && !f.ack ? t('save_disabled_ack') : ''
 
@@ -120,7 +122,10 @@ function ProviderForm({ p, onClose, onSaved }: { p: AIProvider | null; onClose: 
 
   const runTest = async () => {
     setTest({ busy: true })
-    try { setTest({ res: p && !f.api_key ? await api.testProvider(p.id) : await api.testUnsaved(writeBody()) }) }
+    // Unsaved changes (or a new provider) → test the form body; otherwise the stored provider (incl. its stored key).
+    // Contract gap: AIProviderWrite has no provider id, so an unsaved edit without a re-typed key is tested without
+    // the stored key (docs/contract-gaps.md#test-unsaved-stored-key).
+    try { setTest({ res: !p || dirty ? await api.testUnsaved(writeBody()) : await api.testProvider(p.id) }) }
     catch (e) { setTest({ err: e }) }
   }
 
@@ -146,14 +151,14 @@ function ProviderForm({ p, onClose, onSaved }: { p: AIProvider | null; onClose: 
       <h2 id={hid}>{p ? t('edit_provider') : t('add_provider')}</h2>
       <div className="field"><label htmlFor="pv-name">{t('name')}</label>
         <input id="pv-name" dir="auto" required value={f.name} onChange={e => set('name', e.target.value)} aria-invalid={!f.name.trim() || undefined} /></div>
-      <fieldset><legend>{t('kind')}</legend>
+      <fieldset className="kind"><legend>{t('kind')}</legend>
         {(['onprem', 'cloud'] as Kind[]).map(k => (
           <label key={k} className="check"><input type="radio" name="kind" value={k} checked={f.kind === k}
             onChange={() => setF(s => ({ ...s, kind: k, ack: k === 'cloud' && p?.kind === 'cloud' ? p.cloud_ack.acknowledged : false }))} /> {t(k)}</label>
         ))}
       </fieldset>
       {f.kind === 'cloud' && (
-        <div className="warn strong" role="alert" id={ackId}>
+        <div className="warn strong" role={switchedToCloud ? 'alert' : 'note'} id={ackId}>
           <p>{t('cloud_warn')}</p>
           {switchedToCloud && <p>{t('ack_again')}</p>}
           {p?.kind === 'cloud' && p.cloud_ack.acknowledged && <p className="small">

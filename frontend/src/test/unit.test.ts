@@ -61,3 +61,34 @@ describe('api client', () => {
     expect((f.mock.calls[0][0] as Request).headers.get('X-CSRF-Token')).toBeNull()
   })
 })
+
+describe('P2 UI fixes', () => {
+  it('fmtTime: Intl short date+time in local time for the UI language', async () => {
+    const { fmtTime } = await import('../ui')
+    const iso = '2026-10-29T14:55:00Z'
+    expect(fmtTime(iso, 'en')).toBe(new Intl.DateTimeFormat('en', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(iso)))
+    expect(fmtTime(iso, 'he')).toBe(new Intl.DateTimeFormat('he', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(iso)))
+    expect(fmtTime(iso, 'en')).not.toContain('UTC')
+    expect(fmtTime(null)).toBe('—')
+    expect(fmtTime('nope')).toBe('nope')
+  })
+  it('file_status / attempt_outcome enums are translated in en and he', () => {
+    const keys = [...['pending', 'scanning', 'done', 'skipped', 'error'].map(s => `fstatus.${s}`),
+      ...['success', 'stuck', 'error', 'failed', 'cancelled'].map(s => `outcome.${s}`), 'enabled', 'disabled']
+    for (const k of keys) {
+      expect((en as Record<string, string>)[k], k).toBeTruthy()
+      expect((he as Record<string, string>)[k], k).toBeTruthy()
+    }
+  })
+})
+
+describe('Phase 9 fixes', () => {
+  it('hasAI: the report "none" provider is no AI', async () => {
+    const { hasAI } = await import('../api/client')
+    expect(hasAI({ name: 'none', model: 'none' })).toBe(false)
+    expect(hasAI(null)).toBe(false)
+    expect(hasAI({ name: 'grok', model: 'grok-4' })).toBe(true)
+    expect(format('en', 'ai_none')).toBe('no AI')
+    expect(format('en', 'provider_default_is', { name: 'xAI', kind: 'Cloud' })).toBe('Default provider: xAI (Cloud)')
+  })
+})

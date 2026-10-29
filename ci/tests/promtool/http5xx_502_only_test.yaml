@@ -1,0 +1,24 @@
+rule_files: [rules.yaml]
+tests:
+  # r2: only the provider's 502 on the test route is excluded; a heavy 502 stream there must not page
+  - interval: 1m
+    input_series:
+      - {series: 'http_request_duration_seconds_count{namespace="ai-scan-repos",job="review-api",method="POST",route="/admin/ai-providers/{id}/test",status="502"}', values: '0+50x60'}
+      - {series: 'http_request_duration_seconds_count{namespace="ai-scan-repos",job="review-api",method="GET",route="/x",status="200"}', values: '0+10x60'}
+    alert_rule_test:
+      - eval_time: 40m
+        alertname: AIScanHTTP5xxHigh
+        exp_alerts: []
+  # 503 on the same route is not the provider's 502: pages
+  - interval: 1m
+    input_series:
+      - {series: 'http_request_duration_seconds_count{namespace="ai-scan-repos",job="review-api",method="POST",route="/admin/ai-providers/{id}/test",status="503"}', values: '0+5x60'}
+      - {series: 'http_request_duration_seconds_count{namespace="ai-scan-repos",job="review-api",method="GET",route="/x",status="200"}', values: '0+10x60'}
+    alert_rule_test:
+      - eval_time: 40m
+        alertname: AIScanHTTP5xxHigh
+        exp_alerts:
+          - exp_labels: {severity: warning, job: review-api}
+            exp_annotations:
+              summary: "review-api: more than 5% of HTTP requests return 5xx"
+              runbook_url: https://github.com/almog975/ai-scan-repos/blob/main/docs/monitoring.md#alerts

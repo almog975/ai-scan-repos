@@ -111,3 +111,7 @@ export const CAN = {
 export const TERMINAL: State[] = ['completed', 'failed', 'cancelled']
 export const GITHUB_URL = /^https:\/\/github\.com\/[A-Za-z0-9][A-Za-z0-9-]{0,38}\/[A-Za-z0-9._-]{1,100}?(\.git)?\/?$/
 export const repoName = (url: string) => url.replace(/^https:\/\/github\.com\//, '').replace(/(\.git)?\/?$/, '')
+
+/** report.json uses {name:'none', kind:'onprem', model:'none'} when no AI ran (contracts/report.schema.json). */
+export const hasAI = (p?: { name: string; model?: string | null } | null): boolean =>
+  !!p && !(p.name === 'none' && (p.model ?? 'none') === 'none')

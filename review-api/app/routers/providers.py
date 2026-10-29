@@ -126,8 +126,9 @@ def _get(db, id: str) -> AIProvider:
 @router.get("/ai-providers")
 def public_list(_: User = Depends(current_user), db=Depends(get_db)):
     rows = db.scalars(select(AIProvider).where(AIProvider.enabled.is_(True)).order_by(AIProvider.name)).all()
+    default_id = settings_store.load(db).get("default_provider_id")
     return [{"id": p.id, "name": p.name, "kind": getattr(p.kind, "value", p.kind),
-             "cloud_warning": getattr(p.kind, "value", p.kind) == "cloud"} for p in rows]
+             "cloud_warning": getattr(p.kind, "value", p.kind) == "cloud", "is_default": p.id == default_id} for p in rows]
 
 
 @router.get("/admin/ai-providers")

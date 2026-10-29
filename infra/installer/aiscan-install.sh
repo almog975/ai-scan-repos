@@ -4,8 +4,8 @@
 #
 #   aiscan-install.sh [--config FILE] [--dry-run] [--overlay k3s|eks|local] [--mode gitops|direct]
 #                     [--registry local|ecr] [--tag TAG] [--yes] [--purge] [--rotate-secrets] COMMAND
-#   COMMAND: install (= preflight bootstrap registry secrets images deploy verify) | preflight | bootstrap |
-#            registry | secrets | images | deploy | verify | ecr-login | uninstall
+#   COMMAND: install (= preflight bootstrap registry secrets images egress deploy verify) | preflight | bootstrap |
+#            registry | secrets | images | egress | deploy | verify | ecr-login | uninstall
 #
 # Values come from (later wins): defaults < --config env file < environment < flags. Secret values are only
 # ever read from the environment/config file and written to the cluster through 0600 temp files; they are
@@ -53,7 +53,9 @@ if [ -n "$CONFIG" ]; then
   while IFS= read -r line || [ -n "$line" ]; do
     case "$line" in ''|\#*) continue ;; esac
     [[ "$line" =~ ^[A-Z_][A-Z0-9_]*= ]] || die "bad config line: ${line%%=*}"
-    k="${line%%=*}"; v="${line#*=}"; v="${v%\"}"; v="${v#\"}"
+    k="${line%%=*}"; v="${line#*=}"
+    v="${v%%[[:space:]]#*}"; v="${v%"${v##*[![:space:]]}"}"   # strip a trailing ' # comment' and blanks
+    v="${v%\"}"; v="${v#\"}"
     [ -n "${!k+x}" ] || export "$k=$v"
   done < "$CONFIG"
 fi
@@ -79,7 +81,7 @@ if [ "$REGISTRY_TYPE" = ecr ]; then
   IMAGE_PREFIX="$REGISTRY_HOST/$ECR_REPO_PREFIX"
 else
   case "$OVERLAY" in
-    k3s) REGISTRY_HOST="${REGISTRY_HOST:-registry.ai-scan.127.0.0.1.nip.io}" ;;
+    k3s) REGISTRY_HOST="${REGISTRY_HOST:-registry.registry:5000}" ;;   # in-cluster Service, plain HTTP
     local) REGISTRY_HOST="${REGISTRY_HOST:-registry.ai-scan.local}" ;;
     eks) : "${REGISTRY_HOST:?REGISTRY_HOST required for eks with a local registry}" ;;
   esac
@@ -110,7 +112,10 @@ exists() {
   local err rc=0
   err=$("$KUBECTL" -n "$1" get "$2" "$3" 2>&1 >/dev/null) || rc=$?
   [ "$rc" = 0 ] && return 0
-  [[ "$err" == *NotFound* || "$err" == *"not found"* ]] && return 1
+  # only the API's NotFound for exactly this object counts: e.g. 'Error from server (NotFound): secrets "x" not found'.
+  # A missing context/namespace/CRD ("context \"x\" not found", "the server could not find …") is an error.
+  local plural=$2; case "$2" in secret) plural=secrets ;; deploy|deployment) plural=deployments.apps ;; crd) plural=customresourcedefinitions.apiextensions.k8s.io ;; esac
+  if [[ "$err" == *"(NotFound)"* && ( "$err" == *"$plural \"$3\" not found"* || "$err" == *"${plural%%.*} \"$3\" not found"* ) ]]; then return 1; fi
   die "cannot check $2 $1/$3 (kubectl get failed: ${err:-exit $rc}); refusing to guess"
 }
 # writes NS NAME: does the installer (re)write this Secret? absent, or present and --rotate-secrets
@@ -323,6 +328,66 @@ restart_apps() {
   done
 }
 
+# egress: AI_EGRESS_CIDRS (comma list), KUBE_API_ENDPOINT and KUBE_SERVICE_IP replace the NetworkPolicy placeholders in
+# deploy/platform/overlays/$OVERLAY/kustomization.yaml and deploy/scanner-worker/overlays/$OVERLAY/networkpolicy-ai-egress.yaml
+# (lines tagged "(installer: VAR)"). Unset = placeholder kept (warning). Working tree only, like images.
+cidr_ok() {
+  local c=$1 ip m o
+  [[ "$c" =~ ^([0-9]{1,3}(\.[0-9]{1,3}){3})/([0-9]{1,2})$ ]] || return 1
+  ip=${BASH_REMATCH[1]}; m=${BASH_REMATCH[3]}
+  [ "$m" -ge 8 ] && [ "$m" -le 32 ] || return 1   # never /0../7: that would open egress to the internet
+  for o in ${ip//./ }; do [ "$o" -le 255 ] || return 1; done
+}
+ip2int() { local a b c d; IFS=. read -r a b c d <<<"$1"; echo $(( (a << 24) | (b << 16) | (c << 8) | d )); }
+# cidr_overlap A B: true when the two IPv4 CIDRs share any address
+cidr_overlap() {
+  local a=${1%/*} am=${1#*/} b=${2%/*} bm=${2#*/} m mask
+  m=$(( am < bm ? am : bm )); mask=$(( m == 0 ? 0 : (0xFFFFFFFF << (32 - m)) & 0xFFFFFFFF ))
+  [ $(( $(ip2int "$a") & mask )) -eq $(( $(ip2int "$b") & mask )) ]
+}
+# cluster ranges an AI CIDR must not overlap (it would open scanner egress to in-cluster pods/Services).
+# Defaults: k3s/local 10.42.0.0/16 + 10.43.0.0/16; eks VPC CNI pods = VPC 10.40.0.0/16, Services 172.20.0.0/16.
+cluster_cidrs() {
+  case "$OVERLAY" in
+    eks) echo "${POD_CIDR:-10.40.0.0/16} ${SERVICE_CIDR:-172.20.0.0/16}" ;;
+    *) echo "${POD_CIDR:-10.42.0.0/16} ${SERVICE_CIDR:-10.43.0.0/16}" ;;
+  esac
+}
+egress() {
+  STEP=egress
+  log "egress: NetworkPolicy endpoints (overlay $OVERLAY)"
+  local plat="$ROOT/deploy/platform/overlays/$OVERLAY/kustomization.yaml"
+  local scan="$ROOT/deploy/scanner-worker/overlays/$OVERLAY/networkpolicy-ai-egress.yaml"
+  local list="" c cc ip var
+  if [ -n "${AI_EGRESS_CIDRS:-}" ]; then
+    for c in ${AI_EGRESS_CIDRS//,/ }; do
+      cidr_ok "$c" || die "AI_EGRESS_CIDRS: bad or too broad CIDR '$c' (IPv4 a.b.c.d/8..32)"
+      for cc in $(cluster_cidrs); do
+        cidr_ok "$cc" || die "POD_CIDR/SERVICE_CIDR: bad CIDR '$cc'"
+        ! cidr_overlap "$c" "$cc" || die "AI_EGRESS_CIDRS: '$c' overlaps cluster range $cc (POD_CIDR/SERVICE_CIDR)"
+      done
+      list+="${list:+, }{ipBlock: {cidr: $c}}"
+    done
+    echo "+ set AI egress [$AI_EGRESS_CIDRS] in deploy/{platform,scanner-worker}/overlays/$OVERLAY"
+    if ! dry; then
+      sed -i "s|value: \[.*\]}\( *# .*(installer: AI_EGRESS_CIDRS)\)$|value: [$list]}\1|" "$plat"
+      sed -i "s|to: \[.*\]\( *# .*(installer: AI_EGRESS_CIDRS)\)$|to: [$list]\1|" "$scan"
+    fi
+  else echo "  WARNING: AI_EGRESS_CIDRS unset: AI egress keeps the RFC 5737 placeholder (AI calls are blocked)" >&2; fi
+  for var in KUBE_API_ENDPOINT KUBE_SERVICE_IP; do
+    if [ -z "${!var:-}" ]; then echo "  WARNING: $var unset: placeholder kept (review-api cannot reach the K8s API)" >&2; continue; fi
+    ip="${!var%/32}"
+    cidr_ok "$ip/32" || die "$var must be an IPv4 address (optionally /32)"
+    echo "+ set $var=$ip/32 in deploy/platform/overlays/$OVERLAY/kustomization.yaml"
+    dry || sed -i "s|cidr, value: [0-9./]*}\( *# .*(installer: $var)\)$|cidr, value: $ip/32}\1|" "$plat"
+  done
+  if ! dry; then
+    for var in AI_EGRESS_CIDRS KUBE_API_ENDPOINT KUBE_SERVICE_IP; do
+      grep -q "(installer: $var)" "$plat" || die "$plat lost its (installer: $var) marker"
+    done
+  fi
+}
+
 # Rewrites image registry/tag in deploy/<c>/overlays/$OVERLAY in the working tree. Never commits or pushes:
 # in gitops mode Argo CD deploys what is on main, so commit the diff through a PR (the CI tag-bump push is a stub).
 images() {
@@ -396,9 +461,9 @@ uninstall() {
   STEP=uninstall
   [ "$ASSUME_YES" = 1 ] || dry || die "uninstall needs --yes"
   if [ "$PURGE" = 1 ] && ! dry && [ "$CONFIRM_PURGE" != "$APP_NS" ]; then
-    die "--purge deletes ALL data (all PVCs and Secrets incl. ai-keys-master): repeat with --confirm-purge $APP_NS"
+    die "--purge deletes the app data in namespace $APP_NS (PVCs postgres-data, reports, postgres-backups; all Secrets incl. ai-keys-master), Argo CD, and the registry incl. its registry-data PVC (pushed images); it keeps namespaces jenkins and monitoring (incl. jenkins-home) and cluster-scoped PVs/StorageClasses. Repeat with --confirm-purge $APP_NS"
   fi
-  log "uninstall (purge=$PURGE): PVCs (postgres-data, reports, backups if present), Secrets and namespaces are kept unless --purge"
+  log "uninstall (purge=$PURGE): PVCs (postgres-data, reports, postgres-backups), Secrets and namespaces are kept unless --purge"
   if [ "$MODE" = gitops ]; then
     k -n argocd delete application ai-scan-root --ignore-not-found --wait=true
     if [ "$PURGE" != 1 ]; then
@@ -430,13 +495,13 @@ uninstall() {
   else
     # platform keeps ServiceAccounts/RBAC and the reports PVC: only removed with --purge
     for ((i=${#COMPONENTS[@]}-1; i>=1; i--)); do delete_kept "$ROOT/deploy/${COMPONENTS[$i]}/overlays/$OVERLAY"; done
-    echo "  kept: PVCs in $APP_NS (postgres-data, reports, backups if present), Secrets, namespaces; reinstall reuses them"
+    echo "  kept: PVCs in $APP_NS (postgres-data, reports, postgres-backups), Secrets, namespaces; reinstall reuses them"
   fi
 }
 
 case "$CMD" in
-  install) preflight; bootstrap; registry; secrets; images; deploy; [ "${SKIP_VERIFY:-0}" = 1 ] || verify ;;
-  preflight|bootstrap|registry|secrets|images|deploy|verify|uninstall) "$CMD" ;;
+  install) preflight; bootstrap; registry; secrets; images; egress; deploy; [ "${SKIP_VERIFY:-0}" = 1 ] || verify ;;
+  preflight|bootstrap|registry|secrets|images|egress|deploy|verify|uninstall) "$CMD" ;;
   ecr-login) ecr_login ;;
   *) die "unknown command $CMD" ;;
 esac

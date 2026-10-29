@@ -17,7 +17,8 @@ spec:
   template:
     metadata: {labels: {app: registry}}
     spec:
-      securityContext: {runAsNonRoot: true, runAsUser: 1000, fsGroup: 1000, seccompProfile: {type: RuntimeDefault}}
+      automountServiceAccountToken: false   # registry never calls the K8s API
+      securityContext: {runAsNonRoot: true, runAsUser: 1000, runAsGroup: 1000, fsGroup: 1000, fsGroupChangePolicy: OnRootMismatch, seccompProfile: {type: RuntimeDefault}}
       containers:
         - name: registry
           image: registry:2.8.3
@@ -44,9 +45,18 @@ apiVersion: v1
 kind: Service
 metadata: {name: registry, namespace: registry, labels: {app: registry}}
 spec:
-  type: ClusterIP
+  # NodePort so K3s nodes (containerd, no cluster DNS) reach the registry at 127.0.0.1:30500 via the
+  # registries.yaml mirror for "registry.registry:5000". Pods keep using registry.registry:5000 (cluster DNS).
+  # NOT meant to be reachable from outside the node. kube-proxy opens NodePorts on ALL node addresses, and NetworkPolicy
+  # does not reliably filter NodePort traffic (with Cluster policy the source is SNATed to the node, which kube-router
+  # always allows to local pods). Local keeps the client IP so the registry NetworkPolicy (Traefik + ns jenkins only)
+  # rejects remote clients; containerd's own 127.0.0.1 pulls are SNATed to the node IP and still pass.
+  # Host side (required): K3s --kube-proxy-arg=nodeport-addresses=127.0.0.0/8 and a firewall drop for 30500
+  # (docs/registry-auth-runbook.md "NodePort 30500").
+  type: NodePort
+  externalTrafficPolicy: Local
   selector: {app: registry}
-  ports: [{name: http, port: 5000, targetPort: 5000}]
+  ports: [{name: http, port: 5000, targetPort: 5000, nodePort: 30500}]
 ---
 apiVersion: traefik.io/v1alpha1
 kind: Middleware
@@ -64,3 +74,30 @@ spec:
       kind: Rule
       services: [{name: registry, port: 5000}]
   tls: {secretName: registry-tls}
+---
+# Phase 9: registry needs no egress except DNS; ingress only from Traefik (pushes/pulls incl. kubelet pulls, which
+# arrive via the Traefik pod) and from ns jenkins (in-cluster registry.registry:5000).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: default-deny, namespace: registry}
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+  egress:
+    - to:
+        - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: kube-system}}
+          podSelector: {matchLabels: {k8s-app: kube-dns}}
+      ports: [{protocol: UDP, port: 53}, {protocol: TCP, port: 53}]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: registry-ingress, namespace: registry}
+spec:
+  podSelector: {matchLabels: {app: registry}}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: kube-system}}
+          podSelector: {matchLabels: {app.kubernetes.io/name: traefik}}
+        - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: jenkins}}
+      ports: [{protocol: TCP, port: 5000}]

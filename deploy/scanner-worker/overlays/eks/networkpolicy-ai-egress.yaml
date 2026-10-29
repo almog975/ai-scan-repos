@@ -6,8 +6,6 @@
 - op: add
   path: /spec/egress/-
   value:
-    to:
-      - ipBlock:
-          cidr: 203.0.113.0/24  # PLACEHOLDER
+    to: [{ipBlock: {cidr: 203.0.113.0/24}}]  # PLACEHOLDER AI CIDRs (installer: AI_EGRESS_CIDRS)
     ports:
       - {protocol: TCP, port: 443}

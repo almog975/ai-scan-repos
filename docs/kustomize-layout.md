@@ -13,7 +13,7 @@ infra/bootstrap/{base,overlays/{local,k3s,eks}}  cluster-scoped: 5 Namespaces, P
 infra/ingress/{base,overlays/{local,k3s,eks}}  IngressRoutes jenkins.<domain> (ns jenkins) + argocd.<domain> (ns argocd); installer-applied.
 infra/registry      registry:2 (ns registry) + K3s registries.yaml example
 infra/helm/kube-prometheus-stack   values + install.sh
-infra/installer     wizard image + install scripts; infra/installer/terraform/eks
+infra/installer     aiscan-install.sh + install scripts; infra/installer/terraform/eks
 ```
 Single namespace `ai-scan-repos`. Overlays are per target cluster; there is no dev/prod split.
 Image tags (`<registry>/ai-scan/<svc>:<git-sha>`) and Argo CD Applications belong to Pipelines and are not set here.

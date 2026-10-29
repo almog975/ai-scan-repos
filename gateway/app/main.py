@@ -7,6 +7,7 @@ deduped by X-GitHub-Delivery (409).
 """
 from __future__ import annotations
 
+import hashlib
 import hmac
 import time
 import json
@@ -58,6 +59,7 @@ def create_app(settings: Settings | None = None, transport: httpx.AsyncBaseTrans
     s = settings or get_settings()
     SessionLocal = make_sessionmaker(s.database_url)
     app = FastAPI(title="AI Scan Repos — gateway", version="0.2.0", openapi_url=None, docs_url=None, redoc_url=None)
+    app.state.SessionLocal = SessionLocal
     allowed, admins = s.logins(s.allowed_github_logins), s.logins(s.admin_github_logins)
     auth_rl, api_rl = RateLimiter(s.rate_limit_auth_per_minute), RateLimiter(s.rate_limit_api_per_minute)
 
@@ -76,7 +78,10 @@ def create_app(settings: Settings | None = None, transport: httpx.AsyncBaseTrans
             key = f"ip:{request.client.host if request.client else '-'}"
             wait = auth_rl.hit(key)
         elif p.startswith("/api/"):
-            wait = api_rl.hit(f"s:{request.cookies.get(s.session_cookie) or (request.client.host if request.client else '-')}")
+            # per user only for a valid session; anything else (no/forged/expired cookie) is keyed by client IP
+            # (uvicorn --proxy-headers + FORWARDED_ALLOW_IPS => request.client is the real client)
+            uid = _session_user_id(request.cookies.get(s.session_cookie))
+            wait = api_rl.hit(f"u:{uid}" if uid else f"ip:{request.client.host if request.client else '-'}")
         else:
             wait = None
         if wait:
@@ -88,6 +93,18 @@ def create_app(settings: Settings | None = None, transport: httpx.AsyncBaseTrans
         return await call_next(request)
 
     errors.install(app)
+
+    def _session_user_id(tok: str | None) -> str | None:
+        if not tok or len(tok) > 200:
+            return None
+        try:
+            with SessionLocal() as db:
+                sess = db.get(Session, hash_token(tok))
+                if sess and not sess.revoked_at and _aware(sess.expires_at) >= datetime.now(timezone.utc):
+                    return sess.user_id
+        except Exception:  # noqa: BLE001 - DB trouble: fall back to the IP key, the route will report it
+            return None
+        return None
 
     def current_user(request: Request) -> User:
         tok = request.cookies.get(s.session_cookie)
@@ -275,13 +292,36 @@ def create_app(settings: Settings | None = None, transport: httpx.AsyncBaseTrans
                 raise ValueError
         except ValueError:
             raise ApiError(400, "VALIDATION_ERROR", "payload must be a JSON object")
+        window = s.webhook_replay_window_seconds
+        pushed = (payload.get("repository") or {}).get("pushed_at") if event == "push" else None
+        if window > 0 and isinstance(pushed, (int, float)) and not isinstance(pushed, bool) \
+                and time.time() - pushed > window:
+            WEBHOOKS.labels("stale").inc()
+            raise ApiError(409, "CONFLICT", "stale delivery (outside the replay window)", {"delivery_id": delivery})
+        # body-hash dedupe: rows keyed "sha256:<hex>" in webhook_deliveries (no schema change, shared by replicas)
+        hkey = "sha256:" + hashlib.sha256(body).hexdigest()
         with SessionLocal() as db:
+            if window > 0:
+                old = db.get(WebhookDelivery, hkey)
+                if old and (datetime.now(timezone.utc) - _aware(old.received_at)).total_seconds() > window:
+                    db.delete(old)
+                    db.commit()
             try:
                 db.add(WebhookDelivery(delivery_id=delivery[:200], event=event[:100]))
-                db.commit()
+                db.flush()
             except IntegrityError:
+                db.rollback()
                 WEBHOOKS.labels("duplicate").inc()
                 raise ApiError(409, "CONFLICT", "duplicate delivery", {"delivery_id": delivery})
+            if window > 0:
+                try:
+                    db.add(WebhookDelivery(delivery_id=hkey, event=event[:100], status="payload_hash"))
+                    db.flush()
+                except IntegrityError:
+                    db.rollback()
+                    WEBHOOKS.labels("replay").inc()
+                    raise ApiError(409, "CONFLICT", "duplicate payload (replay)", {"delivery_id": delivery})
+            db.commit()
         status = await _handle_event(event, payload)
         with SessionLocal() as db:
             d = db.get(WebhookDelivery, delivery[:200])

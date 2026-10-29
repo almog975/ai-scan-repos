@@ -11,6 +11,14 @@ TOKEN = "t" * 40
 KEY = "00" * 32
 
 
+@pytest.fixture(autouse=True)
+def _clean_env(monkeypatch):
+    """Settings read the process env: a shell with e.g. INTERNAL_API_TOKEN set must not change these tests."""
+    from app.config import Settings
+    for name in Settings.model_fields:
+        monkeypatch.delenv(name.upper(), raising=False)
+
+
 def test_dev_defaults_are_fine_outside_production():
     from app.config import Settings
     assert Settings().problems() == []

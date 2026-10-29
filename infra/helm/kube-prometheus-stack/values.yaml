@@ -21,6 +21,7 @@ prometheus:
           resources: {requests: {storage: 10Gi}}
 alertmanager:
   alertmanagerSpec:
+    resources: {requests: {cpu: 10m, memory: 32Mi}, limits: {cpu: 100m, memory: 128Mi}}
     storage:
       volumeClaimTemplate:
         spec:
@@ -28,6 +29,7 @@ alertmanager:
           accessModes: [ReadWriteOnce]
           resources: {requests: {storage: 1Gi}}
 grafana:
+  resources: {requests: {cpu: 50m, memory: 128Mi}, limits: {cpu: 500m, memory: 512Mi}}
   # dashboards ship as ConfigMaps labelled grafana_dashboard=1 next to the app (docs/monitoring.md).
   # Only the app namespace is watched (plus the chart's own), not ALL: keeps the sidecar's RBAC narrow.
   sidecar:
@@ -58,3 +60,12 @@ kubeScheduler: {enabled: false}
 kubeProxy: {enabled: false}
 # App ServiceMonitors (review-api :8001, gateway :8000), PrometheusRules and the Grafana dashboard live in
 # deploy/platform/base (servicemonitors.yaml, prometheusrules.yaml, dashboards/). See docs/monitoring.md.
+# Phase 9: requests/limits for the remaining chart components (sized for a single-node K3s lab).
+prometheusOperator:
+  resources: {requests: {cpu: 50m, memory: 64Mi}, limits: {cpu: 200m, memory: 256Mi}}
+  prometheusConfigReloader:
+    resources: {requests: {cpu: 10m, memory: 16Mi}, limits: {cpu: 100m, memory: 64Mi}}
+kube-state-metrics:
+  resources: {requests: {cpu: 10m, memory: 64Mi}, limits: {cpu: 200m, memory: 256Mi}}
+prometheus-node-exporter:
+  resources: {requests: {cpu: 10m, memory: 32Mi}, limits: {cpu: 200m, memory: 64Mi}}

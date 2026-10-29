@@ -30,6 +30,13 @@ class Stack:
         self.partial = {}   # id -> bool (partial results exist)
         self.calls = []     # (method, path, csrf_ok)
         self.sse_subscribers = 0
+        self.providers = []        # GET /api/ai-providers (ProviderPublic[])
+        self.created = []          # POST /api/reviews bodies
+        # report.json provider when no AI ran (contracts/report.schema.json)
+        self.report_provider = {"name": "none", "kind": "onprem", "model": "none"}
+        self.expired = set()       # review ids whose report was removed by retention -> 410 REPORT_EXPIRED
+        self.provider_test = {}    # provider id -> "ok" | "unreachable" (POST .../test)
+        self.deleted_providers = []
 
     def new_review(self, repo_url, depth, provider_id):
         rid = str(uuid.uuid4())
@@ -43,12 +50,45 @@ class Stack:
     def report(self, rid):
         r = self.reviews[rid]
         partial = r["state"] != "completed"
-        summary = {"high": 1, "medium": 2} if not partial else {"high": 1}
-        j = {"review_id": rid, "partial": partial, "summary": summary, "provider": None,
-             "findings": [{"id": "f1", "severity": "high", "title": "SQL injection in app.py"}]}
-        md = ("# Security report\n\n" + ("> **Partial report** – scan did not finish.\n\n" if partial else "")
-              + "## HIGH\n\n- SQL injection in `app.py` <script>window.__xss=1</script>\n")
+        findings = [{"id": "f1", "severity": "high", "title": "SQL injection in app.py", "file": "app.py"}]
+        if not partial:
+            findings += [{"id": "f2", "severity": "medium", "title": "Missing CSRF check", "file": "views.py"},
+                         {"id": "f3", "severity": "medium", "title": "Verbose error page", "file": "app.py"}]
+        # summary is derived from the findings: the counts always match what is listed
+        summary = {s: sum(f["severity"] == s for f in findings) for s in ("critical", "high", "medium", "low", "info")}
+        summary["files_scanned"] = len(self.files(rid))
+        j = {"review_id": rid, "partial": partial, "summary": summary, "provider": self.report_provider, "depth": r["depth"],
+             "findings": findings}
+        md = "# Security report\n\n" + ("> **Partial report** – scan did not finish.\n\n" if partial else "")
+        for sev in ("critical", "high", "medium", "low", "info"):
+            items = [f for f in findings if f["severity"] == sev]
+            if items:
+                md += f"## {sev.upper()}\n\n" + "".join(
+                    f"- {f['title'].replace(f['file'], '`' + f['file'] + '`')}"
+                    + (" <script>window.__xss=1</script>" if f["id"] == "f1" else "") + "\n" for f in items) + "\n"
+
         return j, md
+
+    def files(self, rid):
+        r = self.reviews[rid]
+        done = r["state"] == "completed"
+        return [{"path": "app.py", "status": "done", "findings_count": 1 if not done else 2},
+                {"path": "views.py", "status": "done" if done else "scanning", "findings_count": 1 if done else 0},
+                {"path": "README.md", "status": "skipped", "findings_count": 0}]
+
+    def attempts(self, rid):
+        r = self.reviews[rid]
+        out = []
+        for b in range(1, r["budget_no"] + 1):
+            last = r["attempt"] if b == r["budget_no"] else 1
+            for n in range(1, last + 1):
+                final = b == r["budget_no"] and n == last
+                out.append({"id": f"{rid[:8]}-{b}-{n}", "review_id": rid, "budget_no": b, "n": n, "job_name": f"scan-{rid[:8]}-{b}-{n}",
+                            "started_at": r["created_at"], "ended_at": None if final and r["state"] not in ("completed", "failed", "cancelled") else now(),
+                            "outcome": (None if r["state"] not in ("completed", "failed", "cancelled") else
+                                        {"completed": "success", "failed": "failed", "cancelled": "cancelled"}[r["state"]]) if final else "error",
+                            "error": None if final else "pod evicted"})
+        return out
 
 
 def make_handler(stack: Stack):
@@ -98,6 +138,9 @@ def make_handler(stack: Stack):
         def do_POST(self):
             self.route("POST")
 
+        def do_DELETE(self):
+            self.route("DELETE")
+
         def route(self, m):
             path = urlparse(self.path).path
             if path.startswith("/__mock/"):
@@ -125,7 +168,7 @@ def make_handler(stack: Stack):
             sid = self.session()
             if not sid:
                 return self.err(401, "UNAUTHORIZED", "login required")
-            if m == "POST":
+            if m in ("POST", "DELETE"):
                 ok = self.headers.get("X-CSRF-Token") == stack.sessions[sid]
                 stack.calls.append((m, path, ok))
                 if not ok:
@@ -138,13 +181,36 @@ def make_handler(stack: Stack):
                 stack.sessions.pop(sid, None)
                 return self.send(204, "", headers=[("Set-Cookie", "aiscan_session=; Path=/; Max-Age=0")])
             if path == "/api/ai-providers":
-                return self.send(200, [])
+                return self.send(200, stack.providers)
+            mp = re.fullmatch(r"/api/admin/ai-providers/([\w-]+)(/test)?", path)
+            if mp:
+                pid, test = mp.group(1), mp.group(2)
+                prov = next((p for p in stack.providers if p["id"] == pid), None)
+                if not prov:
+                    return self.err(404, "NOT_FOUND", "no such provider")
+                if test and m == "POST":
+                    if stack.provider_test.get(pid, "ok") != "ok":
+                        return self.err(502, "AI_PROVIDER_UNREACHABLE", "provider did not answer")
+                    return self.send(200, {"ok": True, "latency_ms": 42, "model": prov.get("model") or "mock-model"})
+                if not test and m == "DELETE":
+                    active = any(r["provider"] and r["provider"].get("id") == pid and r["state"] not in ("completed", "failed", "cancelled")
+                                 for r in stack.reviews.values())
+                    if prov.get("is_default") or active:
+                        return self.err(409, "PROVIDER_IN_USE", "provider is the default or used by an active review")
+                    stack.providers.remove(prov); stack.deleted_providers.append(pid)
+                    return self.send(204, "")
+                return self.err(404, "NOT_FOUND", path)
             if path == "/api/reviews":
                 with stack.lock:
                     if m == "GET":
                         items = sorted(stack.reviews.values(), key=lambda r: r["created_at"], reverse=True)
                         return self.send(200, {"items": items, "page": 1, "page_size": 20, "total": len(items)})
                     b = self.body()
+                    stack.created.append(b)
+                    prov = next((p for p in stack.providers if p["id"] == b.get("provider_id")
+                                 or (not b.get("provider_id") and p.get("is_default"))), None)
+                    if prov and prov["kind"] == "cloud" and not b.get("ack_cloud"):
+                        return self.send(422, {"error": {"code": "CLOUD_ACK_REQUIRED", "message": "cloud provider: resend with ack_cloud=true"}})
                     return self.send(201, stack.new_review(b["repo_url"], b.get("depth", "quick"), b.get("provider_id")))
             mt = re.fullmatch(r"/api/reviews/([0-9a-f-]+)(?:/(\w+(?:\.\w+)?))?", path)
             if not mt or mt.group(1) not in stack.reviews:
@@ -156,6 +222,11 @@ def make_handler(stack: Stack):
             with stack.lock:
                 if sub is None:
                     return self.send(200, r)
+                if sub == "files" and m == "GET":
+                    items = stack.files(rid)
+                    return self.send(200, {"items": items, "page": 1, "page_size": 100, "total": len(items)})
+                if sub == "attempts" and m == "GET":
+                    return self.send(200, stack.attempts(rid))
                 if m == "POST" and sub in ("pause", "resume", "cancel", "retry"):
                     allowed = {"pause": PAUSABLE, "resume": RESUMABLE, "cancel": CANCELLABLE, "retry": {"failed"}}[sub]
                     if r["state"] not in allowed:
@@ -171,6 +242,8 @@ def make_handler(stack: Stack):
                     r["updated_at"] = now()
                     return self.send(202, {"id": rid, "state": r["state"]})
                 if sub in ("report.json", "report.md"):
+                    if rid in stack.expired:
+                        return self.err(410, "REPORT_EXPIRED", "removed by retention cleanup")
                     if r["state"] != "completed" and not (r["state"] in ("failed", "cancelled") and stack.partial.get(rid)):
                         return self.err(409, "CONFLICT", "no report")
                     j, md = stack.report(rid)

@@ -42,7 +42,12 @@ kubectl -n ai-scan-repos create secret docker-registry regcred \
   --docker-server=<REGISTRY_HOST> --docker-username=<PULL_USER> --docker-password='<PULL_PASSWORD>' \
   --dry-run=client -o yaml | kubectl apply -f -
 ```
-`<REGISTRY_HOST>`: local `registry.ai-scan.local`, k3s `registry.ai-scan.127.0.0.1.nip.io`, eks `registry.ai-scan.example.com`.
+**In-cluster address:** pods (Jenkins agents: kaniko/crane push) must use `registry.registry:5000` (Service `registry`
+in ns `registry`, plain HTTP inside the cluster, htpasswd auth). The external names below go through Traefik and are
+for the kubelet/node and for pushes from outside the cluster; `*.127.0.0.1.nip.io` resolves to 127.0.0.1 inside a pod,
+so it cannot be used for in-cluster pushes. NetworkPolicies allow 5000 only from ns `jenkins` and Traefik.
+
+`<REGISTRY_HOST>`: local `registry.ai-scan.local`, k3s `registry.registry:5000` (in-cluster Service; nodes reach it via the registries.yaml mirror → NodePort 30500, see infra/registry/registries.yaml.example), eks `registry.ai-scan.example.com`.
 Referenced by (in git): SA `default` (deploy/platform/base/default-sa.yaml; frontend, gateway, migrations Job),
 SA `review-api`, SA `scanner`, and the scanner Job template pod spec. Without `regcred` pods fail with ImagePullBackOff.
 On K3s, containerd also needs the creds in `/etc/rancher/k3s/registries.yaml` only if pulls bypass the kubelet
@@ -51,3 +56,15 @@ On K3s, containerd also needs the creds in `/etc/rancher/k3s/registries.yaml` on
 ## Rotate
 Recreate the Secret with new values (same commands), update the Jenkins credential, then
 `kubectl -n registry rollout restart deploy/registry`.
+
+## NodePort 30500 (K3s): keep it node-local
+The registry Service is NodePort 30500 so containerd on the node can pull `registry.registry:5000/...` through the
+`registries.yaml` mirror (`http://127.0.0.1:30500`). It must not be reachable from the LAN/internet (plain HTTP, basic auth):
+1. K3s server flag (in `/etc/rancher/k3s/config.yaml`): `kube-proxy-arg: ["nodeport-addresses=127.0.0.0/8"]`, then
+   `systemctl restart k3s`. NodePorts then listen only on loopback (affects every NodePort Service; Traefik uses
+   servicelb hostPorts, not NodePorts).
+2. Firewall, belt and braces: `ufw deny in on <ext-if> to any port 30500 proto tcp` (or
+   `iptables -I INPUT ! -i lo -p tcp --dport 30500 -j DROP`, persisted).
+3. Check from another host: `curl -m3 http://<node-ip>:30500/v2/` must time out.
+`externalTrafficPolicy: Local` keeps remote client IPs, so the registry NetworkPolicy also rejects them; it is not a
+substitute for 1+2 (NetworkPolicy on NodePort traffic depends on the CNI's SNAT handling).
