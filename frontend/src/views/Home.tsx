@@ -25,6 +25,8 @@ export default function Home() {
   const [rowErr, setRowErr] = useState<unknown>(null)
   const [partial, setPartial] = useState<Record<string, boolean>>({})
   const [resumeCloud, setResumeCloud] = useState<Review | null>(null)
+  // server said CLOUD_ACK_REQUIRED (e.g. the default provider is cloud but the list did not say so): warn, then resend
+  const [cloudRetry, setCloudRetry] = useState<Parameters<typeof api.createReview>[0] | null>(null)
   const reload = useCallback(() => { api.listReviews().then(setReviews).catch(setErr) }, [])
   const update = useCallback((rv: Review) => setReviews(l => (l ?? []).map(x => (x.id === rv.id ? rv : x))), [])
 
@@ -58,19 +60,32 @@ export default function Home() {
   const cloud = prov?.kind === 'cloud'
   const reason = !urlOk ? t('start_disabled_url') : cloud && !ack ? t('cloud_ack_required') : ''
 
+  const isCloudAck = (x: unknown) => x instanceof ApiError && x.status === 422 && x.code === 'CLOUD_ACK_REQUIRED'
+
+  const send = async (body: Parameters<typeof api.createReview>[0]) => {
+    setBusy(true); setErr(null)
+    try {
+      const r = await api.createReview(body)
+      setReviews(l => [r, ...(l ?? []).filter(x => x.id !== r.id)])
+      setUrl(''); setRef(''); setTouched(false); setAck(false)
+      setMsg(t('started', { repo: repoName(r.repo_url) }))
+    } catch (x) {
+      if (isCloudAck(x) && !body.ack_cloud) setCloudRetry(body)  // never resend without showing the warning
+      else setErr(x)
+    } finally { setBusy(false) }
+  }
+
   const submit = async (e: FormEvent) => {
     e.preventDefault()
     setTouched(true)
     if (reason) return
-    setBusy(true); setErr(null)
-    try {
-      const r = await api.createReview({ repo_url: url.trim(), depth, provider_id: pid || null, ack_cloud: cloud ? ack : false,
-        ref: ref.trim() || 'HEAD' })
-      setReviews(l => [r, ...(l ?? []).filter(x => x.id !== r.id)])
-      setUrl(''); setRef(''); setTouched(false); setAck(false)
-      setMsg(t('started', { repo: repoName(r.repo_url) }))
-    } catch (x) { setErr(x) } finally { setBusy(false) }
+    await send({ repo_url: url.trim(), depth, provider_id: pid || null, ack_cloud: cloud ? ack : false, ref: ref.trim() || 'HEAD' })
   }
+
+  // row resume: provider kind may be unknown on the row -> the server's CLOUD_ACK_REQUIRED opens the same warning
+  const resumeRow = (r: Review) => rowAct(r, async () => {
+    try { await api.resume(r.id, false) } catch (x) { if (isCloudAck(x)) { setResumeCloud(r); return } throw x }
+  })
 
   const activeId = err instanceof ApiError && err.status === 409 ? (reviews?.find(r => !['completed', 'failed', 'cancelled'].includes(r.state))?.id) : undefined
 
@@ -139,11 +154,14 @@ export default function Home() {
             </tr></thead>
             <tbody>
               {reviews.map(r => <ReviewRow key={r.id} r={r} partial={partial[r.id]} onAction={(fn) => rowAct(r, fn)}
-                onResumeCloud={() => setResumeCloud(r)} />)}
+                onResumeCloud={() => setResumeCloud(r)} onResume={() => resumeRow(r)} />)}
             </tbody>
           </table>
         </section>
       )}
+      {cloudRetry && <Confirm title={t('cloud_retry_t')} body={<p>{t('cloud_warn')}</p>} ok={t('cloud_retry_ok')}
+        safe={t('cloud_retry_cancel')} onSafe={() => setCloudRetry(null)}
+        onOk={() => { const b = cloudRetry; setCloudRetry(null); setAck(true); send({ ...b, ack_cloud: true }) }} />}
       {resumeCloud && <Confirm title={t('resume_confirm_t')} body={<p>{t('resume_confirm_b')}</p>} ok={t('resume_confirm_ok')}
         safe={t('keep')} onSafe={() => setResumeCloud(null)}
         onOk={() => { const r = resumeCloud; setResumeCloud(null); rowAct(r, () => api.resume(r.id, true)) }} />}
@@ -157,8 +175,8 @@ function pct(r: Review) {
   return r.files_total ? Math.min(100, Math.round(((r.files_done ?? 0) / r.files_total) * 100)) : 0
 }
 
-function ReviewRow({ r, partial, onAction, onResumeCloud }:
-  { r: Review; partial?: boolean; onAction: (fn: () => Promise<unknown>) => void; onResumeCloud: () => void }) {
+function ReviewRow({ r, partial, onAction, onResumeCloud, onResume }:
+  { r: Review; partial?: boolean; onAction: (fn: () => Promise<unknown>) => void; onResumeCloud: () => void; onResume: () => void }) {
   const { t } = useI18n()
   const name = repoName(r.repo_url)
   const s = r.state
@@ -177,7 +195,7 @@ function ReviewRow({ r, partial, onAction, onResumeCloud }:
       <td><Ltr>{fmtTime(r.created_at)}</Ltr></td>
       <td><div className="row">
         {CAN.pause(s) && b(t('pause'), () => onAction(() => api.pause(r.id)))}
-        {CAN.resume(s) && b(t('resume'), () => (r.provider?.kind === 'cloud' ? onResumeCloud() : onAction(() => api.resume(r.id, false))))}
+        {CAN.resume(s) && b(t('resume'), () => (r.provider?.kind === 'cloud' ? onResumeCloud() : onResume()))}
         {CAN.retry(s) && b(t('retry'), () => onAction(() => api.retry(r.id)))}
         {CAN.cancel(s) && b(t('cancel_short'), () => onAction(() => api.cancel(r.id)), 'danger')}
         {showReport && b(t('report_btn'), () => navigate(`/reviews/${r.id}/report`), partial && s !== 'completed' ? '' : 'primary')}

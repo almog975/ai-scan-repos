@@ -144,7 +144,13 @@ export default function ProgressView({ id }: { id: string }) {
         <div className="row actions" role="group" aria-label={t('col_actions')}>
           <ActionButton enabled={CAN.pause(s)} reason={t('why_pause')} busy={busy} onClick={() => act(() => api.pause(id))}>{t('pause')}</ActionButton>
           <ActionButton enabled={CAN.resume(s)} reason={t('why_resume')} busy={busy}
-            onClick={() => (cloud ? setConfirm('resume') : act(() => api.resume(id, false)))}>{t('resume')}</ActionButton>
+            onClick={() => (cloud ? setConfirm('resume') : act(async () => {
+              // provider may have become cloud since: the server's CLOUD_ACK_REQUIRED opens the warning first
+              try { await api.resume(id, false) } catch (x) {
+                if (x instanceof ApiError && x.status === 422 && x.code === 'CLOUD_ACK_REQUIRED') { setConfirm('resume'); return }
+                throw x
+              }
+            }))}>{t('resume')}</ActionButton>
           <ActionButton enabled={CAN.retry(s)} reason={t('why_retry')} busy={busy} onClick={() => act(() => api.retry(id))}>{t('retry')}</ActionButton>
           <ActionButton enabled={CAN.cancel(s)} reason={t('why_cancel')} busy={busy} variant="danger"
             onClick={() => setConfirm('cancel')}>{t('cancel')}</ActionButton>
