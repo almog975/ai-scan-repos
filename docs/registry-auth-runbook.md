@@ -42,6 +42,11 @@ kubectl -n ai-scan-repos create secret docker-registry regcred \
   --docker-server=<REGISTRY_HOST> --docker-username=<PULL_USER> --docker-password='<PULL_PASSWORD>' \
   --dry-run=client -o yaml | kubectl apply -f -
 ```
+**In-cluster address:** pods (Jenkins agents: kaniko/crane push) must use `registry.registry:5000` (Service `registry`
+in ns `registry`, plain HTTP inside the cluster, htpasswd auth). The external names below go through Traefik and are
+for the kubelet/node and for pushes from outside the cluster; `*.127.0.0.1.nip.io` resolves to 127.0.0.1 inside a pod,
+so it cannot be used for in-cluster pushes. NetworkPolicies allow 5000 only from ns `jenkins` and Traefik.
+
 `<REGISTRY_HOST>`: local `registry.ai-scan.local`, k3s `registry.ai-scan.127.0.0.1.nip.io`, eks `registry.ai-scan.example.com`.
 Referenced by (in git): SA `default` (deploy/platform/base/default-sa.yaml; frontend, gateway, migrations Job),
 SA `review-api`, SA `scanner`, and the scanner Job template pod spec. Without `regcred` pods fail with ImagePullBackOff.

@@ -13,8 +13,12 @@
 - Credentials: existing Secret `db-secrets` (keys `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`) mounted as files.
   No new secret; no values in git (see `docs/secrets-runbook.md`).
 
-The PVC sits on the same node/storage as the DB, so this protects against logical damage (bad migration, deletes),
-**not** node/disk loss. Copy dumps off the node (e.g. `kubectl cp` or an rsync to another host / S3 on EKS) — open item.
+## Known limitation: no off-node copy
+On K3s this is a **single node**: the `postgres-backups` PVC (local-path) lives on the same node and disk as
+`postgres-data`. Backups protect against logical damage (bad migration, accidental deletes) but **not** against losing
+the node or its disk. There is no automatic off-node copy today; copy dumps off manually (`kubectl cp`, rsync to another
+host) if needed. On EKS, store backups off the instance: put `postgres-backups` on EFS (`efs-sc`) or add an upload
+step to S3 (IRSA-scoped bucket) instead of relying on the gp3 volume in the same AZ.
 
 ## Run a backup now
 ```bash

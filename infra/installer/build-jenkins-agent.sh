@@ -7,6 +7,8 @@
 # The values.yaml change must be committed + pushed by Almog/Pipelines for Argo CD to pick it up.
 set -euo pipefail
 ROOT="${ROOT:-$(cd "$(dirname "$0")/../.." && pwd)}"
+# Runs on the installer host (outside the cluster), so the external Traefik name is right here. In-cluster pushes
+# (Jenkins agents) use registry.registry:5000 instead (docs/registry-auth-runbook.md).
 REGISTRY="${REGISTRY:-registry.ai-scan.127.0.0.1.nip.io}"
 SHA="${GIT_SHA:-$(git -C "$ROOT" rev-parse --short=12 HEAD)}"
 IMG="$REGISTRY/ai-scan/jenkins-agent:$SHA"
