@@ -1,3 +1,5 @@
+import os
+import threading
 import json
 import sys
 from datetime import datetime, timezone
@@ -65,7 +67,10 @@ def write_progress(settings, rid, files, attempt=1, budget=1, stamp="2026-10-28T
            "files": [{"path": p, "status": s, "findings_count": 1 if s == "done" else 0} for p, s in files]}
     d = Path(settings.reports_dir) / rid
     d.mkdir(parents=True, exist_ok=True)
-    (d / "progress.json").write_text(json.dumps(doc))
+    # Atomic like the worker (tmp + rename): the SSE poller must never read a half-written file.
+    tmp = d / f".progress.json.{os.getpid()}.{threading.get_ident()}.tmp"
+    tmp.write_text(json.dumps(doc))
+    os.replace(tmp, d / "progress.json")
     return doc
 
 
