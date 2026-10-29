@@ -28,7 +28,7 @@ export const en = {
   depth_quick: 'Quick',
   depth_quick_d: 'Scanners + a short AI summary',
   depth_brief: 'Brief',
-  depth_brief_d: 'AI on files with findings',
+  depth_brief_d: 'AI on the top 10 findings',
   depth_deep: 'Deep',
   depth_deep_d: 'AI on every code file',
   provider: 'AI provider',

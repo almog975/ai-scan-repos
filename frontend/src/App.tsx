@@ -76,7 +76,7 @@ export default function App() {
               </ul>
             </nav>
             <div className="userchip">
-              <span>@<bdi dir="ltr">{me.github_login}</bdi></span>
+              <span className="user">@<bdi dir="ltr">{me.github_login}</bdi></span>{" "}
               <label className="lang">{t('lang_switch')}
                 <select value={lang} onChange={e => setLang(e.target.value as Lang)}>
                   <option value="he" lang="he">עברית</option>

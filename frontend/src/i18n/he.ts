@@ -28,7 +28,7 @@ export const he: Record<keyof typeof en, string> = {
   depth_quick: 'מהיר',
   depth_quick_d: 'סורקים + סיכום AI קצר',
   depth_brief: 'תמציתי',
-  depth_brief_d: 'AI על קבצים עם ממצאים',
+  depth_brief_d: 'AI על 10 הממצאים המובילים',
   depth_deep: 'מעמיק',
   depth_deep_d: 'AI על כל קובץ קוד',
   provider: 'ספק AI',
