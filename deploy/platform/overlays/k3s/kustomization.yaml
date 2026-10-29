@@ -22,3 +22,12 @@ patches:
     patch: |
       - {op: replace, path: /spec/storageClassName, value: reports-local}
       - {op: add, path: /spec/volumeName, value: ai-scan-reports-pv}
+  # k3s: per-environment egress endpoints (placeholders, RFC 5737). Keep the AI CIDR in sync with
+  # deploy/scanner-worker/overlays/k3s/networkpolicy-ai-egress.yaml. API endpoint: kubectl get endpoints kubernetes -n default.
+  - target: {kind: NetworkPolicy, name: review-api-ai-egress}
+    patch: |
+      - {op: replace, path: /spec/egress/0/to/0/ipBlock/cidr, value: 192.0.2.0/24}   # PLACEHOLDER AI provider CIDR
+  - target: {kind: NetworkPolicy, name: review-api-kube-api-egress}
+    patch: |
+      - {op: replace, path: /spec/egress/0/to/0/ipBlock/cidr, value: 198.51.100.201/32}   # PLACEHOLDER API server endpoint
+      - {op: replace, path: /spec/egress/1/to/0/ipBlock/cidr, value: 10.43.0.1/32}   # kubernetes Service IP

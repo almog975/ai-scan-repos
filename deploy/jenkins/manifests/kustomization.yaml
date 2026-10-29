@@ -4,3 +4,4 @@ namespace: jenkins
 resources:
   - deployment.yaml
   - agent-rbac.yaml
+  - networkpolicies.yaml

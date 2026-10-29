@@ -5,3 +5,6 @@ patches:
   - target: {kind: PersistentVolumeClaim, name: postgres-data}
     patch: |
       - {op: replace, path: /spec/storageClassName, value: gp3}
+  - target: {kind: PersistentVolumeClaim, name: postgres-backups}
+    patch: |
+      - {op: replace, path: /spec/storageClassName, value: gp3}

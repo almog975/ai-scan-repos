@@ -1,0 +1,65 @@
+# Phase 9: ns jenkins default-deny (ingress+egress), then explicit allows.
+# Controller (chart labels app.kubernetes.io/component=jenkins-controller), agents (kubernetes plugin pods) and
+# smee-client talk to each other inside the namespace (8080 HTTP, 50000 JNLP) -> intra-namespace allowed.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: default-deny, namespace: jenkins}
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: allow-intra-namespace, namespace: jenkins}
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+  ingress: [{from: [{podSelector: {}}]}]
+  egress:
+    - to: [{podSelector: {}}]
+    - to:   # DNS
+        - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: kube-system}}
+          podSelector: {matchLabels: {k8s-app: kube-dns}}
+      ports: [{protocol: UDP, port: 53}, {protocol: TCP, port: 53}]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: jenkins-controller-ingress, namespace: jenkins}
+spec:
+  podSelector: {matchLabels: {app.kubernetes.io/component: jenkins-controller}}
+  policyTypes: [Ingress]
+  ingress:
+    - from:   # UI via Traefik (infra/ingress jenkins route)
+        - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: kube-system}}
+          podSelector: {matchLabels: {app.kubernetes.io/name: traefik}}
+      ports: [{protocol: TCP, port: 8080}]
+---
+# Egress out of the namespace:
+# - registry: in-cluster Service (registry.registry:5000) and via Traefik (registry.<host> on 80/443).
+# - K8s API: controller creates agent pods, agents run kubectl/argocd steps. API endpoint placeholder (RFC 5737)
+#   + kubernetes Service IP (K3s default). Patch for EKS (172.20.0.1 + endpoint IPs).
+# - Internet HTTPS: GitHub, smee.io, updates.jenkins.io (plugins pinned, still downloaded), pip/npm/trivy DB,
+#   container registries for kaniko base images. These are hostname-based and CDN-backed, so they cannot be pinned
+#   to CIDRs; 443 to public IPs only (RFC1918/link-local/CGNAT excluded) is the narrowest workable rule.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: jenkins-egress, namespace: jenkins}
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to: [{namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: registry}}, podSelector: {matchLabels: {app: registry}}}]
+      ports: [{protocol: TCP, port: 5000}]
+    - to:
+        - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: kube-system}}
+          podSelector: {matchLabels: {app.kubernetes.io/name: traefik}}
+      ports: [{protocol: TCP, port: 8000}, {protocol: TCP, port: 8443}, {protocol: TCP, port: 80}, {protocol: TCP, port: 443}]
+    - to: [{ipBlock: {cidr: 198.51.100.200/32}}]   # PLACEHOLDER: API server endpoint (kubectl get endpoints kubernetes -n default)
+      ports: [{protocol: TCP, port: 6443}, {protocol: TCP, port: 443}]
+    - to: [{ipBlock: {cidr: 10.43.0.1/32}}]        # kubernetes Service IP (K3s; EKS 172.20.0.1)
+      ports: [{protocol: TCP, port: 443}]
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 100.64.0.0/10, 169.254.0.0/16, 127.0.0.0/8]
+      ports: [{protocol: TCP, port: 443}]

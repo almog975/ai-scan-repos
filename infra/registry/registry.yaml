@@ -17,7 +17,8 @@ spec:
   template:
     metadata: {labels: {app: registry}}
     spec:
-      securityContext: {runAsNonRoot: true, runAsUser: 1000, fsGroup: 1000, seccompProfile: {type: RuntimeDefault}}
+      automountServiceAccountToken: false   # registry never calls the K8s API
+      securityContext: {runAsNonRoot: true, runAsUser: 1000, runAsGroup: 1000, fsGroup: 1000, fsGroupChangePolicy: OnRootMismatch, seccompProfile: {type: RuntimeDefault}}
       containers:
         - name: registry
           image: registry:2.8.3
@@ -64,3 +65,30 @@ spec:
       kind: Rule
       services: [{name: registry, port: 5000}]
   tls: {secretName: registry-tls}
+---
+# Phase 9: registry needs no egress except DNS; ingress only from Traefik (pushes/pulls incl. kubelet pulls, which
+# arrive via the Traefik pod) and from ns jenkins (in-cluster registry.registry:5000).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: default-deny, namespace: registry}
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+  egress:
+    - to:
+        - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: kube-system}}
+          podSelector: {matchLabels: {k8s-app: kube-dns}}
+      ports: [{protocol: UDP, port: 53}, {protocol: TCP, port: 53}]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: registry-ingress, namespace: registry}
+spec:
+  podSelector: {matchLabels: {app: registry}}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: kube-system}}
+          podSelector: {matchLabels: {app.kubernetes.io/name: traefik}}
+        - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: jenkins}}
+      ports: [{protocol: TCP, port: 5000}]
