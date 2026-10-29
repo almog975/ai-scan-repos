@@ -72,7 +72,7 @@ kubectl -n ai-scan-repos get pods,jobs
 - The reconciler marks a review `stuck` after 2 consecutive passes over the heartbeat threshold. It then retries, up to 5 attempts per budget, and finally sets `failed`. A queued or retrying review whose Job is missing for more than 15 min gets its Job recreated.
 - Manual steps (inspect the checkpoint, delete the Job, resume, retry, cancel): **[runbooks/stuck-review.md](runbooks/stuck-review.md)**. Paused for days: [runbooks/resume-after-days.md](runbooks/resume-after-days.md). State diagram: [diagrams/review-state-machine.md](diagrams/review-state-machine.md).
 
-- **Webhook redelivery:** the gateway answers 409 to GitHub **Redeliver** within 24 h of the original delivery. With the planned gateway change the stored delivery id is purged after 24 h, but a push older than 24 h is then rejected as stale, so in practice redelivering a push still fails. Start the review by hand or push a new commit instead: [runbook.md](runbooks/runbook.md#github-webhooks-redeliver-returns-409).
+- **Webhook redelivery:** the gateway answers 409 to GitHub **Redeliver** within 24 h of the original delivery. The stored delivery id is purged after 24 h (a failed delivery, answered 502, is not recorded and can be redelivered), but a push older than 24 h is then rejected as stale, so in practice redelivering a push still fails. Start the review by hand or push a new commit instead: [runbook.md](runbooks/runbook.md#github-webhooks-redeliver-returns-409).
 
 ## 6. Rollback
 

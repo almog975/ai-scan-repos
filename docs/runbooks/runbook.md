@@ -117,13 +117,13 @@ Two different webhooks exist. Don't confuse them:
 
 The gateway (`gateway/app/main.py`, `WEBHOOK_REPLAY_WINDOW_SECONDS`, default 86400 = 24 h) checks each signed delivery like this. Every rejection is **409 CONFLICT**.
 
-> **Planned gateway change:** the Planner decided that stored delivery ids will expire after 24 h and be purged. This section describes that behavior. Until the change ships, a repeated delivery id gets a 409 **permanently**.
+> Delivery-id and payload-hash rows older than the window are purged periodically by the gateway (fix/phase-9-lows).
 
-1. **Same `X-GitHub-Delivery` within 24 h of the original delivery** → `"duplicate delivery"`. GitHub's **Redeliver** keeps the original delivery GUID, so a Redeliver within 24 h gets this 409. The 409 also applies when the first attempt reached the gateway with a valid signature but the review could not be created: the response was still 202, with the status `review_api_unavailable`, `unknown_sender` or `review_rejected_<code>`. **After 24 h** the id is purged, so a Redeliver passes this check.
+1. **Same `X-GitHub-Delivery` within 24 h of the original delivery** → `"duplicate delivery"`. GitHub's **Redeliver** keeps the original delivery GUID, so a Redeliver within 24 h gets this 409. If the first attempt **failed** (review-api unreachable or 5xx) the gateway answered **502** and recorded neither the delivery id nor the payload hash, so a Redeliver of that delivery is processed normally. `unknown_sender` and `review_rejected_4xx` are final outcomes (202) and are recorded. **After 24 h** the id is purged, so a Redeliver passes this check.
 2. **Same body under a new delivery id within the window** → `"duplicate payload (replay)"`. This check is a sha256 of the body, kept for 24 h.
 3. **`push` whose `repository.pushed_at` is older than the window** → `"stale delivery (outside the replay window)"`.
 
-In practice, Redeliver of a **push** is still rejected. Within 24 h, check 1 returns "duplicate". After 24 h, the push itself is older than the window, so check 3 returns "stale", unless that check is changed too. Redeliver succeeds only for non-push events after 24 h, or when the original never got past the signature or header checks and the push is less than 24 h old. Check the gateway metric `ai_scan_gateway_webhooks_total{result="duplicate"|"replay"|"stale"}`, or the response body of the GitHub delivery, to see which case hit.
+In practice, Redeliver of a **push** is still rejected. Within 24 h, check 1 returns "duplicate". After 24 h, the push itself is older than the window, so check 3 returns "stale", unless that check is changed too. Redeliver succeeds only for non-push events after 24 h, or when the original failed (502, nothing recorded) or never got past the signature or header checks, and the push is less than 24 h old. Check the gateway metric `ai_scan_gateway_webhooks_total{result="duplicate"|"replay"|"stale"}`, or the response body of the GitHub delivery, to see which case hit.
 
 **What to do instead of Redeliver:**
 - **Start the review by hand:** in the UI use **New review** with the repo URL, and put the pushed commit SHA in *Branch, tag or commit*. Or call `POST /api/reviews` with `ref` = that SHA.
