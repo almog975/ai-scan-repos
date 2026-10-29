@@ -36,9 +36,30 @@ class Settings(BaseSettings):
     #    rejected, so once a hash expires the old body is already too old. Other events rely on the hash.
     webhook_replay_window_seconds: int = 86400
     # A "pending" claim (delivery id or payload hash) older than this belongs to a gateway that died mid-processing:
-    # a new delivery may take it over atomically, and the purge removes it. Keep it above the longest processing time
-    # (review-api call timeout 20 s).
+    # a new delivery may take it over atomically, and the purge removes it. Must be >= 3x REVIEW_API_TIMEOUT_SECONDS
+    # (checked at startup, see webhook_problems()).
     webhook_pending_reclaim_seconds: int = 300
+    # Timeout of each gateway -> review-api call. A webhook's whole processing (sender lookup + POST /reviews) is cut off
+    # after 2x this (webhook_deadline_seconds), always shorter than the reclaim window, so a live gateway never holds a
+    # claim that another delivery may reclaim. A cut-off delivery gets 502 and is released; a retry is deduplicated by
+    # review-api through the Idempotency-Key (event+body hash).
+    review_api_timeout_seconds: float = 20.0
+
+    @property
+    def webhook_deadline_seconds(self) -> float:
+        return 2 * self.review_api_timeout_seconds
+
+    def webhook_problems(self) -> list[str]:
+        """Webhook timing errors; checked at every start (any APP_ENV). Empty list = OK."""
+        out = []
+        if self.review_api_timeout_seconds <= 0:
+            out.append("REVIEW_API_TIMEOUT_SECONDS must be > 0")
+        elif self.webhook_pending_reclaim_seconds < 3 * self.review_api_timeout_seconds:
+            out.append(f"WEBHOOK_PENDING_RECLAIM_SECONDS ({self.webhook_pending_reclaim_seconds}) must be >= 3x "
+                       f"REVIEW_API_TIMEOUT_SECONDS ({self.review_api_timeout_seconds:g})")
+        elif self.webhook_deadline_seconds >= self.webhook_pending_reclaim_seconds:
+            out.append("webhook processing deadline must be shorter than WEBHOOK_PENDING_RECLAIM_SECONDS")
+        return out
 
     def problems(self) -> list[str]:
         """Config errors that make a production start unsafe. Empty list = OK. Config only comes from env."""

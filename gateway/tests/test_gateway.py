@@ -1,9 +1,11 @@
 import hashlib
 import hmac
 import json
+import time
 from pathlib import Path
 
 import httpx
+import pytest
 import yaml
 from jsonschema import Draft202012Validator, FormatChecker
 from referencing import Registry, Resource
@@ -439,7 +441,7 @@ def _age(c, key, seconds):
 def test_webhook_stale_pending_claim_reclaimed():
     """A pending claim left by a crashed gateway is taken over after WEBHOOK_PENDING_RECLAIM_SECONDS; fresh is not."""
     from app.db import WebhookDelivery
-    c, _ = make_client(webhook_pending_reclaim_seconds=30)
+    c, _ = make_client(webhook_pending_reclaim_seconds=30, review_api_timeout_seconds=10)
     body = b'{"zen":"crash"}'
     hkey = "sha256:" + hashlib.sha256(b"ping\n" + body).hexdigest()
     with c.app.state.SessionLocal() as db:  # what a killed gateway leaves behind
@@ -459,7 +461,7 @@ def test_webhook_stale_pending_claim_reclaimed():
 
 def test_webhook_purge_clears_stale_pending():
     from app.db import WebhookDelivery
-    c, _ = make_client(webhook_pending_reclaim_seconds=30)
+    c, _ = make_client(webhook_pending_reclaim_seconds=30, review_api_timeout_seconds=10)
     with c.app.state.SessionLocal() as db:
         db.add(WebhookDelivery(delivery_id="sha256:dead", event="push", status="pending"))
         db.add(WebhookDelivery(delivery_id="sha256:live", event="push", status="pending"))
@@ -468,3 +470,49 @@ def test_webhook_purge_clears_stale_pending():
     assert c.app.state.purge_webhook_rows() == 1
     with c.app.state.SessionLocal() as db:
         assert db.get(WebhookDelivery, "sha256:live") is not None
+
+
+def test_reclaim_must_cover_three_review_api_timeouts():
+    from app.config import Settings
+    with pytest.raises(RuntimeError, match="WEBHOOK_PENDING_RECLAIM_SECONDS"):
+        make_client(webhook_pending_reclaim_seconds=59)  # default timeout 20 s -> needs >= 60
+    with pytest.raises(RuntimeError, match="REVIEW_API_TIMEOUT_SECONDS"):
+        make_client(review_api_timeout_seconds=0)
+    assert Settings().webhook_problems() == []
+    s = Settings(webhook_pending_reclaim_seconds=60)
+    assert s.webhook_problems() == [] and s.webhook_deadline_seconds < s.webhook_pending_reclaim_seconds
+    make_client(webhook_pending_reclaim_seconds=3, review_api_timeout_seconds=1)  # boundary is allowed
+
+
+def test_webhook_processing_deadline_releases_claim():
+    """review-api slower than the deadline (2x timeout): 502, both claims released, Redeliver may retry."""
+    import asyncio
+    from app.db import WebhookDelivery
+    c, router = make_client(webhook_auto_review=True, webhook_pending_reclaim_seconds=3, review_api_timeout_seconds=0.2)
+    do_login(c, router, uid=7)
+    calls = []
+
+    async def slow(request):
+        calls.append(request)
+        await asyncio.sleep(1)  # under the per-call timeout (MockTransport ignores it): only the total deadline fires
+        return httpx.Response(201, json={"id": RID})
+    router.post(f"{RA}/reviews").mock(side_effect=slow)
+    push = json.dumps({"sender": {"id": 7}, "after": "d" * 40, "repository": {"html_url": "https://github.com/a/b"}}).encode()
+    t0 = time.monotonic()
+    err(wh(c, push, delivery="t1"), 502, "INTERNAL")
+    assert time.monotonic() - t0 < 1 and len(calls) == 1
+    with c.app.state.SessionLocal() as db:
+        assert db.get(WebhookDelivery, "t1") is None
+        assert db.get(WebhookDelivery, "sha256:" + hashlib.sha256(b"push\n" + push).hexdigest()) is None
+
+
+def test_webhook_sends_idempotency_key_and_accepts_existing_review():
+    c, router = make_client(webhook_auto_review=True)
+    do_login(c, router, uid=7)
+    route = router.post(f"{RA}/reviews").respond(200, json={"id": RID})  # review-api: key seen, existing review
+    push = json.dumps({"sender": {"id": 7}, "after": "e" * 40, "repository": {"html_url": "https://github.com/a/b"}}).encode()
+    assert wh(c, push, delivery="i1").status_code == 202
+    assert route.calls.last.request.headers["idempotency-key"] == "sha256:" + hashlib.sha256(b"push\n" + push).hexdigest()
+    from app.db import WebhookDelivery
+    with c.app.state.SessionLocal() as db:
+        assert db.get(WebhookDelivery, "i1").status == "review_created"

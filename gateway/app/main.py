@@ -7,6 +7,7 @@ deduped by X-GitHub-Delivery (409).
 """
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import hmac
 import time
@@ -75,14 +76,17 @@ def _pushed_at_epoch(v) -> float | None:
 
 def create_app(settings: Settings | None = None, transport: httpx.AsyncBaseTransport | None = None) -> FastAPI:
     s = settings or get_settings()
+    bad = s.webhook_problems()
+    if bad:  # a reclaim window shorter than a live delivery's processing would let a second delivery double-process
+        raise RuntimeError("; ".join(bad))
     SessionLocal = make_sessionmaker(s.database_url)
     app = FastAPI(title="AI Scan Repos — gateway", version="0.2.0", openapi_url=None, docs_url=None, redoc_url=None)
     app.state.SessionLocal = SessionLocal
     allowed, admins = s.logins(s.allowed_github_logins), s.logins(s.admin_github_logins)
     auth_rl, api_rl = RateLimiter(s.rate_limit_auth_per_minute), RateLimiter(s.rate_limit_api_per_minute)
 
-    def http(timeout=20.0):
-        return httpx.AsyncClient(timeout=timeout, transport=transport)
+    def http(timeout: float | None | str = "default"):  # None = no timeout (streams)
+        return httpx.AsyncClient(timeout=s.review_api_timeout_seconds if timeout == "default" else timeout, transport=transport)
 
     def cookie(resp: Response, name: str, value: str, max_age: int, httponly=True):
         resp.set_cookie(name, value, max_age=max_age, httponly=httponly, secure=s.cookie_secure,
@@ -254,7 +258,7 @@ def create_app(settings: Settings | None = None, transport: httpx.AsyncBaseTrans
             LOGINS.labels("bad_state").inc()
             raise ApiError(400, "VALIDATION_ERROR", "invalid OAuth state")
         try:
-            async with http() as c:
+            async with http(20.0) as c:  # GitHub, not review-api
                 tr = await c.post(f"{s.github_oauth_base}/login/oauth/access_token",
                                   headers={"Accept": "application/json"},
                                   data={"client_id": s.github_client_id, "client_secret": s.github_client_secret,
@@ -407,7 +411,10 @@ def create_app(settings: Settings | None = None, transport: httpx.AsyncBaseTrans
                 WEBHOOKS.labels("duplicate").inc()
                 raise ApiError(409, "CONFLICT", "duplicate delivery", {"delivery_id": delivery})
         try:
-            status = await _handle_event(event, payload)
+            # total deadline < reclaim window (webhook_problems): a live claim is never reclaimable by another delivery
+            status = await asyncio.wait_for(_handle_event(event, payload, hkey), s.webhook_deadline_seconds)
+        except asyncio.TimeoutError:
+            status = "review_api_unavailable"
         except BaseException:
             _release(hkey, delivery[:200])
             raise
@@ -427,7 +434,7 @@ def create_app(settings: Settings | None = None, transport: httpx.AsyncBaseTrans
         WEBHOOKS.labels(status).inc()
         return {"accepted": True}
 
-    async def _handle_event(event: str, payload: dict) -> str:
+    async def _handle_event(event: str, payload: dict, idem_key: str) -> str:
         if event != "push" or not s.webhook_auto_review:
             return "accepted" if event == "push" else "ignored" if event != "ping" else "ping"
         sender = (payload.get("sender") or {}).get("id")
@@ -444,10 +451,11 @@ def create_app(settings: Settings | None = None, transport: httpx.AsyncBaseTrans
             async with http() as c:
                 r = await c.post(f"{s.review_api_url}/reviews", json=review,
                                  headers={"X-Internal-Token": s.internal_api_token, "X-User-Id": u.id,
-                                          "X-User-Role": u.role})
+                                          "X-User-Role": u.role, "Idempotency-Key": idem_key})
         except httpx.HTTPError:
             return "review_api_unavailable"
-        return "review_created" if r.status_code == 201 else f"review_rejected_{r.status_code}"
+        # 200 = review-api already created a review for this Idempotency-Key (a retry after a cut-off/crashed run)
+        return "review_created" if r.status_code in (200, 201) else f"review_rejected_{r.status_code}"
 
     return app
 

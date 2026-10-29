@@ -234,14 +234,18 @@ paths:
   /reviews:
     post:
       operationId: createReview
+      description: 'Idempotency-Key (optional): a repeated key from the same user returns the review created for it (200, no new review or Job); the same key from another user is 409. The gateway sends the webhook event+body hash (sha256:<hex>).'
+      parameters:
+        - {name: Idempotency-Key, in: header, required: false, schema: {type: string, minLength: 1, maxLength: 200}}
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ReviewCreate'}}}}
       responses:
+        '200': {description: Existing review for this Idempotency-Key (nothing created), content: {application/json: {schema: {$ref: '#/components/schemas/Review'}}}}
         '201': {description: Created (Job launched), content: {application/json: {schema: {$ref: '#/components/schemas/Review'}}}}
         '400': {$ref: '#/components/responses/BadRequest'}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '403': {$ref: '#/components/responses/Forbidden'}
         '404': {description: Repo or provider not found, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
-        '409': {description: Active review exists for repo+sha, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '409': {description: 'Active review exists for repo+sha, or Idempotency-Key used by another user', content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
         '422': {description: 'code CLOUD_ACK_REQUIRED: provider kind is cloud and ack_cloud != true', content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
         '429': {$ref: '#/components/responses/TooMany'}
     get:

@@ -130,3 +130,4 @@ In practice, Redeliver of a **successfully processed push** is still rejected. W
 - **Or push a new commit** (an empty commit works: `git commit --allow-empty -m "rescan"`). It produces a new delivery id, body and `pushed_at`.
 - **CI didn't build:** wait for `pollSCM` (≤ 5 min) or use **Build Now** in Jenkins. Redelivering to smee/Jenkins is not deduped by our code.
 - Don't lower `WEBHOOK_REPLAY_WINDOW_SECONDS` or delete `webhook_deliveries` rows just to redeliver, because that reopens replay attacks.
+- A gateway that crash-loops with `WEBHOOK_PENDING_RECLAIM_SECONDS (...) must be >= 3x REVIEW_API_TIMEOUT_SECONDS` has an unsafe pair: raise the reclaim value or lower the timeout. A delivery cut off by the processing deadline (2x the timeout) gets 502; Redeliver is safe because review-api deduplicates on the Idempotency-Key.
