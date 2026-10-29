@@ -3,7 +3,12 @@
 # No values in git. Restore: docs/postgres-backup-restore.md.
 apiVersion: v1
 kind: PersistentVolumeClaim
-metadata: {name: postgres-backups, namespace: ai-scan-repos, labels: {app: postgres-backup}}
+metadata:
+  name: postgres-backups
+  namespace: ai-scan-repos
+  labels: {app: postgres-backup}
+  # survives Argo CD app deletion/prune (installer uninstall without --purge)
+  annotations: {argocd.argoproj.io/sync-options: "Delete=false,Prune=false"}
 spec:
   accessModes: [ReadWriteOnce]
   storageClassName: local-path
