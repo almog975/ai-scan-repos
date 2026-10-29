@@ -18,7 +18,7 @@ log = logging.getLogger(__name__)
 REVIEWS = Counter("reviews_total", "Reviews entering a state (created = queued)", ["state"])
 SCAN_ATTEMPTS = Counter("scan_attempts_total", "Finished scanner attempts", ["outcome"])
 JOB_LAUNCH_ERRORS = Counter("job_launch_errors_total", "Scanner Job launches that raised")
-REVIEW_ATTEMPTS = Histogram("review_attempts", "Attempts used by a review (current budget) when it ends",
+REVIEW_ATTEMPTS = Histogram("review_attempts_used", "Attempts used by a review (current budget) when it ends",
                             ["state"], buckets=(1, 2, 3, 4, 5))
 REVIEW_DURATION = Histogram("review_duration_seconds", "created -> completed|failed|cancelled", ["state"],
                             buckets=(30, 60, 120, 300, 600, 1200, 1800, 3600, 7200, 21600, 86400))
@@ -27,7 +27,9 @@ REVIEW_DURATION = Histogram("review_duration_seconds", "created -> completed|fai
 RECONCILER_RUNS = Counter("reconciler_runs_total", "Reconciler passes", ["result"])  # ok | error
 RECONCILER_DURATION = Histogram("reconciler_run_duration_seconds", "Reconciler pass duration",
                                 buckets=(.01, .05, .1, .25, .5, 1, 2.5, 5, 10, 30))
-STUCK_DETECTIONS = Counter("stuck_detections_total", "Attempts marked stuck by the reconciler")
+STUCK_DETECTIONS = Counter("stuck_detections_total", "Attempts marked stuck by the reconciler", ["reason"])
+# reason: heartbeat (silent worker) | job_failed (pod exited non-zero) | job_missing | worker_error (worker reported error)
+STUCK_REASONS = ("heartbeat", "job_failed", "job_missing", "worker_error")
 RECONCILER_ACTIONS = Counter("reconciler_actions_total", "Reconciler actions", ["action"])
 # action: requeued | overdue | stuck | relaunched | failed
 
@@ -46,6 +48,39 @@ WORKER_STAGES = ("start", "clone", "inventory", "gitleaks", "semgrep", "trivy", 
 REQUESTS = Histogram("http_request_duration_seconds", "HTTP request latency", ["method", "route", "status"])
 
 TERMINAL = ("completed", "failed", "cancelled")
+STATES = ("queued", "running", "paused", "stuck", "retrying", "completed", "failed", "cancelled")
+OUTCOMES = ("success", "stuck", "error", "failed", "cancelled")  # models.Outcome
+KINDS = ("onprem", "cloud", "unknown")
+RECONCILER_ACTION_NAMES = ("requeued", "overdue", "stuck", "relaunched", "failed")
+
+
+def _preinit() -> None:
+    """Export every bounded label combination as 0 from process start, so increase()/rate() see the first event
+    after a restart and absence-sensitive alerts (AIScanReconcilerNotRunning) have a series to evaluate."""
+    for s in STATES:
+        REVIEWS.labels(s)
+    for o in OUTCOMES:
+        SCAN_ATTEMPTS.labels(o)
+    for s in TERMINAL:
+        REVIEW_ATTEMPTS.labels(s)
+        REVIEW_DURATION.labels(s)
+    for r in ("ok", "error"):
+        RECONCILER_RUNS.labels(r)
+    for a in RECONCILER_ACTION_NAMES:
+        RECONCILER_ACTIONS.labels(a)
+    for r in STUCK_REASONS:
+        STUCK_DETECTIONS.labels(r)
+    for k in KINDS:
+        AI_LATENCY.labels(k)
+        for src in ("test", "worker"):
+            AI_SECONDS.labels(k, src)
+            for o in ("ok", "error"):
+                AI_REQUESTS.labels(k, o, src)
+    for st in (*WORKER_STAGES, "other"):
+        WORKER_HEARTBEATS.labels(st)
+
+
+_preinit()
 
 
 def _aware(dt):
@@ -74,11 +109,21 @@ def worker_stage(stage: str) -> str:
     return stage if stage in WORKER_STAGES else "other"
 
 
+def stuck_label(reason: str) -> str:
+    if reason.startswith("attempt error"):
+        return "worker_error"
+    if reason == "job failed":
+        return "job_failed"
+    if reason == "job missing":
+        return "job_missing"
+    return "heartbeat"
+
+
 class DbStateCollector:
     """Scrape-time gauges from the DB (any replica gives the same numbers; alert on max()).
     reviews_by_state{state}, reviews_heartbeat_overdue, review_oldest_heartbeat_age_seconds."""
 
-    STATES = ("queued", "running", "paused", "stuck", "retrying", "completed", "failed", "cancelled")
+    STATES = STATES
 
     def __init__(self, session_factory, heartbeat_timeout: int):
         self.sf, self.timeout = session_factory, heartbeat_timeout

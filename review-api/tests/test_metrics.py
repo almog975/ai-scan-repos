@@ -50,17 +50,17 @@ def test_heartbeat_overdue_gauge(client, H, k8s, settings):  # noqa: F811
 
 
 def test_terminal_transition_observes_attempts_and_duration(client, H, k8s):  # noqa: F811
-    n0 = val("review_attempts_count", state="cancelled")
+    n0 = val("review_attempts_used_count", state="cancelled")
     d0 = val("review_duration_seconds_count", state="cancelled")
     rid = create(client, H)["id"]
     assert client.post(f"/reviews/{rid}/cancel", headers=H).status_code == 202
-    assert val("review_attempts_count", state="cancelled") == n0 + 1
+    assert val("review_attempts_used_count", state="cancelled") == n0 + 1
     assert val("review_duration_seconds_count", state="cancelled") == d0 + 1
 
 
 def test_reconciler_runs_and_stuck_detections(app, client, H, settings):
     k8s = app.state.deps["launcher"] = WatchK8s()
-    ok0, st0 = val("reconciler_runs_total", result="ok"), val("stuck_detections_total")
+    ok0, st0 = val("reconciler_runs_total", result="ok"), val("stuck_detections_total", reason="heartbeat")
     rid = create(client, H)["id"]
     now = datetime.now(timezone.utc)
     with dbmod.session_factory()() as db:
@@ -68,7 +68,7 @@ def test_reconciler_runs_and_stuck_detections(app, client, H, settings):
         assert sweep(db, k8s, settings, at=now + timedelta(minutes=20.5)) == {rid: "stuck"}
     assert val("reconciler_runs_total", result="ok") == ok0 + 2
     assert val("reconciler_run_duration_seconds_count") >= 1
-    assert val("stuck_detections_total") == st0 + 1
+    assert val("stuck_detections_total", reason="heartbeat") == st0 + 1
     assert val("reconciler_actions_total", action="stuck") >= 1
 
 
@@ -111,3 +111,36 @@ def test_http_metrics_and_no_high_cardinality_labels(client, H, k8s):  # noqa: F
             assert k not in ("review_id", "user", "user_id", "repo", "repo_url", "id"), s
             assert not UUID.match(v), s
     assert rid not in text
+
+
+def test_bounded_label_sets_preinitialised(client):
+    """increase() after a restart and the all-errors ReconcilerNotRunning case need the 0 series up front."""
+    from app.metrics import KINDS, OUTCOMES, STATES, STUCK_REASONS
+    text, samples = scrape(client)
+    have = {(s.name, tuple(sorted(s.labels.items()))) for s in samples}
+    for r in ("ok", "error"):
+        assert ("reconciler_runs_total", (("result", r),)) in have
+    for s in STATES:
+        assert ("reviews_total", (("state", s),)) in have
+    for o in OUTCOMES:
+        assert ("scan_attempts_total", (("outcome", o),)) in have
+    for r in STUCK_REASONS:
+        assert ("stuck_detections_total", (("reason", r),)) in have
+    for k in KINDS:
+        for o in ("ok", "error"):
+            for src in ("test", "worker"):
+                assert ("ai_provider_requests_total", (("kind", k), ("outcome", o), ("source", src))) in have
+
+
+def test_job_exit_failure_is_its_own_stuck_reason(app, client, H, settings):
+    k8s = app.state.deps["launcher"] = WatchK8s()
+    rid = create(client, H)["id"]
+    with dbmod.session_factory()() as db:
+        db.get(Review, rid).state = State.running
+        db.commit()
+    jf0, hb0 = val("stuck_detections_total", reason="job_failed"), val("stuck_detections_total", reason="heartbeat")
+    k8s.st[f"scan-{rid}-a1"] = "failed"
+    with dbmod.session_factory()() as db:
+        assert sweep(db, k8s, settings) == {rid: "stuck"}
+    assert val("stuck_detections_total", reason="job_failed") == jf0 + 1
+    assert val("stuck_detections_total", reason="heartbeat") == hb0

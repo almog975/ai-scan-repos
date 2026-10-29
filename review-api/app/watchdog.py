@@ -26,7 +26,7 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
 
-from .metrics import RECONCILER_ACTIONS, RECONCILER_DURATION, RECONCILER_RUNS, SCAN_ATTEMPTS, STUCK_DETECTIONS
+from .metrics import RECONCILER_ACTIONS, RECONCILER_DURATION, RECONCILER_RUNS, SCAN_ATTEMPTS, STUCK_DETECTIONS, stuck_label
 from .models import FailureCode, Outcome, Review, ReviewAttempt, State
 from .service import current_attempt, end_attempt, now, start_attempt
 from .state import MAX_ATTEMPTS, classify, next_attempt, transition
@@ -148,7 +148,7 @@ def _sweep(db, jobs, settings, at: datetime | None = None) -> dict[str, str]:
         if reason:
             log.warning("review %s attempt %d-%d stuck: %s", r.id, r.budget_no, r.attempt, reason)
             mark_stuck(db, r, jobs, reason, settings.watchdog_interval_seconds, at)
-            STUCK_DETECTIONS.inc()
+            STUCK_DETECTIONS.labels(stuck_label(reason)).inc()
             acted[r.id] = "stuck"
     db.commit()
     for action in acted.values():
