@@ -1,6 +1,7 @@
 # Root: delegates to each component (make -C <dir> test|build). Contracts stay a root target.
 SERVICES := frontend gateway review-api scanner-worker
-.PHONY: test build contracts $(addprefix test-,$(SERVICES)) $(addprefix build-,$(SERVICES))
+.PHONY: test build contracts
+# test-%/build-% must NOT be .PHONY: GNU make skips pattern-rule search for phony targets (they would be no-ops).
 test: $(addprefix test-,$(SERVICES))
 build: $(addprefix build-,$(SERVICES))
 test-%:

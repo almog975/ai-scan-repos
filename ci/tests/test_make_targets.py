@@ -6,8 +6,6 @@ from conftest import ROOT
 pytestmark = pytest.mark.skipif(not shutil.which("make"), reason="make not on PATH")
 
 
-@pytest.mark.xfail(reason="medium: root Makefile lists test-%/build-% in .PHONY, and GNU make skips implicit-rule "
-                          "search for phony targets, so `make test`/`make build` at the root do nothing and exit 0", strict=True)
 def test_root_make_test_delegates():
     out = subprocess.run(["make", "-n", "test"], cwd=ROOT, capture_output=True, text=True)
     assert "-C gateway" in out.stdout + out.stderr
@@ -38,3 +36,14 @@ def test_component_make_test_fails_with_junit(tmp_path, comp):
     assert r.returncode != 0, r.stdout[-2000:]
     xml = (dst / comp / "reports" / "junit.xml").read_text()
     assert "injected" in xml and 'failures="1"' in xml
+
+
+@pytest.mark.slow
+def test_root_make_test_fails_nonzero(tmp_path):
+    dst = tmp_path / "repo"
+    shutil.copytree(ROOT, dst, symlinks=True, ignore=shutil.ignore_patterns(".git", "reports", "__pycache__", "dist", "node_modules"))
+    rel, body = INJECT["gateway"]
+    (dst / "gateway" / rel).write_text(body)
+    env = dict(os.environ); env.pop("PYTEST_ADDOPTS", None)
+    r = subprocess.run(["make", "test-gateway"], cwd=dst, capture_output=True, text=True, env=env)
+    assert r.returncode != 0 and "-C gateway" in r.stdout + r.stderr, r.stdout[-2000:]
