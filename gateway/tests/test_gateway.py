@@ -372,3 +372,30 @@ def test_webhook_pushed_at_formats():
     err(wh(c, json.dumps({"repository": {"pushed_at": "2020-01-01T00:00:00Z"}}).encode(), delivery="pb1"), 409, "CONFLICT")
     for i, v in enumerate(["yesterday", True, None, [1]]):
         err(wh(c, json.dumps({"repository": {"pushed_at": v}}).encode(), delivery=f"pc{i}"), 400, "VALIDATION_ERROR")
+
+
+def test_webhook_delivery_id_expires_and_redeliver_after_window():
+    from datetime import datetime, timedelta, timezone
+    from app.db import WebhookDelivery
+    c, _ = make_client(webhook_replay_window_seconds=60)
+    assert wh(c, b'{"zen":"r"}', event="ping", delivery="rd1").status_code == 202
+    err(wh(c, b'{"zen":"r"}', event="ping", delivery="rd1"), 409, "CONFLICT")
+    with c.app.state.SessionLocal() as db:
+        for row in db.query(WebhookDelivery).all():
+            row.received_at = datetime.now(timezone.utc) - timedelta(seconds=120)
+        db.commit()
+    c.app.state.purge_webhook_rows()
+    assert wh(c, b'{"zen":"r"}', event="ping", delivery="rd1").status_code == 202  # Redeliver after the window
+
+
+def test_webhook_review_api_unavailable_not_recorded():
+    import time as _t
+    from app.db import WebhookDelivery
+    c, router = make_client(webhook_auto_review=True)
+    do_login(c, router, uid=7)
+    router.post(f"{RA}/reviews").mock(side_effect=httpx.ConnectError("down"))
+    push = json.dumps({"sender": {"id": 7}, "after": "e" * 40, "repository": {
+        "html_url": "https://github.com/a/b", "pushed_at": int(_t.time())}}).encode()
+    err(wh(c, push, delivery="u1"), 502, "INTERNAL")
+    with c.app.state.SessionLocal() as db:
+        assert db.query(WebhookDelivery).count() == 0  # neither delivery id nor payload hash
