@@ -118,6 +118,22 @@ agent:
             resourceRequestCpu: 500m
             resourceRequestMemory: 1Gi
             resourceLimitMemory: 3Gi
+            envVars:
+              # ci/db-parity.sh -> postgres sidecar below (same pod network namespace).
+              - envVar: {key: PGHOST, value: 127.0.0.1}
+              - envVar: {key: PGPORT, value: "5432"}
+              - envVar: {key: PGUSER, value: postgres}
+          - name: postgres
+            # Throwaway DB for ci/db-parity.sh. Only reachable inside the agent pod (127.0.0.1), deleted with the pod;
+            # trust auth so no password exists anywhere. Same major as production (16).
+            image: postgres:16-alpine
+            ttyEnabled: false
+            envVars:
+              - envVar: {key: POSTGRES_HOST_AUTH_METHOD, value: trust}
+              - envVar: {key: POSTGRES_INITDB_ARGS, value: "--auth-local=trust --auth-host=trust"}
+            resourceRequestCpu: 100m
+            resourceRequestMemory: 256Mi
+            resourceLimitMemory: 512Mi
           - name: kaniko
             # Kaniko (debug tag has a shell for `sh` steps). No Docker socket, no privileged pod.
             image: gcr.io/kaniko-project/executor:v1.23.2-debug

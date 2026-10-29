@@ -31,6 +31,7 @@ def kanikoBuild = { String svc ->
   container('kaniko') {
     sh """/kaniko/executor --context=dir://${env.WORKSPACE}/${SERVICES[svc][0]} \
           --dockerfile=${env.WORKSPACE}/${SERVICES[svc][0]}/Dockerfile \
+          --build-arg=VITE_APP_VERSION=${env.GIT_SHA} \
           --destination=${img(svc)} --no-push --tar-path=${tarOf(svc)} \
           --cleanup --snapshot-mode=redo"""
   }
@@ -107,9 +108,8 @@ pipeline {
           steps {
             dir('review-api') { sh 'PATH="$WORKSPACE/.ci-venv/bin:$PATH" PYTEST_ADDOPTS="--junitxml=$WORKSPACE/reports/review-api-junit.xml" make test' }
             sh 'export PATH="$PWD/.ci-venv/bin:$PATH" && ci/schemathesis.sh 50'   // review-api vs contracts/review-api.openapi.yaml
-            // ci/db-parity.sh needs a Docker daemon (docker run postgres); the kaniko agent has none.
-            // TODO(Coder): let db-parity.sh use DATABASE_URL against a postgres sidecar, then run it unconditionally.
-            sh 'if command -v docker >/dev/null && docker info >/dev/null 2>&1; then PATH="$PWD/.ci-venv/bin:$PATH" ci/db-parity.sh; else echo "[db-parity] no docker daemon on agent - skipped"; fi'
+            // Against the pod's postgres sidecar (PGHOST/PGPORT/PGUSER set on the tools container, values.yaml).
+            sh 'PATH="$PWD/.ci-venv/bin:$PATH" ci/db-parity.sh'
           }
         }
         stage('scanner-worker') {
