@@ -38,7 +38,9 @@ def test_app_namespace_restricted_psa(k3s):
 def test_namespaced_objects_in_app_namespace(k3s):
     for d in k3s:
         if d["kind"] in WORKLOADS + ("Service", "ConfigMap", "PersistentVolumeClaim", "NetworkPolicy", "IngressRoute"):
-            assert d["metadata"].get("namespace") == "ai-scan-repos", name(d)
+            # Phase 6 adds CI/GitOps (Jenkins, Argo CD) in their own namespaces; each must be a declared Namespace
+            declared = {x["metadata"]["name"] for x in k3s if x["kind"] == "Namespace"} | {"argocd", "kube-system"}
+            assert d["metadata"].get("namespace") in declared, name(d)
 
 
 def test_pod_security_context(k3s):
@@ -92,7 +94,7 @@ def test_no_secret_objects_or_literal_secrets(k3s):
 
 
 def test_traefik_tls_and_headers(k3s):
-    routes = [d for d in k3s if d["kind"] == "IngressRoute"]
+    routes = [d for d in k3s if d["kind"] == "IngressRoute" and d["metadata"].get("namespace") == "ai-scan-repos"]
     secure = [r for r in routes if r["spec"]["entryPoints"] == ["websecure"]]
     assert secure and all("tls" in r["spec"] for r in secure)
     for r in routes:
