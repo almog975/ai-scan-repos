@@ -8,8 +8,8 @@ patches:
   # deploy/scanner-worker/overlays/local/networkpolicy-ai-egress.yaml. API endpoint: kubectl get endpoints kubernetes -n default.
   - target: {kind: NetworkPolicy, name: review-api-ai-egress}
     patch: |
-      - {op: replace, path: /spec/egress/0/to/0/ipBlock/cidr, value: 198.51.100.10/32}   # PLACEHOLDER AI provider CIDR
+      - {op: replace, path: /spec/egress/0/to, value: [{ipBlock: {cidr: 198.51.100.10/32}}]}   # PLACEHOLDER AI provider CIDRs (installer: AI_EGRESS_CIDRS)
   - target: {kind: NetworkPolicy, name: review-api-kube-api-egress}
     patch: |
-      - {op: replace, path: /spec/egress/0/to/0/ipBlock/cidr, value: 198.51.100.200/32}   # PLACEHOLDER API server endpoint
-      - {op: replace, path: /spec/egress/1/to/0/ipBlock/cidr, value: 10.43.0.1/32}   # kubernetes Service IP
+      - {op: replace, path: /spec/egress/0/to/0/ipBlock/cidr, value: 198.51.100.200/32}   # PLACEHOLDER API server endpoint (installer: KUBE_API_ENDPOINT)
+      - {op: replace, path: /spec/egress/1/to/0/ipBlock/cidr, value: 10.43.0.1/32}   # kubernetes Service IP (installer: KUBE_SERVICE_IP)
