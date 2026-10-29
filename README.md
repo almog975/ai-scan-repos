@@ -39,13 +39,11 @@ mkdir -p .local
 (cd review-api && uvicorn --factory app.main:get_app --port 8001) &   # port 8001: the local worker reports back here
 ```
 
-review-api is internal: it expects `X-Internal-Token` and an existing user id in `X-User-Id`. The gateway normally sets both. Create a user, then scan:
+review-api is internal: it expects `X-Internal-Token` and an existing user id in `X-User-Id` (the gateway normally
+sets both). `app.devseed` creates a dev user (idempotent, SQLite only by default) and prints the curl headers:
 
 ```bash
-cd review-api && U=$(python -c "
-import os; from app import db as d; d.init_engine(os.environ['DATABASE_URL']); from app.auth import ensure_user
-with d.session_factory()() as s: u=ensure_user(s,1,'alice'); s.commit(); print(u.id)") && cd ..
-H="-H X-Internal-Token:dev-token -H X-User-Id:$U -H Content-Type:application/json"
+H=$(cd review-api && python -m app.devseed alice)
 ID=$(curl -s $H -X POST localhost:8001/reviews -d '{"repo_url":"https://github.com/OWASP/NodeGoat","depth":"quick"}' \
      | python -c 'import sys,json;print(json.load(sys.stdin)["id"])')
 curl -s $H localhost:8001/reviews/$ID            # queued → running → completed
@@ -60,7 +58,7 @@ Needs a GitHub OAuth App with callback `http://localhost:8080/auth/github/callba
 
 ```bash
 cp .env.example .env     # fill GITHUB_CLIENT_ID/SECRET, AI_KEYS_ENCRYPTION_KEY=$(openssl rand -hex 32), INTERNAL_API_TOKEN
-docker compose up --build
+docker compose up --build   # AISCAN_HTTP_PORT (default 8080) and WORK_DIR are in .env
 # open http://localhost:8080 → Log in with GitHub (the first user becomes admin)
 ```
 

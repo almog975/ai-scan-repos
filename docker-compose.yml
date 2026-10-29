@@ -1,5 +1,5 @@
 # Local dev: postgres + review-api (LocalLauncher runs the scanner in-process) + gateway + frontend.
-# Open http://localhost:8080
+# Open http://localhost:${AISCAN_HTTP_PORT:-8080}
 # Usage (from the repo root):  cp .env.example .env && docker compose up --build
 services:
   postgres:
@@ -40,9 +40,9 @@ services:
       LOCAL_WORKER_CMD: python -m scanner.run
       LOCAL_WORKER_CWD: /opt/scanner
       REPORTS_DIR: /reports
-      WORK_DIR: /work
+      WORK_DIR: ${WORK_DIR:-/work}
       REVIEW_API_URL: http://localhost:8001
-    volumes: [reports:/reports]
+    volumes: [reports:/reports, "work:${WORK_DIR:-/work}"]
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8001/readyz')"]
       interval: 5s
@@ -56,7 +56,7 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg://aiscan:${POSTGRES_PASSWORD:-aiscan-dev}@postgres:5432/aiscan
       REVIEW_API_URL: http://review-api:8001
-      PUBLIC_URL: http://localhost:8080
+      PUBLIC_URL: http://localhost:${AISCAN_HTTP_PORT:-8080}
       COOKIE_SECURE: "false"   # plain http on localhost only; keep true behind TLS
     ports: ["127.0.0.1:8000:8000"]   # for `npm run dev` proxy
 
@@ -65,8 +65,9 @@ services:
     depends_on: [gateway]
     environment:
       GATEWAY_UPSTREAM: gateway:8000
-    ports: ["8080:8080"]
+    ports: ["${AISCAN_HTTP_PORT:-8080}:8080"]
 
 volumes:
   pgdata:
   reports:
+  work:
