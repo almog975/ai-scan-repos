@@ -23,9 +23,10 @@ else echo "need docker or nerdctl" >&2; exit 1; fi
 run() { echo "+ $*"; [ "${DRY_RUN:-0}" = 1 ] || "$@"; }
 PUSH_IMG="$PUSH_REGISTRY/ai-scan/jenkins-agent:$SHA"
 run "$CLI" build -t "$IMG" -t "$PUSH_IMG" -f "$ROOT/ci/agent/Dockerfile" "$ROOT/ci/agent"
-run "$CLI" push "$PUSH_IMG"
+if [ "$CLI" = nerdctl ]; then run nerdctl push --insecure-registry "$PUSH_IMG"; else run "$CLI" push "$PUSH_IMG"; fi
 if [ "${SED:-1}" = 1 ] && grep -q CHANGE_ME_AGENT_SHA "$VALUES" 2>/dev/null; then
-  run sed -i "s#/ai-scan/jenkins-agent:CHANGE_ME_AGENT_SHA#/ai-scan/jenkins-agent:$SHA#" "$VALUES"
+  # replace the whole ref (host too): values.yaml may still carry the old nip.io host
+  run sed -i "s#image: [^ ]*/ai-scan/jenkins-agent:CHANGE_ME_AGENT_SHA#image: $IMG#" "$VALUES"
   echo "Updated $VALUES -> commit it."
 else
   echo "Set in $VALUES: image: $IMG"

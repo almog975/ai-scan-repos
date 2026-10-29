@@ -47,7 +47,14 @@ metadata: {name: registry, namespace: registry, labels: {app: registry}}
 spec:
   # NodePort so K3s nodes (containerd, no cluster DNS) reach the registry at 127.0.0.1:30500 via the
   # registries.yaml mirror for "registry.registry:5000". Pods keep using registry.registry:5000 (cluster DNS).
+  # NOT meant to be reachable from outside the node. kube-proxy opens NodePorts on ALL node addresses, and NetworkPolicy
+  # does not reliably filter NodePort traffic (with Cluster policy the source is SNATed to the node, which kube-router
+  # always allows to local pods). Local keeps the client IP so the registry NetworkPolicy (Traefik + ns jenkins only)
+  # rejects remote clients; containerd's own 127.0.0.1 pulls are SNATed to the node IP and still pass.
+  # Host side (required): K3s --kube-proxy-arg=nodeport-addresses=127.0.0.0/8 and a firewall drop for 30500
+  # (docs/registry-auth-runbook.md "NodePort 30500").
   type: NodePort
+  externalTrafficPolicy: Local
   selector: {app: registry}
   ports: [{name: http, port: 5000, targetPort: 5000, nodePort: 30500}]
 ---

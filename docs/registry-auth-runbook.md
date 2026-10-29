@@ -56,3 +56,15 @@ On K3s, containerd also needs the creds in `/etc/rancher/k3s/registries.yaml` on
 ## Rotate
 Recreate the Secret with new values (same commands), update the Jenkins credential, then
 `kubectl -n registry rollout restart deploy/registry`.
+
+## NodePort 30500 (K3s): keep it node-local
+The registry Service is NodePort 30500 so containerd on the node can pull `registry.registry:5000/...` through the
+`registries.yaml` mirror (`http://127.0.0.1:30500`). It must not be reachable from the LAN/internet (plain HTTP, basic auth):
+1. K3s server flag (in `/etc/rancher/k3s/config.yaml`): `kube-proxy-arg: ["nodeport-addresses=127.0.0.0/8"]`, then
+   `systemctl restart k3s`. NodePorts then listen only on loopback (affects every NodePort Service; Traefik uses
+   servicelb hostPorts, not NodePorts).
+2. Firewall, belt and braces: `ufw deny in on <ext-if> to any port 30500 proto tcp` (or
+   `iptables -I INPUT ! -i lo -p tcp --dport 30500 -j DROP`, persisted).
+3. Check from another host: `curl -m3 http://<node-ip>:30500/v2/` must time out.
+`externalTrafficPolicy: Local` keeps remote client IPs, so the registry NetworkPolicy also rejects them; it is not a
+substitute for 1+2 (NetworkPolicy on NodePort traffic depends on the CNI's SNAT handling).

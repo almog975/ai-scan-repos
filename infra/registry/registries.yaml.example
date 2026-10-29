@@ -1,9 +1,13 @@
-# Copy to /etc/rancher/k3s/registries.yaml on every K3s node, then: systemctl restart k3s
+# Copy to /etc/rancher/k3s/registries.yaml on every K3s node (root:root 0600, it holds creds), then restart:
+#   server: systemctl restart k3s    agents: systemctl restart k3s-agent
+# K3s regenerates containerd's hosts.toml only at start. Placeholders only, never commit real values.
 #
 # k3s: images are named registry.registry:5000/ai-scan/<svc> (the in-cluster Service the Jenkins agents push to).
 # Nodes do not use cluster DNS, so containerd resolves that name through this mirror to the registry's NodePort
 # 30500 on the node itself (kube-proxy listens on every node). The registry speaks plain HTTP (TLS ends at
-# Traefik), hence the http:// endpoint; no TLS config is needed for it.
+# Traefik), hence the http:// endpoint; no tls/insecure_skip_verify block (only meaningful for https endpoints).
+# configs is keyed by the ENDPOINT host (127.0.0.1:30500), not the mirror name. Secret regcred must use
+# --docker-server=registry.registry:5000 (the image-ref host) so kubelet-supplied creds match.
 mirrors:
   "registry.registry:5000":
     endpoint:
