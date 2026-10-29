@@ -125,6 +125,11 @@ def create_app(settings: Settings | None = None, transport: httpx.AsyncBaseTrans
             db.commit()
         return n
 
+    def _release(*keys: str):
+        with SessionLocal() as db:
+            db.query(WebhookDelivery).filter(WebhookDelivery.delivery_id.in_(keys)).delete(synchronize_session=False)
+            db.commit()
+
     def _maybe_purge():
         """Periodic purge, piggybacked on webhook traffic: at most once per min(window, 300 s) per replica."""
         now = time.monotonic()
@@ -360,42 +365,50 @@ def create_app(settings: Settings | None = None, transport: httpx.AsyncBaseTrans
                 raise ApiError(409, "CONFLICT", "stale delivery (outside the replay window)", {"delivery_id": delivery})
         _maybe_purge()
         # replay dedupe on sha256(event + body): rows "sha256:<hex>" in webhook_deliveries (no schema change, shared by
-        # replicas). Checked up front, stored only after the event was processed successfully, so a failed delivery
-        # can be redelivered.
+        # replicas). The hash is *claimed* first: a "pending" row under the primary key, so of two concurrent identical
+        # deliveries only one wins the insert and the other gets 409. Success marks it "payload_hash" (done); failure
+        # deletes it (and the delivery id), so a failed delivery can be redelivered.
         hkey = "sha256:" + hashlib.sha256(event.encode() + b"\n" + body).hexdigest()
         with SessionLocal() as db:
             if window > 0:
                 old = db.get(WebhookDelivery, hkey)
-                if old and (datetime.now(timezone.utc) - _aware(old.received_at)).total_seconds() <= window:
+                if old and (datetime.now(timezone.utc) - _aware(old.received_at)).total_seconds() > window:
+                    db.delete(old)  # expired (not purged yet): free the key
+                    db.commit()
+                try:
+                    db.add(WebhookDelivery(delivery_id=hkey, event=event[:100], status="pending"))
+                    db.commit()
+                except IntegrityError:
+                    db.rollback()
                     WEBHOOKS.labels("replay").inc()
                     raise ApiError(409, "CONFLICT", "duplicate payload (replay)", {"delivery_id": delivery})
-                if old:
-                    db.delete(old)
-                    db.commit()
             try:
                 db.add(WebhookDelivery(delivery_id=delivery[:200], event=event[:100]))
                 db.commit()
             except IntegrityError:
                 db.rollback()
+                if window > 0:
+                    _release(hkey)
                 WEBHOOKS.labels("duplicate").inc()
                 raise ApiError(409, "CONFLICT", "duplicate delivery", {"delivery_id": delivery})
-        status = await _handle_event(event, payload)
+        try:
+            status = await _handle_event(event, payload)
+        except BaseException:
+            _release(hkey, delivery[:200])
+            raise
         failed = status == "review_api_unavailable" or status.startswith("review_rejected_5")
+        if failed:  # forget hash claim + delivery id: GitHub "Redeliver" (same id) may retry
+            _release(hkey, delivery[:200])
+            WEBHOOKS.labels(status).inc()
+            raise ApiError(502, "INTERNAL", "review-api unavailable, delivery not recorded (redeliver to retry)")
         with SessionLocal() as db:
             d = db.get(WebhookDelivery, delivery[:200])
-            if failed:  # forget the delivery id too: GitHub "Redeliver" (same id) may retry
-                db.delete(d)
-            else:
+            if d:
                 d.status = status
-                if window > 0:
-                    db.add(WebhookDelivery(delivery_id=hkey, event=event[:100], status="payload_hash"))
-            try:
-                db.commit()
-            except IntegrityError:  # a concurrent identical delivery stored the hash first
-                db.rollback()
-        WEBHOOKS.labels(status).inc()
-        if failed:
-            raise ApiError(502, "INTERNAL", "review-api unavailable, delivery not recorded (redeliver to retry)")
+            h = db.get(WebhookDelivery, hkey) if window > 0 else None
+            if h:
+                h.status = "payload_hash"
+            db.commit()
         WEBHOOKS.labels(status).inc()
         return {"accepted": True}
 

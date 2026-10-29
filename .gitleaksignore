@@ -4,5 +4,6 @@ cb2f1fdc816204a2c8fb1491caf49f75965c5fce:review-api/tests/test_phase3_grok_cloud
 # Pentest canary provider key (checked to never appear in API responses/logs; not a credential)
 d18463be48ffc4474c0fdcf555a7af37961920e6:security/pentest/pentest_harness.py:generic-api-key:130
 ef519a9daf4fef6dbf5777f10a7c04151b8df248:security/pentest/pentest_harness.py:generic-api-key:130
-# path-only (Tester r2): covers future commits of the same line
+# path-only (Tester r2): covers future commits of the same line. gitleaks fingerprints are literal (no globs), so
+# `gitleaks dir <abs path>` (absolute fingerprints) is covered by the .gitleaks.toml allowlist (canary literal only).
 security/pentest/pentest_harness.py:generic-api-key:130

@@ -399,3 +399,30 @@ def test_webhook_review_api_unavailable_not_recorded():
     err(wh(c, push, delivery="u1"), 502, "INTERNAL")
     with c.app.state.SessionLocal() as db:
         assert db.query(WebhookDelivery).count() == 0  # neither delivery id nor payload hash
+
+
+def test_webhook_pending_claim_blocks_concurrent_identical():
+    """A pending hash claim (in-flight identical delivery on another worker) makes the second one 409."""
+    from app.db import WebhookDelivery
+    c, _ = make_client()
+    body = b'{"zen":"race"}'
+    hkey = "sha256:" + hashlib.sha256(b"ping\n" + body).hexdigest()
+    with c.app.state.SessionLocal() as db:
+        db.add(WebhookDelivery(delivery_id=hkey, event="ping", status="pending"))
+        db.commit()
+    err(wh(c, body, event="ping", delivery="cr2"), 409, "CONFLICT")
+    with c.app.state.SessionLocal() as db:
+        assert db.get(WebhookDelivery, "cr2") is None
+
+
+def test_webhook_claim_marked_done_and_counted_once():
+    from prometheus_client import REGISTRY
+    from app.db import WebhookDelivery
+    c, _ = make_client()
+    n0 = REGISTRY.get_sample_value("ai_scan_gateway_webhooks_total", {"result": "ping"}) or 0
+    body = b'{"zen":"once"}'
+    assert wh(c, body, event="ping", delivery="m1").status_code == 202
+    assert REGISTRY.get_sample_value("ai_scan_gateway_webhooks_total", {"result": "ping"}) == n0 + 1
+    with c.app.state.SessionLocal() as db:
+        h = db.get(WebhookDelivery, "sha256:" + hashlib.sha256(b"ping\n" + body).hexdigest())
+        assert h.status == "payload_hash"
