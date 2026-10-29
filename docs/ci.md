@@ -11,6 +11,8 @@
 - Deploy layout: `deploy/{frontend,gateway,review-api,postgres,scanner-worker,platform}/{base,overlays/{local,k3s,eks}}`.
   Each built service maps to its own folder. `TARGET` is a parameter (default k3s).
 - Phase 6 pipeline (Kubernetes agent pod `ai-scan-agent`: containers `tools` + `kaniko`, see deploy/jenkins/README.md):
+  Node: the `tools` image (ci/agent/Dockerfile) is `node:22.12-bookworm-slim`; vitest 5 needs node >= 22.12
+  (`frontend/package.json` engines, `frontend/.nvmrc`, build stage `node:22.12-alpine`).
   Loop guard (skip if last commit author is `ci-bot@ai-scan.local`, message has `[skip ci]`, or only `deploy/**`
   changed) → Test → Build (kaniko to tarball) → Scan (`trivy image --exit-code 1 --severity CRITICAL,HIGH --input`)
   → Push (crane, credential `registry-push`, main only) → Deploy (main only). Each component stage has
