@@ -37,6 +37,12 @@ REQUESTS = Histogram("http_request_duration_seconds", "HTTP request latency", ["
 UPSTREAM = Histogram("gateway_upstream_duration_seconds", "review-api response time (to headers) seen by the proxy",
                      ["status"], buckets=(.005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10, 30))
 PROXIED = Counter("ai_scan_gateway_proxied_total", "Proxied API requests", ["status"])
+# pre-initialise the bounded result labels to 0 so increase() sees the first event after a restart
+for _r in ("ok", "bad_state", "token_error", "github_error", "denied"):
+    LOGINS.labels(_r)
+for _r in ("bad_signature", "duplicate", "accepted", "ignored", "ping", "unknown_sender", "review_api_unavailable",
+           "review_created"):
+    WEBHOOKS.labels(_r)
 
 UNSAFE = {"POST", "PUT", "PATCH", "DELETE"}
 FORWARD_REQ = {"accept", "content-type", "x-request-id", "last-event-id", "user-agent"}
