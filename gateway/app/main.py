@@ -20,7 +20,7 @@ import httpx
 from fastapi import Depends, FastAPI, Query, Request, Response
 from fastapi.responses import JSONResponse, RedirectResponse, StreamingResponse
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
-from sqlalchemy import func, select, text
+from sqlalchemy import func, select, text, update
 from sqlalchemy.exc import IntegrityError
 
 from . import errors
@@ -122,8 +122,31 @@ def create_app(settings: Settings | None = None, transport: httpx.AsyncBaseTrans
         cutoff = datetime.now(timezone.utc) - timedelta(seconds=window)
         with SessionLocal() as db:
             n = db.query(WebhookDelivery).filter(WebhookDelivery.received_at < cutoff).delete(synchronize_session=False)
+            stale = datetime.now(timezone.utc) - timedelta(seconds=max(1, s.webhook_pending_reclaim_seconds))
+            n += db.query(WebhookDelivery).filter(WebhookDelivery.status == "pending",  # crashed mid-processing
+                                                  WebhookDelivery.received_at < stale).delete(synchronize_session=False)
             db.commit()
         return n
+
+    def _claim(db, key: str, event: str) -> bool:
+        """Insert a pending row under the primary key. On conflict, atomically take over a *pending* row older than
+        WEBHOOK_PENDING_RECLAIM_SECONDS (its owner crashed mid-processing); a done or fresh pending row -> False."""
+        try:
+            db.add(WebhookDelivery(delivery_id=key, event=event[:100], status="pending"))
+            db.commit()
+            return True
+        except IntegrityError:
+            db.rollback()
+        now = datetime.now(timezone.utc)
+        cutoff = now - timedelta(seconds=max(1, s.webhook_pending_reclaim_seconds))
+        n = db.execute(update(WebhookDelivery)
+                       .where(WebhookDelivery.delivery_id == key, WebhookDelivery.status == "pending",
+                              WebhookDelivery.received_at < cutoff)
+                       .values(received_at=now, event=event[:100])).rowcount
+        db.commit()
+        if n == 1:
+            WEBHOOKS.labels("reclaimed").inc()
+        return n == 1
 
     def _release(*keys: str):
         with SessionLocal() as db:
@@ -375,18 +398,10 @@ def create_app(settings: Settings | None = None, transport: httpx.AsyncBaseTrans
                 if old and (datetime.now(timezone.utc) - _aware(old.received_at)).total_seconds() > window:
                     db.delete(old)  # expired (not purged yet): free the key
                     db.commit()
-                try:
-                    db.add(WebhookDelivery(delivery_id=hkey, event=event[:100], status="pending"))
-                    db.commit()
-                except IntegrityError:
-                    db.rollback()
+                if not _claim(db, hkey, event):
                     WEBHOOKS.labels("replay").inc()
                     raise ApiError(409, "CONFLICT", "duplicate payload (replay)", {"delivery_id": delivery})
-            try:
-                db.add(WebhookDelivery(delivery_id=delivery[:200], event=event[:100]))
-                db.commit()
-            except IntegrityError:
-                db.rollback()
+            if not _claim(db, delivery[:200], event):
                 if window > 0:
                     _release(hkey)
                 WEBHOOKS.labels("duplicate").inc()

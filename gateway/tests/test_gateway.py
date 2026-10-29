@@ -426,3 +426,45 @@ def test_webhook_claim_marked_done_and_counted_once():
     with c.app.state.SessionLocal() as db:
         h = db.get(WebhookDelivery, "sha256:" + hashlib.sha256(b"ping\n" + body).hexdigest())
         assert h.status == "payload_hash"
+
+
+def _age(c, key, seconds):
+    from datetime import datetime, timedelta, timezone
+    from app.db import WebhookDelivery
+    with c.app.state.SessionLocal() as db:
+        db.get(WebhookDelivery, key).received_at = datetime.now(timezone.utc) - timedelta(seconds=seconds)
+        db.commit()
+
+
+def test_webhook_stale_pending_claim_reclaimed():
+    """A pending claim left by a crashed gateway is taken over after WEBHOOK_PENDING_RECLAIM_SECONDS; fresh is not."""
+    from app.db import WebhookDelivery
+    c, _ = make_client(webhook_pending_reclaim_seconds=30)
+    body = b'{"zen":"crash"}'
+    hkey = "sha256:" + hashlib.sha256(b"ping\n" + body).hexdigest()
+    with c.app.state.SessionLocal() as db:  # what a killed gateway leaves behind
+        db.add(WebhookDelivery(delivery_id=hkey, event="ping", status="pending"))
+        db.add(WebhookDelivery(delivery_id="k1", event="ping", status="pending"))
+        db.commit()
+    err(wh(c, body, event="ping", delivery="k1"), 409, "CONFLICT")  # fresh claim: in flight elsewhere
+    _age(c, hkey, 60)
+    _age(c, "k1", 60)
+    assert wh(c, body, event="ping", delivery="k1").status_code == 202  # Redeliver (same id) reclaims both
+    with c.app.state.SessionLocal() as db:
+        assert db.get(WebhookDelivery, hkey).status == "payload_hash" and db.get(WebhookDelivery, "k1").status == "ping"
+    err(wh(c, body, event="ping", delivery="k2"), 409, "CONFLICT")  # done rows are never reclaimed
+    _age(c, hkey, 60)
+    err(wh(c, body, event="ping", delivery="k3"), 409, "CONFLICT")
+
+
+def test_webhook_purge_clears_stale_pending():
+    from app.db import WebhookDelivery
+    c, _ = make_client(webhook_pending_reclaim_seconds=30)
+    with c.app.state.SessionLocal() as db:
+        db.add(WebhookDelivery(delivery_id="sha256:dead", event="push", status="pending"))
+        db.add(WebhookDelivery(delivery_id="sha256:live", event="push", status="pending"))
+        db.commit()
+    _age(c, "sha256:dead", 60)
+    assert c.app.state.purge_webhook_rows() == 1
+    with c.app.state.SessionLocal() as db:
+        assert db.get(WebhookDelivery, "sha256:live") is not None

@@ -16,7 +16,7 @@ Public API edge: GitHub OAuth login, sessions + CSRF cookies, webhook HMAC verif
 TODO: Jenkins stage with path filter `gateway/**` (Test → Build → Scan → Push); image tag bump in `deploy/gateway/overlays/<env>`; Argo CD syncs.
 
 ## Config
-Env: `DATABASE_URL`, `REVIEW_API_URL` (default `http://review-api:8001`), `INTERNAL_API_TOKEN`, `GITHUB_CLIENT_ID/SECRET`, `PUBLIC_URL`, `ALLOWED_GITHUB_LOGINS`, `ADMIN_GITHUB_LOGINS`, `GITHUB_WEBHOOK_SECRET`, `WEBHOOK_AUTO_REVIEW`, `WEBHOOK_REVIEW_DEPTH`, `SESSION_TTL_HOURS`, `COOKIE_SECURE`, `RATE_LIMIT_AUTH_PER_MINUTE`, `RATE_LIMIT_API_PER_MINUTE`, `WEBHOOK_REPLAY_WINDOW_SECONDS` (default 86400).
+Env: `DATABASE_URL`, `REVIEW_API_URL` (default `http://review-api:8001`), `INTERNAL_API_TOKEN`, `GITHUB_CLIENT_ID/SECRET`, `PUBLIC_URL`, `ALLOWED_GITHUB_LOGINS`, `ADMIN_GITHUB_LOGINS`, `GITHUB_WEBHOOK_SECRET`, `WEBHOOK_AUTO_REVIEW`, `WEBHOOK_REVIEW_DEPTH`, `SESSION_TTL_HOURS`, `COOKIE_SECURE`, `RATE_LIMIT_AUTH_PER_MINUTE`, `RATE_LIMIT_API_PER_MINUTE`, `WEBHOOK_REPLAY_WINDOW_SECONDS` (default 86400), `WEBHOOK_PENDING_RECLAIM_SECONDS` (default 300).
 
 ## Owners
 AI Scan Coder; Tester (HMAC negative tests).
@@ -30,6 +30,9 @@ is no signed timestamp header. So:
 - **Payload hash**: sha256 of `event + "\n" + body` (row `sha256:<hex>` in `webhook_deliveries`, shared by all replicas,
   no schema change). It is **claimed before processing** as a `pending` row under the primary key (so of two concurrent identical
   deliveries only one is processed; the other gets 409), marked done on success and deleted on failure.
+  The delivery id is claimed the same way. A `pending` claim older than `WEBHOOK_PENDING_RECLAIM_SECONDS` (default 300)
+  belongs to a gateway that died mid-processing: a new delivery takes it over atomically (conditional UPDATE, one
+  winner) and the purge deletes it. Keep the value above the longest processing time (review-api timeout 20 s).
   The same event+body under a new delivery id within `WEBHOOK_REPLAY_WINDOW_SECONDS` (default 86400) → 409, so a
   captured delivery can't retrigger a review.
 - **Failed deliveries** (review-api unreachable or 5xx) → 502, and neither the delivery id nor the hash is kept, so
