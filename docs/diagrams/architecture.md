@@ -74,9 +74,9 @@ with `--redact` and secret values are never stored.
 - Report records `ai.is_cloud` / `code_left_network` and the Markdown warns when code left the network.
 
 ## Observability
-`/metrics`: `ai_scan_reviews_created_total{depth}`, `_retried_total`, `_failed_total`,
-`_completed_total`, gauge `ai_scan_reviews_running`. Probes `/healthz` (liveness), `/readyz` (DB).
-TODO: ServiceMonitor / Grafana dashboard for AI Scan Repos.
+`/metrics` on review-api (:8001) and gateway (:8000), scraped by kube-prometheus-stack through ServiceMonitors;
+PrometheusRules and a Grafana dashboard ship in `deploy/platform/base`. Metric names, labels, alerts and the
+dashboard are documented in [docs/monitoring.md](../monitoring.md). Probes `/healthz` (liveness), `/readyz` (DB).
 
 ## Configuration
 review-api env: `DATABASE_URL`, `INTERNAL_API_TOKEN`, `AI_KEYS_ENCRYPTION_KEY`, `JOB_LAUNCHER`,
