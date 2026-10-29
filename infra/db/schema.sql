@@ -136,3 +136,7 @@ ALTER TABLE reviews ADD COLUMN overdue_since timestamptz;  -- reconciler: first 
 ALTER TABLE ai_providers ADD COLUMN cloud_ack_at timestamptz;
 ALTER TABLE ai_providers ADD COLUMN cloud_ack_by uuid REFERENCES users(id) ON DELETE SET NULL;
 UPDATE ai_providers SET cloud_ack_at = created_at, cloud_ack_by = created_by WHERE kind = 'cloud';  -- pre-existing cloud providers were created through the per-review warning flow
+
+-- Phase 9 (webhook reclaim guard): POST /reviews Idempotency-Key. Applied by Alembic 0005.
+ALTER TABLE reviews ADD COLUMN idempotency_key text;
+ALTER TABLE reviews ADD CONSTRAINT reviews_idempotency_key_key UNIQUE (idempotency_key);  -- NULLs never collide

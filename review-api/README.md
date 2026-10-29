@@ -20,3 +20,10 @@ See [architecture.md › Configuration](../docs/diagrams/architecture.md#configu
 
 ## Owners
 AI Scan Coder; Infra (Job/RBAC) consulted.
+
+## Idempotent review creation
+
+`POST /reviews` accepts an optional `Idempotency-Key` header (1-200 chars, stored in the unique nullable
+`reviews.idempotency_key`, Alembic 0005). A repeated key from the same user returns the existing review with 200 and
+launches nothing; the same key from another user is 409. The gateway sends the webhook's event+body hash, so a
+delivery retried after a crash or the processing deadline never creates a second review.

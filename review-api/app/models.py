@@ -144,6 +144,9 @@ class Review(Base):
     cancelled_by: Mapped[str | None] = mapped_column(GUID, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     # internal (not in the API): first reconciler pass that saw the heartbeat over the threshold
     overdue_since: Mapped[datetime | None] = mapped_column(TZ, nullable=True)
+    # Phase 9 (alembic 0005): Idempotency-Key of POST /reviews (the gateway sends the webhook event+body hash); unique,
+    # NULL for requests without the header. Internal (not in the API).
+    idempotency_key: Mapped[str | None] = mapped_column(Text, nullable=True, unique=True)
 
 
 class ReviewAttempt(Base):

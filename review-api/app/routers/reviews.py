@@ -3,9 +3,10 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, Header, Query, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 
 from .. import serialize
 from .. import settings_store
@@ -62,8 +63,21 @@ def _provider(db, provider_id: str | None, ack_cloud: bool, cfg: dict) -> AIProv
     return p
 
 
+def _existing(db, key: str, user: User) -> JSONResponse:
+    r = db.scalars(select(Review).where(Review.idempotency_key == key)).first()
+    if r is None:
+        raise conflict("idempotency key in use")  # unreachable unless deleted meanwhile
+    if r.user_id != user.id:  # a key is scoped to its first caller; never reveal another user's review
+        raise conflict("idempotency key already used by another user")
+    return JSONResponse(out(db, r), 200, headers={"Location": f"/reviews/{r.id}"})
+
+
 @router.post("/reviews", status_code=201)
-def create_review(body: ReviewCreate, request: Request, user: User = Depends(current_user), db=Depends(get_db)):
+def create_review(body: ReviewCreate, request: Request, user: User = Depends(current_user), db=Depends(get_db),
+                  idempotency_key: str | None = Header(None, alias="Idempotency-Key", min_length=1, max_length=200)):
+    """Idempotency-Key: a repeated key returns the review created for it (200) instead of creating another one."""
+    if idempotency_key is not None and db.scalars(select(Review.id).where(Review.idempotency_key == idempotency_key)).first():
+        return _existing(db, idempotency_key, user)
     deps = request.app.state.deps
     cfg = settings_store.load(db)
     provider = _provider(db, body.provider_id, body.ack_cloud, cfg)
@@ -80,9 +94,15 @@ def create_review(body: ReviewCreate, request: Request, user: User = Depends(cur
     check_capacity(db, cfg)
     r = Review(user_id=user.id, repo_url=body.repo_url, repo_private=info.private, ref=body.ref, commit_sha=sha,
                depth=body.depth, provider_id=provider.id if provider else None, state=State.queued,
-               attempt=1, budget_no=1)
+               attempt=1, budget_no=1, idempotency_key=idempotency_key)
     db.add(r)
-    db.flush()
+    try:
+        db.flush()  # unique key: a concurrent request with the same key fails here, before any Job is launched
+    except IntegrityError:
+        db.rollback()
+        if idempotency_key is None:
+            raise
+        return _existing(db, idempotency_key, user)
     REVIEWS.labels(State.queued.value).inc()
     start_attempt(db, r, deps["launcher"], mark_running=False)  # queued until the worker's first heartbeat
     db.commit()
