@@ -34,7 +34,15 @@ log = logging.getLogger("gateway")
 LOGINS = Counter("ai_scan_gateway_logins_total", "OAuth logins", ["result"])
 WEBHOOKS = Counter("ai_scan_gateway_webhooks_total", "Webhook deliveries", ["result"])
 REQUESTS = Histogram("http_request_duration_seconds", "HTTP request latency", ["method", "route", "status"])
+UPSTREAM = Histogram("gateway_upstream_duration_seconds", "review-api response time (to headers) seen by the proxy",
+                     ["status"], buckets=(.005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10, 30))
 PROXIED = Counter("ai_scan_gateway_proxied_total", "Proxied API requests", ["status"])
+# pre-initialise the bounded result labels to 0 so increase() sees the first event after a restart
+for _r in ("ok", "bad_state", "token_error", "github_error", "denied"):
+    LOGINS.labels(_r)
+for _r in ("bad_signature", "duplicate", "accepted", "ignored", "ping", "unknown_sender", "review_api_unavailable",
+           "review_created"):
+    WEBHOOKS.labels(_r)
 
 UNSAFE = {"POST", "PUT", "PATCH", "DELETE"}
 FORWARD_REQ = {"accept", "content-type", "x-request-id", "last-event-id", "user-agent"}
@@ -212,6 +220,7 @@ def create_app(settings: Settings | None = None, transport: httpx.AsyncBaseTrans
         headers = {k: v for k, v in request.headers.items() if k.lower() in FORWARD_REQ}
         headers.update({"X-Internal-Token": s.internal_api_token, "X-User-Id": u.id, "X-User-Role": u.role})
         c = http(None if stream else 30.0)
+        t0 = time.perf_counter()
         try:
             req = c.build_request(request.method, f"{s.review_api_url}{path}", params=request.query_params,
                                   content=await request.body(), headers=headers)
@@ -219,8 +228,10 @@ def create_app(settings: Settings | None = None, transport: httpx.AsyncBaseTrans
         except httpx.HTTPError:
             await c.aclose()
             PROXIED.labels("502").inc()
+            UPSTREAM.labels("502").observe(time.perf_counter() - t0)
             raise ApiError(502, "INTERNAL", "review-api unavailable")
         PROXIED.labels(str(r.status_code)).inc()
+        UPSTREAM.labels(str(r.status_code)).observe(time.perf_counter() - t0)
         out = {k: v for k, v in r.headers.items() if k.lower() in FORWARD_RESP}
         if "location" in r.headers:
             out["Location"] = "/api" + r.headers["location"]

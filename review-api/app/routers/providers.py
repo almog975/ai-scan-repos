@@ -1,6 +1,7 @@
 """/ai-providers (public, no secrets) and /admin/ai-providers (admin CRUD, keys AES-GCM encrypted)."""
 from __future__ import annotations
 
+import time
 import uuid
 from typing import Literal
 
@@ -13,6 +14,7 @@ from ..auth import current_user, require_admin
 from ..crypto import KeyCipher, mask
 from ..db import get_db
 from ..errors import ApiError, not_found, validation
+from ..metrics import observe_ai
 from ..models import AIProvider, ProviderKind, User
 from ..providers import ProviderError, adapter_for
 from ..schemas import Closed
@@ -185,12 +187,18 @@ def delete(id: str, _: User = Depends(require_admin), db=Depends(get_db)):
 
 
 def _run_test(base_url, kind, model, key):
+    k = getattr(kind, "value", kind)
+    t0 = time.monotonic()
     try:
-        return adapter_for(base_url, kind, model, key).test()
+        res = adapter_for(base_url, kind, model, key).test()
     except ProviderError as e:
+        observe_ai(k, "test", time.monotonic() - t0, ok=False)
         raise ApiError(502, e.code, f"provider check failed: {e}")
     except ValueError as e:
+        observe_ai(k, "test", time.monotonic() - t0, ok=False)
         raise ApiError(502, "AI_PROVIDER_UNREACHABLE", f"provider check failed: {e}")
+    observe_ai(k, "test", time.monotonic() - t0, ok=True)
+    return res
 
 
 @router.post("/admin/ai-providers/test")

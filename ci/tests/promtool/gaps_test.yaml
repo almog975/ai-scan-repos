@@ -1,0 +1,15 @@
+rule_files: [rules.yaml]
+tests:
+  # every reconciler pass errors since pod start: only result="error" exists -> should page
+  - interval: 1m
+    input_series:
+      - {series: 'reconciler_runs_total{namespace="ai-scan-repos",result="error"}', values: '0+1x60'}
+    alert_rule_test:
+      - eval_time: 45m
+        alertname: AIScanReconcilerNotRunning
+        exp_alerts:
+          - exp_labels: {severity: critical}
+            exp_annotations:
+              summary: No successful reconciler pass in 15 minutes
+              description: Stuck/overdue reviews are not being recovered. Check review-api logs ("watchdog pass failed") and the DB.
+              runbook_url: https://github.com/almog975/ai-scan-repos/blob/main/docs/monitoring.md#alerts

@@ -18,7 +18,7 @@ from .github import HttpGitHub
 from .jobs import ReviewJobs
 from .launcher import make_launcher
 from .crypto import parse_key
-from .metrics import install_request_metrics
+from .metrics import install_db_collector, install_request_metrics
 from .routers import control, misc, providers, reviews
 
 
@@ -48,6 +48,7 @@ def create_app(settings: Settings | None = None, **deps) -> FastAPI:
     app.dependency_overrides[get_settings] = lambda: settings
     errors.install(app)
     install_request_metrics(app)
+    install_db_collector(dbmod.session_factory, settings.heartbeat_timeout_seconds)
 
     @app.get("/healthz")
     def healthz():

@@ -14,6 +14,7 @@ from .. import reports, settings_store
 from ..auth import current_user, require_internal
 from ..db import get_db
 from ..errors import ApiError, conflict, not_found
+from ..metrics import WORKER_HEARTBEATS, observe_ai, worker_stage
 from ..models import AIProvider, Outcome, ProviderKind, Review, State, User
 from ..service import current_attempt, end_attempt, now, start_attempt
 from ..state import ACTIVE, TERMINAL, transition
@@ -217,8 +218,17 @@ def cancel_review(id: str, request: Request, user: User = Depends(current_user),
 
 
 # ---- worker -> review-api (internal, not part of the public contract) -------------------------
+class WorkerAIStats(BaseModel):
+    """AI calls made since the previous heartbeat (a delta). Folded into ai_provider_* metrics."""
+    model_config = ConfigDict(extra="forbid")
+    calls: int = Field(ge=0, le=100000)
+    errors: int = Field(ge=0, le=100000)
+    seconds: float = Field(ge=0, le=86400)
+
+
 class WorkerProgress(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    ai: WorkerAIStats | None = None
     attempt: int = Field(ge=1, le=5)
     budget_no: int = Field(ge=1)
     stage: str
@@ -241,6 +251,15 @@ def worker_progress(id: str, body: WorkerProgress, request: Request, db=Depends(
     if a is not None and a.ended_at is not None:
         raise conflict("attempt already ended", state=st.value)
     s = _settings(request)
+    WORKER_HEARTBEATS.labels(worker_stage(body.stage)).inc()
+    if body.ai is not None and body.ai.calls:
+        prov = db.get(AIProvider, r.provider_id) if r.provider_id else None
+        kind = getattr(getattr(prov, "kind", None), "value", getattr(prov, "kind", None))
+        ok = body.ai.calls - min(body.ai.errors, body.ai.calls)
+        if ok:
+            observe_ai(kind, "worker", body.ai.seconds, ok=True, calls=ok)
+        if body.ai.calls - ok:
+            observe_ai(kind, "worker", 0.0, ok=False, calls=body.ai.calls - ok)
     r.last_heartbeat, r.overdue_since = now(), None
     if st in (State.queued, State.retrying):
         transition(r, State.running)

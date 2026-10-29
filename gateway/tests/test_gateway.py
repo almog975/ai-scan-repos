@@ -257,3 +257,15 @@ def test_request_histogram():
     c, _ = make_client()
     c.get("/healthz")
     assert 'http_request_duration_seconds_count{method="GET",route="/healthz",status="200"}' in c.get("/metrics").text
+
+
+def test_proxy_metrics_low_cardinality(logged_in):
+    """Phase 7: proxy counters/latency are labelled by status only; routes use templates, never ids."""
+    from prometheus_client import REGISTRY
+    c, router = logged_in
+    router.get(f"{RA}/reviews/{RID}").respond(200, json={"id": RID})
+    n0 = REGISTRY.get_sample_value("gateway_upstream_duration_seconds_count", {"status": "200"}) or 0
+    assert c.get(f"/api/reviews/{RID}").status_code == 200
+    assert REGISTRY.get_sample_value("gateway_upstream_duration_seconds_count", {"status": "200"}) == n0 + 1
+    text = c.get("/metrics").text
+    assert "ai_scan_gateway_proxied_total" in text and RID not in text

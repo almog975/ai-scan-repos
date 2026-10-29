@@ -21,11 +21,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
 
-from .metrics import SCAN_ATTEMPTS
+from .metrics import RECONCILER_ACTIONS, RECONCILER_DURATION, RECONCILER_RUNS, SCAN_ATTEMPTS, STUCK_DETECTIONS, stuck_label
 from .models import FailureCode, Outcome, Review, ReviewAttempt, State
 from .service import current_attempt, end_attempt, now, start_attempt
 from .state import MAX_ATTEMPTS, classify, next_attempt, transition
@@ -97,6 +98,20 @@ def _launched_at(r: Review, a) -> datetime | None:
 
 
 def sweep(db, jobs, settings, at: datetime | None = None) -> dict[str, str]:
+    """One reconciler pass, instrumented (reconciler_runs_total / reconciler_run_duration_seconds)."""
+    t0 = time.perf_counter()
+    try:
+        acted = _sweep(db, jobs, settings, at)
+    except Exception:
+        RECONCILER_RUNS.labels("error").inc()
+        raise
+    finally:
+        RECONCILER_DURATION.observe(time.perf_counter() - t0)
+    RECONCILER_RUNS.labels("ok").inc()
+    return acted
+
+
+def _sweep(db, jobs, settings, at: datetime | None = None) -> dict[str, str]:
     """One reconciler pass. Returns {review_id: requeued|overdue|stuck|relaunched|failed} for reviews acted on."""
     at = at or datetime.now(timezone.utc)
     acted: dict[str, str] = {}
@@ -133,8 +148,11 @@ def sweep(db, jobs, settings, at: datetime | None = None) -> dict[str, str]:
         if reason:
             log.warning("review %s attempt %d-%d stuck: %s", r.id, r.budget_no, r.attempt, reason)
             mark_stuck(db, r, jobs, reason, settings.watchdog_interval_seconds, at)
+            STUCK_DETECTIONS.labels(stuck_label(reason)).inc()
             acted[r.id] = "stuck"
     db.commit()
+    for action in acted.values():
+        RECONCILER_ACTIONS.labels(action).inc()
     return acted
 
 
