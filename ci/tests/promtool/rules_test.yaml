@@ -1,0 +1,261 @@
+rule_files: [rules.yaml]
+evaluation_interval: 1m
+tests:
+- interval: 1m
+  input_series:
+  - series: reviews_by_state{namespace="ai-scan-repos",job="review-api",instance="a",state="stuck"}
+    values: 1x40
+  - series: reviews_by_state{namespace="ai-scan-repos",job="review-api",instance="b",state="stuck"}
+    values: 1x40
+  alert_rule_test:
+  - eval_time: 14m
+    alertname: AIScanReviewsStuck
+    exp_alerts: []
+  - eval_time: 16m
+    alertname: AIScanReviewsStuck
+    exp_alerts:
+    - exp_labels:
+        severity: warning
+      exp_annotations:
+        summary: 1 review(s) stuck for more than 15 minutes
+        description: The reconciler relaunches stuck attempts each cycle; a persistent stuck count means relaunches keep failing.
+        runbook_url: https://github.com/almog975/ai-scan-repos/blob/main/docs/runbooks/stuck-review.md
+- interval: 1m
+  input_series:
+  - series: reviews_by_state{namespace="ai-scan-repos",state="stuck"}
+    values: '0x40'
+  - series: reviews_by_state{namespace="other",state="stuck"}
+    values: 3x40
+  alert_rule_test:
+  - eval_time: 30m
+    alertname: AIScanReviewsStuck
+    exp_alerts: []
+- interval: 1m
+  input_series:
+  - series: reviews_total{namespace="ai-scan-repos",state="failed"}
+    values: 0+1x90
+  - series: reviews_total{namespace="ai-scan-repos",state="completed"}
+    values: 0+1x90
+  alert_rule_test:
+  - eval_time: 10m
+    alertname: AIScanReviewFailureRateHigh
+    exp_alerts: []
+  - eval_time: 30m
+    alertname: AIScanReviewFailureRateHigh
+    exp_alerts:
+    - exp_labels:
+        severity: warning
+      exp_annotations:
+        summary: More than 25% of finished reviews failed in the last hour
+        description: Check scan_attempts_total{outcome="error"}, job_launch_errors_total and ai_provider_requests_total{outcome="error"}.
+        runbook_url: https://github.com/almog975/ai-scan-repos/blob/main/docs/monitoring.md#alerts
+- interval: 1m
+  input_series:
+  - series: reviews_total{namespace="ai-scan-repos",state="failed"}
+    values: 0+1x90
+  - series: reviews_total{namespace="ai-scan-repos",state="completed"}
+    values: 0+9x90
+  alert_rule_test:
+  - eval_time: 60m
+    alertname: AIScanReviewFailureRateHigh
+    exp_alerts: []
+- interval: 1m
+  input_series:
+  - series: reviews_total{namespace="ai-scan-repos",state="failed"}
+    values: 0 1 2 3 3x86
+  alert_rule_test:
+  - eval_time: 40m
+    alertname: AIScanReviewFailureRateHigh
+    exp_alerts: []
+- interval: 1m
+  input_series:
+  - series: reviews_heartbeat_overdue{namespace="ai-scan-repos",instance="a"}
+    values: 2x30
+  alert_rule_test:
+  - eval_time: 9m
+    alertname: AIScanNoWorkerHeartbeat
+    exp_alerts: []
+  - eval_time: 11m
+    alertname: AIScanNoWorkerHeartbeat
+    exp_alerts:
+    - exp_labels:
+        severity: warning
+      exp_annotations:
+        summary: 2 running review(s) without a heartbeat for longer than HEARTBEAT_TIMEOUT_SECONDS
+        description: The scanner Job stopped reporting (OOM, node loss, network policy). The reconciler should mark it stuck within two passes.
+        runbook_url: https://github.com/almog975/ai-scan-repos/blob/main/docs/runbooks/stuck-review.md
+- interval: 1m
+  input_series:
+  - series: reviews_heartbeat_overdue{namespace="ai-scan-repos"}
+    values: 1x8 0 1x8 0x10
+  alert_rule_test:
+  - eval_time: 18m
+    alertname: AIScanNoWorkerHeartbeat
+    exp_alerts: []
+- interval: 1m
+  input_series:
+  - series: reconciler_runs_total{namespace="ai-scan-repos",result="ok"}
+    values: 0+1x10 10x50
+  alert_rule_test:
+  - eval_time: 20m
+    alertname: AIScanReconcilerNotRunning
+    exp_alerts: []
+  - eval_time: 45m
+    alertname: AIScanReconcilerNotRunning
+    exp_alerts:
+    - exp_labels:
+        severity: critical
+      exp_annotations:
+        summary: No successful reconciler pass in 15 minutes
+        description: Stuck/overdue reviews are not being recovered. Check review-api logs ("watchdog pass failed") and the DB.
+        runbook_url: https://github.com/almog975/ai-scan-repos/blob/main/docs/monitoring.md#alerts
+- interval: 1m
+  input_series:
+  - series: reconciler_runs_total{namespace="ai-scan-repos",result="ok"}
+    values: 0+1x60
+  alert_rule_test:
+  - eval_time: 50m
+    alertname: AIScanReconcilerNotRunning
+    exp_alerts: []
+- interval: 1m
+  input_series:
+  - series: review_db_metrics_up{namespace="ai-scan-repos",instance="a"}
+    values: '0x30'
+  alert_rule_test:
+  - eval_time: 9m
+    alertname: AIScanMetricsDBReadFailing
+    exp_alerts: []
+  - eval_time: 11m
+    alertname: AIScanMetricsDBReadFailing
+    exp_alerts:
+    - exp_labels:
+        severity: warning
+      exp_annotations:
+        summary: review-api cannot read review counts from the database for /metrics
+        runbook_url: https://github.com/almog975/ai-scan-repos/blob/main/docs/monitoring.md#alerts
+- interval: 1m
+  input_series:
+  - series: review_db_metrics_up{namespace="ai-scan-repos",instance="a"}
+    values: '0x30'
+  - series: review_db_metrics_up{namespace="ai-scan-repos",instance="b"}
+    values: 1x30
+  alert_rule_test:
+  - eval_time: 20m
+    alertname: AIScanMetricsDBReadFailing
+    exp_alerts: []
+- interval: 1m
+  input_series:
+  - series: up{namespace="ai-scan-repos",job="review-api",pod="review-api-1",instance="10.42.0.5:8001"}
+    values: '0x20'
+  - series: up{namespace="ai-scan-repos",job="gateway",pod="gateway-1",instance="10.42.0.6:8000"}
+    values: 1x20
+  - series: up{namespace="ai-scan-repos",job="frontend",pod="frontend-1",instance="x"}
+    values: '0x20'
+  alert_rule_test:
+  - eval_time: 4m
+    alertname: AIScanTargetDown
+    exp_alerts: []
+  - eval_time: 6m
+    alertname: AIScanTargetDown
+    exp_alerts:
+    - exp_labels:
+        severity: critical
+        namespace: ai-scan-repos
+        job: review-api
+        pod: review-api-1
+        instance: 10.42.0.5:8001
+      exp_annotations:
+        summary: review-api pod review-api-1 is not scrapeable
+        runbook_url: https://github.com/almog975/ai-scan-repos/blob/main/docs/monitoring.md#alerts
+- interval: 1m
+  input_series:
+  - series: kube_pod_container_status_restarts_total{namespace="ai-scan-repos",pod="review-api-1",container="review-api",job="kube-state-metrics"}
+    values: 0+1x40
+  alert_rule_test:
+  - eval_time: 3m
+    alertname: AIScanPodRestarting
+    exp_alerts: []
+  - eval_time: 20m
+    alertname: AIScanPodRestarting
+    exp_alerts:
+    - exp_labels:
+        severity: warning
+        namespace: ai-scan-repos
+        pod: review-api-1
+        container: review-api
+        job: kube-state-metrics
+      exp_annotations:
+        summary: review-api-1/review-api restarted 15 times in 15m
+        description: Crash loop or failing liveness probe. kubectl -n ai-scan-repos describe pod / logs --previous.
+        runbook_url: https://github.com/almog975/ai-scan-repos/blob/main/docs/monitoring.md#alerts
+- interval: 1m
+  input_series:
+  - series: kube_pod_container_status_restarts_total{namespace="ai-scan-repos",pod="p",container="c"}
+    values: 0x10 1 2 2x30
+  alert_rule_test:
+  - eval_time: 25m
+    alertname: AIScanPodRestarting
+    exp_alerts: []
+- interval: 1m
+  input_series:
+  - series: ai_provider_requests_total{namespace="ai-scan-repos",kind="cloud",outcome="error",source="worker",instance="a"}
+    values: 0+2x60
+  - series: ai_provider_requests_total{namespace="ai-scan-repos",kind="cloud",outcome="ok",source="worker",instance="a"}
+    values: 0+1x60
+  - series: ai_provider_requests_total{namespace="ai-scan-repos",kind="onprem",outcome="ok",source="worker",instance="a"}
+    values: 0+5x60
+  alert_rule_test:
+  - eval_time: 10m
+    alertname: AIScanAIProviderErrors
+    exp_alerts: []
+  - eval_time: 40m
+    alertname: AIScanAIProviderErrors
+    exp_alerts:
+    - exp_labels:
+        severity: warning
+        kind: cloud
+      exp_annotations:
+        summary: More than half of cloud AI provider calls failed in 30m
+        description: Reviews still complete (AI enrichment is best effort) but without explanations.
+        runbook_url: https://github.com/almog975/ai-scan-repos/blob/main/docs/monitoring.md#alerts
+- interval: 1m
+  input_series:
+  - series: ai_provider_requests_total{namespace="ai-scan-repos",kind="cloud",outcome="error",source="worker"}
+    values: 0+1x60
+  - series: ai_provider_requests_total{namespace="ai-scan-repos",kind="cloud",outcome="ok",source="worker"}
+    values: 0+3x60
+  alert_rule_test:
+  - eval_time: 45m
+    alertname: AIScanAIProviderErrors
+    exp_alerts: []
+- interval: 1m
+  input_series:
+  - series: http_request_duration_seconds_count{namespace="ai-scan-repos",job="gateway",method="GET",route="/api/x",status="502"}
+    values: 0+1x60
+  - series: http_request_duration_seconds_count{namespace="ai-scan-repos",job="gateway",method="GET",route="/api/x",status="200"}
+    values: 0+10x60
+  - series: http_request_duration_seconds_count{namespace="ai-scan-repos",job="review-api",method="GET",route="/x",status="200"}
+    values: 0+10x60
+  alert_rule_test:
+  - eval_time: 9m
+    alertname: AIScanHTTP5xxHigh
+    exp_alerts: []
+  - eval_time: 30m
+    alertname: AIScanHTTP5xxHigh
+    exp_alerts:
+    - exp_labels:
+        severity: warning
+        job: gateway
+      exp_annotations:
+        summary: 'gateway: more than 5% of HTTP requests return 5xx'
+        runbook_url: https://github.com/almog975/ai-scan-repos/blob/main/docs/monitoring.md#alerts
+- interval: 1m
+  input_series:
+  - series: http_request_duration_seconds_count{namespace="ai-scan-repos",job="gateway",status="500"}
+    values: 0+1x60
+  - series: http_request_duration_seconds_count{namespace="ai-scan-repos",job="gateway",status="200"}
+    values: 0+100x60
+  alert_rule_test:
+  - eval_time: 40m
+    alertname: AIScanHTTP5xxHigh
+    exp_alerts: []
