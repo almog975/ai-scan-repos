@@ -23,4 +23,6 @@ fi
 # 4. Registry (htpasswd) + Jenkins/Argo CD IngressRoutes (secrets: docs/registry-auth-runbook.md, docs/tls-runbook.md)
 echo "+ kubectl apply -f infra/registry/registry.yaml && kubectl apply -k infra/ingress/overlays/k3s"
 [ "${DRY_RUN:-1}" = 1 ] || { kubectl apply -f "$ROOT/infra/registry/registry.yaml"; kubectl apply -k "$ROOT/infra/ingress/overlays/k3s"; }
-# 5. TODO: copy registries.yaml, fetch kubeconfig, install Argo CD (infra/argocd/README.md)
+# 5. TODO: copy registries.yaml, fetch kubeconfig
+# 6. Optional: agent image (infra/installer/build-jenkins-agent.sh). 7. Argo CD + AppProjects (2a ai-scan, 2b ai-scan-ci) + root app:
+"$ROOT/infra/installer/scripts/install-argocd.sh"

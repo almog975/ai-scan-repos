@@ -11,8 +11,8 @@ All secrets live in ns `ai-scan-repos` unless noted.
 | `grafana-admin` (ns monitoring) | admin-user, admin-password | Grafana |
 | `registry-htpasswd` (ns registry) | htpasswd (bcrypt, push + pull users) | registry (docs/registry-auth-runbook.md) |
 | `regcred` (ns ai-scan-repos, docker-registry) | .dockerconfigjson (pull user) | SAs default, review-api, scanner; scanner Job template |
-| `registry-push` (ns jenkins, docker-registry; same name as the Jenkins credential) | .dockerconfigjson (push user) | kaniko/buildkit agents only |
-| Jenkins credential `registry-push` | username/password (push user) | Jenkinsfile docker login |
+| `regcred` (ns jenkins, docker-registry) | .dockerconfigjson (pull user) | SA jenkins-agent (agent image ai-scan/jenkins-agent) |
+| `registry-push` (ns jenkins, **Opaque**; label `jenkins.io/credentials-type=usernamePassword`, annotation `jenkins.io/credentials-description`) | username, password (push user) | Jenkins credential ID `registry-push` (Jenkinsfile Push stage) |
 | `ai-scan-tls` / `jenkins-tls` / `argocd-ingress-tls` | tls.crt, tls.key | Traefik (docs/tls-runbook.md) |
 | `registry-tls` (ns registry) | tls.crt, tls.key | Traefik |
 

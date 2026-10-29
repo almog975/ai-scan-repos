@@ -12,4 +12,5 @@ for c in platform postgres scanner-worker review-api gateway frontend; do
   echo "+ kubectl apply -k $ROOT/deploy/$c/overlays/$OVERLAY"
   [ "${DRY_RUN:-1}" = 1 ] || kubectl apply -k "$ROOT/deploy/$c/overlays/$OVERLAY"
 done
+[ "${WITH_ARGOCD:-0}" = 1 ] && "$ROOT/infra/installer/scripts/install-argocd.sh"   # optional GitOps on local
 echo "TODO: secrets (docs/secrets-runbook.md), kube-prometheus-stack, registry"

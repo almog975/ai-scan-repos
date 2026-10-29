@@ -9,4 +9,5 @@ echo "+ kubectl apply -k $ROOT/infra/bootstrap/overlays/eks   # before Argo CD; 
 [ "${DRY_RUN:-1}" = 1 ] || kubectl apply -k "$ROOT/infra/bootstrap/overlays/eks"
 echo "+ kubectl apply -k $ROOT/infra/ingress/overlays/eks   # after Traefik"
 [ "${DRY_RUN:-1}" = 1 ] || kubectl apply -k "$ROOT/infra/ingress/overlays/eks"
-echo "TODO: install Argo CD (infra/argocd/README.md), then apply deploy/*/overlays/eks via Argo CD"
+# Argo CD + AppProjects (2a ai-scan, 2b ai-scan-ci) + root app; optional agent image: infra/installer/build-jenkins-agent.sh
+"$ROOT/infra/installer/scripts/install-argocd.sh"

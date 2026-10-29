@@ -17,14 +17,23 @@ kubectl -n registry rollout restart deploy/registry
 ```
 
 ## 2. Jenkins push credential (ns jenkins)
-The Jenkinsfile uses credential ID **`registry-push`** (Username with password), via
-`withCredentials([usernamePassword(credentialsId: 'registry-push', ...)])`.
-Create it in Jenkins: *Manage Jenkins > Credentials > System > Global > Add* — Kind "Username with password",
-ID `registry-push`, username `<PUSH_USER>`, password `<PUSH_PASSWORD>`.
-Same name for the Kubernetes Secret (needed by kaniko/buildkit agents that read a docker config file): **`registry-push`**:
+Credential ID **`registry-push`** (Username with password), used by the Jenkinsfile Push stage via
+`withCredentials([usernamePassword(credentialsId: 'registry-push', ...)])`. It is an **Opaque** K8s Secret in ns
+jenkins (not docker-registry), surfaced to Jenkins by the kubernetes-credentials-provider plugin:
 ```bash
-kubectl -n jenkins create secret docker-registry registry-push \
-  --docker-server=<REGISTRY_HOST> --docker-username=<PUSH_USER> --docker-password='<PUSH_PASSWORD>'
+kubectl -n jenkins create secret generic registry-push \
+  --from-literal=username=<PUSH_USER> --from-literal=password='<PUSH_PASSWORD>'
+kubectl -n jenkins label secret registry-push jenkins.io/credentials-type=usernamePassword
+kubectl -n jenkins annotate secret registry-push jenkins.io/credentials-description='registry push user'
+```
+No click-ops credential in the Jenkins UI.
+
+## 2b. Pull secret regcred in ns jenkins (agent image)
+The agent pod template pulls `<REGISTRY_HOST>/ai-scan/jenkins-agent:<sha>` (SA `jenkins-agent`, imagePullSecrets `regcred`):
+```bash
+kubectl -n jenkins create secret docker-registry regcred \
+  --docker-server=<REGISTRY_HOST> --docker-username=<PULL_USER> --docker-password='<PULL_PASSWORD>' \
+  --dry-run=client -o yaml | kubectl apply -f -
 ```
 
 ## 3. Pull secret regcred (ns ai-scan-repos)
