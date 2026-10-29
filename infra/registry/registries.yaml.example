@@ -1,9 +1,21 @@
 # Copy to /etc/rancher/k3s/registries.yaml on every K3s node, then: systemctl restart k3s
+#
+# k3s: images are named registry.registry:5000/ai-scan/<svc> (the in-cluster Service the Jenkins agents push to).
+# Nodes do not use cluster DNS, so containerd resolves that name through this mirror to the registry's NodePort
+# 30500 on the node itself (kube-proxy listens on every node). The registry speaks plain HTTP (TLS ends at
+# Traefik), hence the http:// endpoint; no TLS config is needed for it.
 mirrors:
+  "registry.registry:5000":
+    endpoint:
+      - "http://127.0.0.1:30500"
   "registry.ai-scan.local":
     endpoint:
       - "https://registry.ai-scan.local"
 configs:
+  "127.0.0.1:30500":
+    auth:
+      username: REPLACE_ME   # pull user (same as Secret regcred); kubelet's regcred auth also applies
+      password: REPLACE_ME
   "registry.ai-scan.local":
     auth:
       username: REPLACE_ME

@@ -45,9 +45,11 @@ apiVersion: v1
 kind: Service
 metadata: {name: registry, namespace: registry, labels: {app: registry}}
 spec:
-  type: ClusterIP
+  # NodePort so K3s nodes (containerd, no cluster DNS) reach the registry at 127.0.0.1:30500 via the
+  # registries.yaml mirror for "registry.registry:5000". Pods keep using registry.registry:5000 (cluster DNS).
+  type: NodePort
   selector: {app: registry}
-  ports: [{name: http, port: 5000, targetPort: 5000}]
+  ports: [{name: http, port: 5000, targetPort: 5000, nodePort: 30500}]
 ---
 apiVersion: traefik.io/v1alpha1
 kind: Middleware
