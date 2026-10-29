@@ -19,7 +19,7 @@ SENTINELS = [v for v in SECRETS.values() if "SENTINEL" in v]
 FAKE_KUBECTL = r"""#!/usr/bin/env bash
 # records calls; `get` succeeds for objects listed in $FAKE_STATE; secrets created via apply are remembered
 echo "kubectl $*" >> "$FAKE_LOG"
-if [ "$1" = -n ] && [ "$3" = get ]; then grep -qx "$2/$4/$5" "$FAKE_STATE" 2>/dev/null && exit 0; echo "Error from server (NotFound): $4 \"$5\" not found" >&2; exit 1; fi
+if [ "$1" = -n ] && [ "$3" = get ]; then grep -qx "$2/$4/$5" "$FAKE_STATE" 2>/dev/null && exit 0; r=$4s; [ "$4" = deploy ] && r=deployments.apps; echo "Error from server (NotFound): $r \"$5\" not found" >&2; exit 1; fi
 if [ "$1" = -n ] && [ "$3" = create ] && [ "$4" = secret ]; then
   echo "$2/secret/$6" >> "$FAKE_STATE"
   for a in "$@"; do case "$a" in --from-env-file=*|--from-file=*) f="${a#*=}"; f="${f#*=}"; cat "$f" >> "$FAKE_SECRETS";; esac; done
