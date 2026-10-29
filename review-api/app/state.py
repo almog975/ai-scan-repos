@@ -4,7 +4,7 @@ attempt = 1..MAX_ATTEMPTS within a budget; POST /retry (only from failed) opens 
 Illegal transitions raise 409 CONFLICT.
 """
 from __future__ import annotations
-from .metrics import REVIEWS
+from .metrics import REVIEWS, observe_terminal
 
 from datetime import datetime, timezone
 
@@ -42,6 +42,7 @@ def transition(r: Review, dst: State, *, reason: str | None = None, code: Failur
     r.state = dst
     r.overdue_since = None  # the two-pass stuck detection restarts on every state change
     REVIEWS.labels(dst.value).inc()
+    observe_terminal(r, dst.value)
     if dst == State.running and r.started_at is None:
         r.started_at = now
     if dst == State.paused:
