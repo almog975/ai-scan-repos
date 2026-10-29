@@ -95,3 +95,10 @@ def test_review_attempts_used_rename_consistent():
         src = (ROOT / p).read_text()
         assert not re.search(r"review_attempts_(sum|count|bucket)\b", src), p
         assert not re.search(r"[\"`]review_attempts[\"`]", src), p
+
+
+@needs_promtool
+def test_http5xx_ignores_provider_test_502(tmp_path):
+    _rules(tmp_path)
+    r = _run(tmp_path, "http5xx_provider_test.yaml")
+    assert r.returncode == 0, r.stdout + r.stderr
