@@ -47,25 +47,37 @@ def test_no_failure_swallowing():
     assert "|| true" not in test_part
 
 
-@pytest.mark.xfail(reason="medium: Jenkinsfile:68 `git diff --name-only <base> HEAD || true` - if the base is missing "
-                          "(force-push, GC, shallow clone) files=[] and changed=[] so Build/Scan/Push/Deploy are "
-                          "silently skipped with a green build", strict=True)
 def test_changed_detection_failure_is_fatal():
     assert "|| true" not in CODE[CODE.index("stage('Loop guard')"):CODE.index("stage('Test')")]
 
 
-@pytest.mark.xfail(reason="low: post junit allowEmptyResults:true - a stage that never wrote its report still passes the junit step", strict=True)
 def test_junit_not_allow_empty():
     assert "allowEmptyResults: true" not in JF
 
 
 # ---------- 3. only changed components (model of the Loop guard) ----------
-def model(files, msg="feat: x", author="dev@x"):
+SHARED = re.search(r"def SHARED = \[([^\]]*)\]", JF).group(1).replace("'", "").replace(" ", "").split(",")
+
+
+def model(files, msg="feat: x", author="dev@x", have_base=True):
     if author == BOT_EMAIL or "[skip ci]" in msg:
         return "skip"
     if files and all(f.startswith("deploy/") for f in files):
         return "skip"
+    if not have_base or any(f == s or f.startswith(s) for f in files for s in SHARED):
+        return sorted(s for s, _ in SERVICES)
     return sorted(s for s, folder in SERVICES if any(f.startswith(folder + "/") for f in files))
+
+
+def test_missing_base_selects_all():
+    assert "haveBase" in JF and "SERVICES.keySet() as List" in JF
+    assert model([], have_base=False) == sorted(s for s, _ in SERVICES)
+
+
+def test_deploy_uses_same_set_as_build():
+    # every Build/Scan/Push stage is gated only by wants() (= 'changed'), and Deploy iterates 'changed'
+    assert "changeset '" not in CODE
+    assert "changed.each { s ->" in CODE[CODE.index("stage('Deploy')"):]
 
 
 def test_model_matches_jenkinsfile_source():
@@ -115,8 +127,6 @@ def test_tag_bump_commit_is_skipped(repo):
     assert model(files) == "skip" and model(["frontend/x"], m) == "skip" and model(["frontend/x"], author=BOT_EMAIL) == "skip"
 
 
-@pytest.mark.xfail(reason="medium: a change only in contracts/ (or mk/common.mk) runs no component tests and builds "
-                          "nothing, though gateway/review-api/frontend tests depend on the contracts", strict=True)
 @pytest.mark.parametrize("f", ["contracts/review-api.openapi.yaml", "mk/common.mk"])
 def test_shared_changes_test_dependents(repo, f):
     assert model(*commit(repo, [f], "change")) not in ([], "skip")

@@ -20,9 +20,10 @@ def BOT_EMAIL = 'ci-bot@ai-scan.local'
 def changed = []
 def skipBuild = false
 
-// Component filter: `changeset` OR the git-diff 'changed' list. `changeset` alone is empty on a branch's first
-// build (no previous build to diff against) and after a failed build only covers the new push, so a component
-// could silently never be built. The 'changed' list diffs against GIT_PREVIOUS_SUCCESSFUL_COMMIT (or HEAD~1).
+// Component filter: ONE list ('changed') drives Test, Build, Scan, Push and Deploy, so Deploy covers exactly what
+// was built. It diffs against GIT_PREVIOUS_SUCCESSFUL_COMMIT (or HEAD~1); if that base is missing (first build,
+// force-push, shallow clone) or a shared path changed (SHARED), every component is selected - never an empty list.
+def SHARED = ['contracts/', 'mk/', 'Makefile']
 def wants = { String svc -> !skipBuild && changed.contains(svc) }
 def img = { String svc -> "${env.REGISTRY}/ai-scan/${svc}:${env.GIT_SHA}" }
 def tarOf = { String svc -> "${env.WORKSPACE}/.images/${svc}.tar" }
@@ -65,7 +66,9 @@ pipeline {
       def msg    = sh(script: 'git log -1 --pretty=%B', returnStdout: true).trim()
       def author = sh(script: 'git log -1 --pretty=%ae', returnStdout: true).trim()
       def base   = env.GIT_PREVIOUS_SUCCESSFUL_COMMIT ?: 'HEAD~1'
-      def files  = sh(script: "git diff --name-only ${base} HEAD || true", returnStdout: true).trim().split('\n').findAll { it }
+      def haveBase = sh(script: "git cat-file -e '${base}^{commit}' 2>/dev/null && echo yes || echo no", returnStdout: true).trim() == 'yes'
+      def files  = haveBase ? sh(script: "git diff --name-only ${base} HEAD", returnStdout: true).trim().split('\n').findAll { it } : []
+      if (!haveBase) { echo "Base ${base} not found; selecting all components." }
       if (author == BOT_EMAIL) {
         skipBuild = true; echo "Last commit authored by ${BOT_NAME}; skipping."
       } else if (msg.contains('[skip ci]')) {
@@ -75,7 +78,9 @@ pipeline {
       }
       if (skipBuild) { currentBuild.result = 'NOT_BUILT'; return }
       env.GIT_SHA = sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()
-      changed = SERVICES.keySet().findAll { s -> files.any { it.startsWith("${SERVICES[s][0]}/") } } as List
+      def shared = !haveBase || files.any { f -> SHARED.any { f == it || f.startsWith(it) } }
+      changed = shared ? (SERVICES.keySet() as List)
+                       : (SERVICES.keySet().findAll { s -> files.any { it.startsWith("${SERVICES[s][0]}/") } } as List)
       echo "Changed services: ${changed}"
       sh 'mkdir -p .images reports'
     } } }
@@ -90,21 +95,23 @@ pipeline {
         } }
         stage('Contracts') { steps {
           sh 'export PATH="$PWD/.ci-venv/bin:$PATH" && make contracts && python3 -m pytest -q contracts/tests --junitxml=reports/contracts-junit.xml'
+          // Pipeline/manifest checks (ci/tests): Jenkinsfile gates, K3s overlays, make exit codes, db-parity drift (PGHOST sidecar).
+          sh 'export PATH="$PWD/.ci-venv/bin:$PATH" && python3 -m pytest -q ci/tests --junitxml=reports/ci-junit.xml'
         } }
         stage('frontend') {
-          when { anyOf { changeset 'frontend/**'; expression { wants('frontend') } } }
+          when { expression { wants('frontend') } }
           steps { dir('frontend') {
             sh 'CI=true npm ci --no-audit --no-fund'
-            sh 'CI=true npm test -- --reporter=default --reporter=junit --outputFile.junit=reports/junit.xml'
+            sh 'CI=true npm test -- --reporter=default --reporter=junit --outputFile.junit=$WORKSPACE/reports/frontend-junit.xml'
             sh 'CI=true npm run build'
           } }
         }
         stage('gateway') {
-          when { anyOf { changeset 'gateway/**'; expression { wants('gateway') } } }
+          when { expression { wants('gateway') } }
           steps { dir('gateway') { sh 'PATH="$WORKSPACE/.ci-venv/bin:$PATH" PYTEST_ADDOPTS="--junitxml=$WORKSPACE/reports/gateway-junit.xml" make test' } }
         }
         stage('review-api') {
-          when { anyOf { changeset 'review-api/**'; expression { wants('review-api') } } }
+          when { expression { wants('review-api') } }
           steps {
             dir('review-api') { sh 'PATH="$WORKSPACE/.ci-venv/bin:$PATH" PYTEST_ADDOPTS="--junitxml=$WORKSPACE/reports/review-api-junit.xml" make test' }
             sh 'export PATH="$PWD/.ci-venv/bin:$PATH" && ci/schemathesis.sh 50'   // review-api vs contracts/review-api.openapi.yaml
@@ -113,7 +120,7 @@ pipeline {
           }
         }
         stage('scanner-worker') {
-          when { anyOf { changeset 'scanner-worker/**'; expression { wants('scanner-worker') } } }
+          when { expression { wants('scanner-worker') } }
           steps { dir('scanner-worker') { sh 'AISCAN_WORKER_PYTHON=$WORKSPACE/.ci-venv-worker/bin/python PATH="$WORKSPACE/.ci-venv-worker/bin:$PATH" PYTEST_ADDOPTS="--junitxml=$WORKSPACE/reports/scanner-worker-junit.xml" make test' } }
         }
       }
@@ -122,30 +129,30 @@ pipeline {
     stage('Build') {
       when { expression { !skipBuild && changed } }
       stages {
-        stage('frontend')       { when { anyOf { changeset 'frontend/**';       expression { wants('frontend') } } }       steps { script { kanikoBuild('frontend') } } }
-        stage('gateway')        { when { anyOf { changeset 'gateway/**';        expression { wants('gateway') } } }        steps { script { kanikoBuild('gateway') } } }
-        stage('review-api')     { when { anyOf { changeset 'review-api/**';     expression { wants('review-api') } } }     steps { script { kanikoBuild('review-api') } } }
-        stage('scanner-worker') { when { anyOf { changeset 'scanner-worker/**'; expression { wants('scanner-worker') } } } steps { script { kanikoBuild('scanner-worker') } } }
+        stage('frontend')       { when { expression { wants('frontend') } }       steps { script { kanikoBuild('frontend') } } }
+        stage('gateway')        { when { expression { wants('gateway') } }        steps { script { kanikoBuild('gateway') } } }
+        stage('review-api')     { when { expression { wants('review-api') } }     steps { script { kanikoBuild('review-api') } } }
+        stage('scanner-worker') { when { expression { wants('scanner-worker') } } steps { script { kanikoBuild('scanner-worker') } } }
       }
     }
 
     stage('Scan') {
       when { expression { !skipBuild && changed } }
       stages {
-        stage('frontend')       { when { anyOf { changeset 'frontend/**';       expression { wants('frontend') } } }       steps { script { trivyScan('frontend') } } }
-        stage('gateway')        { when { anyOf { changeset 'gateway/**';        expression { wants('gateway') } } }        steps { script { trivyScan('gateway') } } }
-        stage('review-api')     { when { anyOf { changeset 'review-api/**';     expression { wants('review-api') } } }     steps { script { trivyScan('review-api') } } }
-        stage('scanner-worker') { when { anyOf { changeset 'scanner-worker/**'; expression { wants('scanner-worker') } } } steps { script { trivyScan('scanner-worker') } } }
+        stage('frontend')       { when { expression { wants('frontend') } }       steps { script { trivyScan('frontend') } } }
+        stage('gateway')        { when { expression { wants('gateway') } }        steps { script { trivyScan('gateway') } } }
+        stage('review-api')     { when { expression { wants('review-api') } }     steps { script { trivyScan('review-api') } } }
+        stage('scanner-worker') { when { expression { wants('scanner-worker') } } steps { script { trivyScan('scanner-worker') } } }
       }
     }
 
     stage('Push') {
       when { allOf { branch 'main'; expression { !skipBuild && changed } } }
       stages {
-        stage('frontend')       { when { anyOf { changeset 'frontend/**';       expression { wants('frontend') } } }       steps { script { cranePush('frontend') } } }
-        stage('gateway')        { when { anyOf { changeset 'gateway/**';        expression { wants('gateway') } } }        steps { script { cranePush('gateway') } } }
-        stage('review-api')     { when { anyOf { changeset 'review-api/**';     expression { wants('review-api') } } }     steps { script { cranePush('review-api') } } }
-        stage('scanner-worker') { when { anyOf { changeset 'scanner-worker/**'; expression { wants('scanner-worker') } } } steps { script { cranePush('scanner-worker') } } }
+        stage('frontend')       { when { expression { wants('frontend') } }       steps { script { cranePush('frontend') } } }
+        stage('gateway')        { when { expression { wants('gateway') } }        steps { script { cranePush('gateway') } } }
+        stage('review-api')     { when { expression { wants('review-api') } }     steps { script { cranePush('review-api') } } }
+        stage('scanner-worker') { when { expression { wants('scanner-worker') } } steps { script { cranePush('scanner-worker') } } }
       }
     }
 
@@ -179,8 +186,8 @@ pipeline {
   }
   post {
     always {
-      junit allowEmptyResults: true, testResults: 'frontend/reports/junit.xml'
-      junit allowEmptyResults: true, testResults: 'reports/*-junit.xml'
+      // Contracts always writes reports/contracts-junit.xml, so an empty match means a stage lost its report.
+      script { if (!skipBuild) { junit allowEmptyResults: false, testResults: 'reports/*-junit.xml' } }
     }
   }
 }
