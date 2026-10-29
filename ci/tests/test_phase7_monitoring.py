@@ -37,7 +37,6 @@ def test_all_alerts_fire_and_clear(tmp_path):
 
 
 @needs_promtool
-@pytest.mark.xfail(strict=True, reason="ReconcilerNotRunning silent when result=\"ok\" series never existed (labels not pre-initialized)")
 def test_reconciler_all_errors_fires(tmp_path):
     _rules(tmp_path)
     r = _run(tmp_path, "gaps_test.yaml")

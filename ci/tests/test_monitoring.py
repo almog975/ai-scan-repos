@@ -10,7 +10,7 @@ SRC = [ROOT / "review-api/app/metrics.py", ROOT / "gateway/app/main.py", ROOT / 
 # exporters outside this repo (Prometheus itself, kube-state-metrics)
 EXTERNAL = {"up", "kube_pod_container_status_restarts_total"}
 FUNCS = {"max", "sum", "by", "rate", "increase", "histogram_quantile", "clamp_min", "and", "or", "on", "le",
-         "absent", "humanize", "without"}
+         "absent", "humanize", "without", "count", "vector"}
 HIGH_CARD = {"review_id", "id", "user", "user_id", "repo", "repo_url", "commit_sha", "url"}
 
 
@@ -24,6 +24,7 @@ def defined_metrics():
 
 
 def referenced(expr):
+    expr = re.sub(r'#[^\n]*', '', expr)  # PromQL comments
     expr = re.sub(r'\{[^}]*\}', '', re.sub(r'"[^"]*"', '', expr))
     expr = re.sub(r'\[[^\]]*\]', '', expr)
     words = set(re.findall(r'\b[a-z_][a-z0-9_]*\b', expr))
