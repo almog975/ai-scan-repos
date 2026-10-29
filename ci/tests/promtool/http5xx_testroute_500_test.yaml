@@ -1,0 +1,15 @@
+rule_files: [rules.yaml]
+tests:
+  # a crash (500) in the provider test endpoint is our bug, not the provider's 502: should page
+  - interval: 1m
+    input_series:
+      - {series: 'http_request_duration_seconds_count{namespace="ai-scan-repos",job="review-api",method="POST",route="/admin/ai-providers/{id}/test",status="500"}', values: '0+5x60'}
+      - {series: 'http_request_duration_seconds_count{namespace="ai-scan-repos",job="review-api",method="GET",route="/x",status="200"}', values: '0+10x60'}
+    alert_rule_test:
+      - eval_time: 40m
+        alertname: AIScanHTTP5xxHigh
+        exp_alerts:
+          - exp_labels: {severity: warning, job: review-api}
+            exp_annotations:
+              summary: "review-api: more than 5% of HTTP requests return 5xx"
+              runbook_url: https://github.com/almog975/ai-scan-repos/blob/main/docs/monitoring.md#alerts

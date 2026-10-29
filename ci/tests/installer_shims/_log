@@ -1,0 +1,2 @@
+#!/bin/bash
+echo "aws $*" >> "$SHIM_LOG"; case "$*" in *get-login-password*) echo ECRTOKEN_SECRET_xyz;; *describe-repositories*) exit 254;; esac

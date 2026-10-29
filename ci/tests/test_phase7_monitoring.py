@@ -102,3 +102,18 @@ def test_http5xx_ignores_provider_test_502(tmp_path):
     _rules(tmp_path)
     r = _run(tmp_path, "http5xx_provider_test.yaml")
     assert r.returncode == 0, r.stdout + r.stderr
+
+
+@needs_promtool
+def test_http5xx_other_admin_routes_still_page(tmp_path):
+    _rules(tmp_path)
+    r = _run(tmp_path, "http5xx_admin_test.yaml")
+    assert r.returncode == 0, r.stdout + r.stderr
+
+
+@needs_promtool
+@pytest.mark.xfail(strict=True, reason="prometheusrules.yaml AIScanHTTP5xxHigh excludes every status on the provider-test route, not just 502")
+def test_http5xx_test_route_500_pages(tmp_path):
+    _rules(tmp_path)
+    r = _run(tmp_path, "http5xx_testroute_500_test.yaml")
+    assert r.returncode == 0, r.stdout + r.stderr
