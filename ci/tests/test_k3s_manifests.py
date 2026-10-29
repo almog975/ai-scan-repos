@@ -114,22 +114,17 @@ def test_scanner_egress_restricted(k3s):
         assert rule.get("to"), "egress rule without peers = anywhere"
 
 
-@pytest.mark.xfail(reason="medium: no default-deny/ingress NetworkPolicy; postgres (and review-api, gateway) accept "
-                          "traffic from any pod in the cluster", strict=True)
 def test_postgres_ingress_restricted(k3s):
     np = [d["spec"] for d in k3s if d["kind"] == "NetworkPolicy" and "Ingress" in d["spec"].get("policyTypes", [])]
     assert any(p["podSelector"] in ({}, {"matchLabels": {"app": "postgres"}}) for p in np)
 
 
-@pytest.mark.xfail(reason="low: gateway FORWARDED_ALLOW_IPS='*' trusts X-Forwarded-For from any peer (per-IP auth "
-                          "rate limit spoofable); should be the Traefik pod CIDR", strict=True)
 def test_gateway_forwarded_allow_ips_not_wildcard(k3s):
     gw = next(ps for d, ps in pod_specs(k3s) if d["metadata"]["name"] == "gateway")
     env = {e["name"]: e.get("value") for e in gw["containers"][0].get("env", [])}
     assert env.get("FORWARDED_ALLOW_IPS") != "*"
 
 
-@pytest.mark.xfail(reason="low: postgres pod mounts a service-account token it never uses (automountServiceAccountToken unset)", strict=True)
 def test_postgres_no_sa_token(k3s):
     pg = next(ps for d, ps in pod_specs(k3s) if d["metadata"]["name"] == "postgres")
     assert pg.get("automountServiceAccountToken") is False

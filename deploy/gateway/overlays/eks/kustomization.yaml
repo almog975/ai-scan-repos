@@ -16,4 +16,6 @@ patches:
           spec:
             containers:
               - name: gateway
-                env: [{name: PUBLIC_URL, value: "https://ai-scan.example.com"}]
+                env:
+                  - {name: PUBLIC_URL, value: "https://ai-scan.example.com"}
+                  - {name: FORWARDED_ALLOW_IPS, value: "10.40.0.0/16"}   # VPC CIDR (VPC CNI pod IPs), infra/installer/terraform/eks
