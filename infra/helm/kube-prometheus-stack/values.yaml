@@ -7,6 +7,11 @@ prometheus:
     serviceMonitorSelector:
       matchLabels: {release: kube-prometheus-stack}
     serviceMonitorNamespaceSelector: {}
+    # PrometheusRules (deploy/platform/base/prometheusrules.yaml) use the same release label
+    ruleSelectorNilUsesHelmValues: false
+    ruleSelector:
+      matchLabels: {release: kube-prometheus-stack}
+    ruleNamespaceSelector: {}
     resources: {requests: {cpu: 200m, memory: 512Mi}, limits: {memory: 2Gi}}
     storageSpec:
       volumeClaimTemplate:
@@ -23,6 +28,16 @@ alertmanager:
           accessModes: [ReadWriteOnce]
           resources: {requests: {storage: 1Gi}}
 grafana:
+  # dashboards ship as ConfigMaps labelled grafana_dashboard=1 next to the app (docs/monitoring.md).
+  # Only the app namespace is watched (plus the chart's own), not ALL: keeps the sidecar's RBAC narrow.
+  sidecar:
+    dashboards:
+      enabled: true
+      label: grafana_dashboard
+      labelValue: "1"
+      searchNamespace: [ai-scan-repos]
+      folderAnnotation: grafana_folder
+      provider: {foldersFromFilesStructure: true}
   admin:
     existingSecret: grafana-admin   # keys: admin-user, admin-password
   persistence:
@@ -41,4 +56,5 @@ kubeEtcd: {enabled: false}
 kubeControllerManager: {enabled: false}
 kubeScheduler: {enabled: false}
 kubeProxy: {enabled: false}
-# App ServiceMonitors (review-api :8001, gateway :8000) live in deploy/base/servicemonitors.yaml
+# App ServiceMonitors (review-api :8001, gateway :8000), PrometheusRules and the Grafana dashboard live in
+# deploy/platform/base (servicemonitors.yaml, prometheusrules.yaml, dashboards/). See docs/monitoring.md.
