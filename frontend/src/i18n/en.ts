@@ -7,6 +7,7 @@ export const en = {
   logout: 'Log out',
   lang_switch: 'Language',
   back: 'Back',
+  version: 'Version',
   loading: 'Loading…',
   // login
   login_title: 'Sign in',

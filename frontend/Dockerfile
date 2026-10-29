@@ -3,10 +3,15 @@ WORKDIR /src
 COPY package.json package-lock.json ./
 RUN npm ci --no-audit --no-fund
 COPY . .
+# Shown in the footer. Jenkins: --build-arg VITE_APP_VERSION=<git sha> (same as the image tag).
+ARG VITE_APP_VERSION=dev
+ENV VITE_APP_VERSION=$VITE_APP_VERSION
 # Unit tests run in Jenkins (vitest JUnit report); the image only builds.
 RUN npm run build
 
 FROM nginxinc/nginx-unprivileged:1.27-alpine
+ARG VITE_APP_VERSION=dev
+LABEL org.opencontainers.image.revision=$VITE_APP_VERSION
 USER 0
 RUN apk upgrade --no-cache && rm -f /etc/nginx/conf.d/default.conf
 COPY nginx.conf /etc/nginx/nginx.conf.template

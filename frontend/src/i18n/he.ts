@@ -9,6 +9,7 @@ export const he: Record<keyof typeof en, string> = {
   logout: 'התנתקות',
   lang_switch: 'שפה',
   back: 'חזרה',
+  version: 'גרסה',
   loading: 'טוען…',
   login_title: 'כניסה',
   login_lead: 'סריקת מאגר GitHub עם Semgrep,‏ Gitleaks,‏ Trivy ובודק AI.',

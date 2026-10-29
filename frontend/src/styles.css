@@ -115,3 +115,5 @@ progress { inline-size: 6rem; vertical-align: middle; }
   main { padding: 1rem; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+.appfooter { margin-block-start: 2rem; padding-block-start: .75rem; border-block-start: 1px solid var(--border); }
+.badge.version { font-weight: 500; }
