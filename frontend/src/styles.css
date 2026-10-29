@@ -27,6 +27,7 @@ a { color: var(--link); }
 #root > div, .layout { display: flex; min-block-size: 100vh; }
 .sidebar { inline-size: 14rem; flex: none; background: var(--surface); color: var(--text); border-inline-end: 1px solid var(--border); padding: 1rem; display: flex; flex-direction: column; gap: .5rem; }
 .sidebar a, .sidebar button { color: var(--text); }
+.sidebar ul { list-style: none; margin: 0; padding: 0; }
 .brand { font-weight: 700; font-size: 1.1rem; margin-block-end: 1rem; }
 .navitem { display: block; padding: .5rem .75rem; border-radius: var(--radius); text-decoration: none; }
 .navitem[aria-current="page"] { background: var(--surface-2); box-shadow: none; border-inline-start: 3px solid var(--accent); font-weight: 600; }
