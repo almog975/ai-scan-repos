@@ -88,7 +88,7 @@ NetworkPolicy is widened. `kubectl port-forward` to :8002 while a scan runs for 
 | `AIScanTargetDown` | `up{job=~"review-api|gateway"} == 0` for 5m | critical |
 | `AIScanPodRestarting` | > 2 container restarts in 15m (kube-state-metrics) | warning |
 | `AIScanAIProviderErrors` | > 50% of AI calls of a `kind` failed in 30m (min 5 calls, plain ratio), for 15m | warning |
-| `AIScanHTTP5xxHigh` | > 5% 5xx per job over 10m, for 10m | warning |
+| `AIScanHTTP5xxHigh` | > 5% 5xx per job over 10m, for 10m; `/admin/ai-providers/{id}/test` and `/admin/ai-providers/test` are excluded (their 502 is the contract answer for an unreachable provider) | warning |
 
 Stuck / no-heartbeat → [runbooks/stuck-review.md](runbooks/stuck-review.md). Others: check the pod logs
 (`kubectl -n ai-scan-repos logs deploy/review-api`), `kubectl describe pod`, and the dashboard panels for the metric.

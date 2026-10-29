@@ -1,0 +1,21 @@
+#!/bin/bash
+# stateful fake kubectl: secrets live in $KSTATE/<ns>/<name> (content = sha of data)
+echo "kubectl $*" >> "${SHIM_LOG:?}"
+S="${KSTATE:?}"; ns=default; args=()
+while [ $# -gt 0 ]; do case "$1" in -n) ns=$2; shift 2;; *) args+=("$1"); shift;; esac; done
+set -- "${args[@]}"
+[ -n "$SHIM_KUBECTL_FAIL" ] && [[ "$*" == *$SHIM_KUBECTL_FAIL* ]] && { echo "fake kubectl: forced failure" >&2; exit 1; }
+case "$1 $2" in
+  "get secret") [ -f "$S/$ns/$3" ] || { echo "Error from server (NotFound): secrets \"$3\" not found" >&2; exit 1; } ;;
+  "create secret")
+     name=$4; [ "$2 $3" = "secret docker-registry" ] && name=$4
+     data=""; for a in "$@"; do case $a in --from-env-file=*) data+=$(cat "${a#*=}");; --from-file=*) data+=$(cat "${a#*=*=}" 2>/dev/null || cat "${a#*=}");; esac; done
+     printf 'kind: Secret\nmetadata: {name: %s, namespace: %s}\nsha: %s\n' "$name" "$ns" "$(printf %s "$data" | sha256sum | cut -c1-16)" ;;
+  "apply -f")
+     if [ "$3" = "-" ]; then y=$(cat); if [[ "$y" == *"kind: Secret"* ]]; then
+       n=$(sed -n 's/.*name: \([^,]*\),.*/\1/p' <<<"$y"); nn=$(sed -n 's/.*namespace: \([^}]*\)}.*/\1/p' <<<"$y"); sha=$(sed -n 's/^sha: //p' <<<"$y")
+       mkdir -p "$S/$nn"; old=$(cat "$S/$nn/$n" 2>/dev/null); echo "$sha" > "$S/$nn/$n"
+       [ "$old" = "$sha" ] && echo "secret/$n unchanged" || echo "secret/$n configured"; echo "SECRET $nn/$n ${old:-NEW}->$sha" >> "$SHIM_LOG"; fi; fi ;;
+  "config current-context") echo fake-ctx ;;
+  *) : ;;
+esac

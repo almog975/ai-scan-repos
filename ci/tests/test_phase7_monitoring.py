@@ -72,3 +72,47 @@ def test_servicemonitors_match_services():
         ports = {p.get("name") for s in hit for p in s["spec"]["ports"]}
         for ep in sm["spec"]["endpoints"]:
             assert ep["port"] in ports, (sel, ep)
+
+
+@needs_promtool
+def test_r2_edge_cases(tmp_path):
+    """pre-init flat-0 ok series still pages; silent when review-api exports nothing; AI min volume (4 no, sustained yes)."""
+    _rules(tmp_path)
+    r = _run(tmp_path, "r2_edge_test.yaml")
+    assert r.returncode == 0, r.stdout + r.stderr
+
+
+def test_gaps_test_still_asserts_firing():
+    t = yaml.safe_load((HERE / "gaps_test.yaml").read_text())["tests"][0]
+    assert all('result="ok"' not in s["series"] for s in t["input_series"])
+    case = [c for c in t["alert_rule_test"] if c["alertname"] == "AIScanReconcilerNotRunning"]
+    assert case and all(c["exp_alerts"] for c in case), "all-errors case must expect the alert to fire"
+
+
+def test_review_attempts_used_rename_consistent():
+    for p in ["deploy/platform/base/dashboards/ai-scan-repos.json", "deploy/platform/base/prometheusrules.yaml",
+              "docs/monitoring.md", "review-api/app/metrics.py", "review-api/tests/test_metrics.py"]:
+        src = (ROOT / p).read_text()
+        assert not re.search(r"review_attempts_(sum|count|bucket)\b", src), p
+        assert not re.search(r"[\"`]review_attempts[\"`]", src), p
+
+
+@needs_promtool
+def test_http5xx_ignores_provider_test_502(tmp_path):
+    _rules(tmp_path)
+    r = _run(tmp_path, "http5xx_provider_test.yaml")
+    assert r.returncode == 0, r.stdout + r.stderr
+
+
+@needs_promtool
+def test_http5xx_other_admin_routes_still_page(tmp_path):
+    _rules(tmp_path)
+    r = _run(tmp_path, "http5xx_admin_test.yaml")
+    assert r.returncode == 0, r.stdout + r.stderr
+
+
+@needs_promtool
+def test_http5xx_test_route_500_pages(tmp_path):
+    _rules(tmp_path)
+    r = _run(tmp_path, "http5xx_testroute_500_test.yaml")
+    assert r.returncode == 0, r.stdout + r.stderr

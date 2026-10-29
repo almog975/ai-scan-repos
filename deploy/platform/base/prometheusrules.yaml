@@ -87,8 +87,10 @@ spec:
             runbook_url: https://github.com/almog975/ai-scan-repos/blob/main/docs/monitoring.md#alerts
         - alert: AIScanHTTP5xxHigh
           expr: |
-            sum by (job) (rate(http_request_duration_seconds_count{namespace="ai-scan-repos", status=~"5.."}[10m]))
-              / clamp_min(sum by (job) (rate(http_request_duration_seconds_count{namespace="ai-scan-repos"}[10m])), 1e-9) > 0.05
+            # only the contract's 502 from AI provider connection tests (provider down) is excluded; any other 5xx
+            # on that route (e.g. 500) is ours and counts
+            sum by (job) (rate(http_request_duration_seconds_count{namespace="ai-scan-repos", status=~"5.."}[10m]) unless rate(http_request_duration_seconds_count{namespace="ai-scan-repos", status="502", route=~".*/admin/ai-providers/(\\{id\\}/)?test"}[10m]))
+              / clamp_min(sum by (job) (rate(http_request_duration_seconds_count{namespace="ai-scan-repos"}[10m]) unless rate(http_request_duration_seconds_count{namespace="ai-scan-repos", status="502", route=~".*/admin/ai-providers/(\\{id\\}/)?test"}[10m])), 1e-9) > 0.05
           for: 10m
           labels: {severity: warning}
           annotations:
