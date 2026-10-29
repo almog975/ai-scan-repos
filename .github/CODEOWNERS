@@ -9,3 +9,5 @@
 #     into deploy/<svc>/overlays/<target>/kustomization.yaml (tagged [skip ci]) ---
 /Jenkinsfile @almog975
 /deploy/argocd/ @almog975
+/deploy/jenkins/ @almog975
+/ci/ @almog975

@@ -11,6 +11,11 @@ for o in deploy/*/overlays/*/ infra/*/overlays/*/; do
   if kubeconform -strict -summary -ignore-missing-schemas -schema-location default -schema-location "$CATALOG" "$out" | sed "s|^|$o: |"; then :; else rc=1; fi
   rm -f "$out"
 done
+out=$(mktemp --suffix=.yaml)
+if kustomize build deploy/jenkins/manifests > "$out"; then
+  kubeconform -strict -summary -schema-location default "$out" | sed 's|^|deploy/jenkins/manifests: |' || rc=1
+else echo "FAIL kustomize build deploy/jenkins/manifests"; rc=1; fi
+rm -f "$out"
 for f in deploy/argocd/root-app.yaml deploy/argocd/apps/*.yaml infra/registry/*.yaml infra/argocd/appproject-*.yaml; do
   kubeconform -strict -ignore-missing-schemas -schema-location default -schema-location "$CATALOG" "$f" || rc=1
 done
