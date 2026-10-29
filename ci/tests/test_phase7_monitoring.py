@@ -112,7 +112,6 @@ def test_http5xx_other_admin_routes_still_page(tmp_path):
 
 
 @needs_promtool
-@pytest.mark.xfail(strict=True, reason="prometheusrules.yaml AIScanHTTP5xxHigh excludes every status on the provider-test route, not just 502")
 def test_http5xx_test_route_500_pages(tmp_path):
     _rules(tmp_path)
     r = _run(tmp_path, "http5xx_testroute_500_test.yaml")
