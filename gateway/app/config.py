@@ -35,6 +35,10 @@ class Settings(BaseSettings):
     #  - push payloads carry repository.pushed_at (inside the signed body); one older than the window is
     #    rejected, so once a hash expires the old body is already too old. Other events rely on the hash.
     webhook_replay_window_seconds: int = 86400
+    # A "pending" claim (delivery id or payload hash) older than this belongs to a gateway that died mid-processing:
+    # a new delivery may take it over atomically, and the purge removes it. Keep it above the longest processing time
+    # (review-api call timeout 20 s).
+    webhook_pending_reclaim_seconds: int = 300
 
     def problems(self) -> list[str]:
         """Config errors that make a production start unsafe. Empty list = OK. Config only comes from env."""
