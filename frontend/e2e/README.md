@@ -10,3 +10,6 @@ incl. partial, SSE progress) with a test-only `/__mock/set/<id>` control API.
 
 Strict xfail = UI/header feature not landed yet (SSE, partial report, cancel, retry, 409 error UI,
 CSP style unsafe-inline, base-uri/form-action/object-src, Permissions-Policy, X-XSS-Protection).
+
+Full stack (opt-in): `AISCAN_FULLSTACK=1 AISCAN_WORKER_PYTHON=$(which python) python -m pytest test_fullstack.py` runs the SPA under the
+nginx.conf headers -> real gateway (fake GitHub OAuth) -> review-api (uvicorn+sqlite, LocalLauncher) -> worker with phase3 shims.

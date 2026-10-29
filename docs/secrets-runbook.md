@@ -4,10 +4,10 @@ All secrets live in ns `ai-scan-repos` unless noted.
 
 | Secret | Keys | Used by |
 |---|---|---|
-| `gateway-secrets` | GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET, SESSION_KEY, WEBHOOK_SECRET | gateway |
-| `db-secrets` | POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB, DATABASE_URL | postgres, review-api |
+| `gateway-secrets` | GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET, GITHUB_WEBHOOK_SECRET | gateway |
+| `db-secrets` | POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB, DATABASE_URL | postgres, review-api, gateway (DATABASE_URL only) |
 | `ai-keys-master` | AI_KEYS_ENCRYPTION_KEY (AES-256-GCM, 32 bytes hex/base64) | review-api |
-| `scanner-secrets` | INTERNAL_API_TOKEN, AI_PROVIDER, AI_MODEL, AI_BASE_URL, AI_API_KEY (optional defaults) | scanner Jobs, review-api (token) |
+| `scanner-secrets` | INTERNAL_API_TOKEN, AI_PROVIDER, AI_MODEL, AI_BASE_URL, AI_API_KEY (optional defaults) | scanner Jobs; review-api and gateway read only INTERNAL_API_TOKEN (>= 32 chars) |
 | `grafana-admin` (ns monitoring) | admin-user, admin-password | Grafana |
 | `registry-htpasswd` (ns registry) | htpasswd | registry (TODO) |
 | `registry-tls` (ns registry) | tls.crt, tls.key | Traefik |

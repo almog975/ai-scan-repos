@@ -12,7 +12,7 @@ from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse
 
 ACTIVE = {"queued", "running", "retrying", "stuck"}
-PAUSABLE = ACTIVE
+PAUSABLE = {"running"}  # API: pause only from running
 RESUMABLE = {"paused", "stuck"}
 CANCELLABLE = {"queued", "running", "paused", "stuck", "retrying"}
 
