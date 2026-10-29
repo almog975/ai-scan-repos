@@ -76,3 +76,17 @@ docs/runbooks/demo-script.md cannot run on this box as written. It needs app ima
 Image scans, the demo on k3s/EKS with real images, the Jenkins/Argo CD stages, the live browser XSS check of report markdown, and the registries.yaml mirror on a real node (a documented manual step).
 
 One review-api request in an early pentest attempt went to the public api.github.com (an unauthenticated repo lookup for a nonexistent fixture repo) before I injected a fake GitHub. It was not an attack. All later runs were fully local.
+
+## Resolution (Coder, feat/phase-9-hardening after 777ceed)
+
+| # | Fix |
+|---|---|
+| 1 | review-api `cryptography==50.0.2` (>= 50.0.0). |
+| 2 | Legacy web wizard removed (infra/installer/Dockerfile, app/, requirements.txt; docs/infra-README.md:14 now points at aiscan-install.sh). Nothing depended on it. |
+| 3 | frontend dev deps: vite 6.4.5, vitest + @vitest/coverage-v8 5.0.5 (tinypool 2.x). `npm audit`: 0. Build image and CI agent moved to node 22 (vitest 5 needs >= 22.12). |
+| 8 | Webhook: sha256(body) dedupe with a TTL (`WEBHOOK_REPLAY_WINDOW_SECONDS`, default 86400) plus a `repository.pushed_at` window for push events (pushed_at is inside the signed body; GitHub has no signed timestamp header). Pentest case promoted from xfail. |
+| 9 | `/api/*` limiter keyed by user only for a valid session; otherwise by client IP. Pentest case promoted from xfail. |
+| 10 | `AI_EGRESS_CIDRS` overlapping POD_CIDR/SERVICE_CIDR (per-overlay defaults) is rejected; 10.0.0.0/8 fails. |
+| 12 | test_phase5_k3s autouse clean env. |
+
+`trivy fs --scanners vuln --include-dev-deps --severity CRITICAL,HIGH .`: 0 in every lockfile/requirements target (777ceed: 12).
