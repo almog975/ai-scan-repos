@@ -1,0 +1,9 @@
+# EBS gp3 (needs the aws-ebs-csi-driver addon). Used by jenkins-home.
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata: {name: gp3}
+provisioner: ebs.csi.aws.com
+parameters: {type: gp3, encrypted: "true"}
+volumeBindingMode: WaitForFirstConsumer
+reclaimPolicy: Retain
+allowVolumeExpansion: true

@@ -24,13 +24,21 @@ spec:
           ports: [{name: http, containerPort: 5000}]
           env:
             - {name: REGISTRY_STORAGE_DELETE_ENABLED, value: "true"}
-            # Auth: mount htpasswd secret `registry-htpasswd` and set REGISTRY_AUTH=htpasswd (TODO)
+            # htpasswd auth: Secret registry-htpasswd (key htpasswd), created per docs/registry-auth-runbook.md
+            - {name: REGISTRY_AUTH, value: htpasswd}
+            - {name: REGISTRY_AUTH_HTPASSWD_REALM, value: ai-scan-registry}
+            - {name: REGISTRY_AUTH_HTPASSWD_PATH, value: /auth/htpasswd}
           securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
           resources: {requests: {cpu: 50m, memory: 64Mi}, limits: {cpu: 500m, memory: 512Mi}}
           readinessProbe: {httpGet: {path: /, port: 5000}}
           livenessProbe: {httpGet: {path: /, port: 5000}}
-          volumeMounts: [{name: data, mountPath: /var/lib/registry}]
-      volumes: [{name: data, persistentVolumeClaim: {claimName: registry-data}}]
+          volumeMounts:
+            - {name: data, mountPath: /var/lib/registry}
+            - {name: auth, mountPath: /auth, readOnly: true}
+      volumes:
+        - {name: data, persistentVolumeClaim: {claimName: registry-data}}
+        - name: auth
+          secret: {secretName: registry-htpasswd, items: [{key: htpasswd, path: htpasswd}]}
 ---
 apiVersion: v1
 kind: Service

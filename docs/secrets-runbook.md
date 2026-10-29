@@ -9,7 +9,11 @@ All secrets live in ns `ai-scan-repos` unless noted.
 | `ai-keys-master` | AI_KEYS_ENCRYPTION_KEY (AES-256-GCM, 32 bytes hex/base64) | review-api |
 | `scanner-secrets` | INTERNAL_API_TOKEN, AI_PROVIDER, AI_MODEL, AI_BASE_URL, AI_API_KEY (optional defaults) | scanner Jobs; review-api and gateway read only INTERNAL_API_TOKEN (>= 32 chars) |
 | `grafana-admin` (ns monitoring) | admin-user, admin-password | Grafana |
-| `registry-htpasswd` (ns registry) | htpasswd | registry (TODO) |
+| `registry-htpasswd` (ns registry) | htpasswd (bcrypt, push + pull users) | registry (docs/registry-auth-runbook.md) |
+| `regcred` (ns ai-scan-repos, docker-registry) | .dockerconfigjson (pull user) | SAs default, review-api, scanner; scanner Job template |
+| `registry-push` (ns jenkins, docker-registry, optional) | .dockerconfigjson (push user) | kaniko/buildkit agents only |
+| Jenkins credential `registry-creds` | username/password (push user) | Jenkinsfile docker login |
+| `ai-scan-tls` / `jenkins-tls` / `argocd-ingress-tls` | tls.crt, tls.key | Traefik (docs/tls-runbook.md) |
 | `registry-tls` (ns registry) | tls.crt, tls.key | Traefik |
 
 Example: `kubectl -n ai-scan-repos create secret generic ai-keys-master --from-literal=AI_KEYS_ENCRYPTION_KEY="$(openssl rand -hex 32)"`

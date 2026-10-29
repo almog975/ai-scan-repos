@@ -10,6 +10,7 @@ components: platform (namespaced only: Traefik IngressRoute + middlewares, repor
             scanner-worker (ConfigMap scanner-job-template only; overlays generate ConfigMap scanner-image)
 infra/bootstrap/{base,overlays/{local,k3s,eks}}  cluster-scoped: 5 Namespaces, PV ai-scan-reports-pv + SC reports-local (k3s),
                     SC efs-sc (eks). Not Argo CD-managed; installer runs kubectl apply -k before Argo CD.
+infra/ingress/{base,overlays/{local,k3s,eks}}  IngressRoutes jenkins.<domain> (ns jenkins) + argocd.<domain> (ns argocd); installer-applied.
 infra/registry      registry:2 (ns registry) + K3s registries.yaml example
 infra/helm/kube-prometheus-stack   values + install.sh
 infra/installer     wizard image + install scripts; infra/installer/terraform/eks
