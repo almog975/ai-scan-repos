@@ -5,6 +5,7 @@ S="${KSTATE:?}"; ns=default; args=()
 while [ $# -gt 0 ]; do case "$1" in -n) ns=$2; shift 2;; *) args+=("$1"); shift;; esac; done
 set -- "${args[@]}"
 [ -n "$SHIM_KUBECTL_FAIL" ] && [[ "$*" == *$SHIM_KUBECTL_FAIL* ]] && { echo "fake kubectl: forced failure" >&2; exit 1; }
+[ -n "$SHIM_GET_ERR" ] && [ "$1" = get ] && { echo "$SHIM_GET_ERR" >&2; exit 1; }
 case "$1 $2" in
   "get secret") [ -f "$S/$ns/$3" ] || { echo "Error from server (NotFound): secrets \"$3\" not found" >&2; exit 1; } ;;
   "create secret")
