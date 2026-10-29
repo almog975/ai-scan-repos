@@ -24,7 +24,7 @@ flowchart LR
 
 ## 1. Jenkins: build, test, scan
 
-Triggered by `githubPush()` (webhook relayed by smee.io). Parameter `TARGET` = `k3s` (default) | `local` | `eks`; registry host per target, e.g. `registry.ai-scan.127.0.0.1.nip.io` for k3s.
+Triggered by `githubPush()` (webhook relayed by smee.io). Parameter `TARGET` = `k3s` (default) | `local` | `eks`; registry host per target, e.g. `registry.registry:5000` for k3s (in-cluster Service, plain HTTP; crane push uses `--insecure`).
 
 | Stage | What it does |
 |---|---|

@@ -92,7 +92,7 @@ sync policy; disable auto-sync on `ai-scan-root` too for the duration, or prefer
 
 ## Demo script
 ```bash
-C=gateway; R=registry.ai-scan.127.0.0.1.nip.io
+C=gateway; R=registry.registry:5000
 BAD=$(git log origin/main --format=%h -1 -- deploy/$C/overlays/k3s)
 git show --stat $BAD
 git switch -c rollback/$C-$BAD origin/main && git revert --no-edit $BAD

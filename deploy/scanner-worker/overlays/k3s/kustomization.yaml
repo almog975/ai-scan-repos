@@ -7,7 +7,7 @@ generatorOptions:
 configMapGenerator:
   - name: scanner-image
     literals:
-      - SCANNER_IMAGE=registry.ai-scan.127.0.0.1.nip.io/ai-scan/scanner-worker:GIT_SHA_PLACEHOLDER
+      - SCANNER_IMAGE=registry.registry:5000/ai-scan/scanner-worker:GIT_SHA_PLACEHOLDER
 patches:
   - path: networkpolicy-ai-egress.yaml
     target:

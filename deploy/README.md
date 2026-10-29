@@ -16,7 +16,7 @@ Everything deploys to the single namespace `ai-scan-repos`.
 | Target | Registry host |
 |---|---|
 | local | `registry.ai-scan.local` |
-| k3s   | `registry.ai-scan.127.0.0.1.nip.io` |
+| k3s   | `registry.registry:5000` (in-cluster Service; nodes pull via the K3s registries.yaml mirror) |
 | eks   | `registry.ai-scan.example.com` |
 
 Images are always `<host>/ai-scan/<svc>:<git-sha>`, never `latest`. Overlays ship with `GIT_SHA_PLACEHOLDER`.

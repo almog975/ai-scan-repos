@@ -12,9 +12,13 @@ def SERVICES = [ // svc : [source folder, deploy folder]
 // Registry host per TARGET; must match the newName / SCANNER_IMAGE host in deploy/*/overlays/<target>.
 def REGISTRY_HOSTS = [
   'local': 'registry.ai-scan.local',
-  'k3s'  : 'registry.ai-scan.127.0.0.1.nip.io',
+  // k3s: in-cluster Service registry/registry:5000 (plain HTTP; TLS ends at Traefik). The nip.io host resolves to
+  // 127.0.0.1 inside a pod, so agents cannot use it. Nodes pull via the K3s registries.yaml mirror (Infra).
+  'k3s'  : 'registry.registry:5000',
   'eks'  : 'registry.ai-scan.example.com',
 ]
+// Registries spoken to over plain HTTP (crane --insecure). TLS hosts verify normally.
+def INSECURE_REGISTRIES = ['registry.registry:5000']
 def BOT_NAME  = 'ai-scan-ci-bot'
 def BOT_EMAIL = 'ci-bot@ai-scan.local'
 def changed = []
@@ -28,6 +32,8 @@ def wants = { String svc -> !skipBuild && changed.contains(svc) }
 def img = { String svc -> "${env.REGISTRY}/ai-scan/${svc}:${env.GIT_SHA}" }
 def tarOf = { String svc -> "${env.WORKSPACE}/.images/${svc}.tar" }
 
+// kaniko builds with --no-push and pulls only public base images, so it needs no --insecure-registry /
+// --skip-tls-verify for the in-cluster registry. trivy scans the tarball (--input): no registry access either.
 def kanikoBuild = { String svc ->
   container('kaniko') {
     sh """/kaniko/executor --context=dir://${env.WORKSPACE}/${SERVICES[svc][0]} \
@@ -46,7 +52,8 @@ def cranePush = { String svc ->
   container('tools') {
     withCredentials([usernamePassword(credentialsId: 'registry-push', usernameVariable: 'U', passwordVariable: 'P')]) {
       sh 'echo "$P" | crane auth login "$REGISTRY" -u "$U" --password-stdin'
-      sh "crane push ${tarOf(svc)} ${img(svc)}"
+      def insecure = INSECURE_REGISTRIES.contains(env.REGISTRY) ? '--insecure ' : ''
+      sh "crane push ${insecure}${tarOf(svc)} ${img(svc)}"
     }
   }
 }

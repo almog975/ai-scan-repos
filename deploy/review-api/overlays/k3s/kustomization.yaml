@@ -3,5 +3,5 @@ kind: Kustomization
 resources: [../../base]
 images:
   - name: ai-scan/review-api
-    newName: registry.ai-scan.127.0.0.1.nip.io/ai-scan/review-api
+    newName: registry.registry:5000/ai-scan/review-api
     newTag: GIT_SHA_PLACEHOLDER
