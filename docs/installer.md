@@ -20,8 +20,8 @@ Precedence: defaults < `--config` file < environment < flags. The config file ac
 | `--registry` / `REGISTRY_TYPE` | `local` (in-cluster registry:2 + htpasswd), `ecr` | `local` |
 | `--tag` / `IMAGE_TAG` | image tag (`[A-Za-z0-9_.-]`) | `GIT_SHA_PLACEHOLDER` |
 | `--dry-run` / `DRY_RUN=1` | print only | off |
-| `--rotate-secrets` | replace existing Secrets (except `ai-keys-master`) | off |
-| `--yes`, `--purge` | uninstall confirmation / also delete data and namespaces | off |
+| `--rotate-secrets` | replace existing Secrets (except `ai-keys-master`), see [Rotation](#rotation) | off |
+| `--yes`, `--purge`, `--confirm-purge ai-scan-repos` | uninstall confirmation / also delete data and namespaces (needs the explicit `--confirm-purge`) | off |
 | `ARGOCD_CHART_VERSION` | argo/argo-cd chart | **10.11.6** (Argo CD v3.5.6, pinned) |
 
 ## Commands
@@ -31,15 +31,15 @@ Precedence: defaults < `--config` file < environment < flags. The config file ac
 
 | Step | What it does |
 |---|---|
-| `preflight` | Required tools for the chosen options (`kubectl kustomize openssl` + `helm` for gitops, `aws` for ECR, `htpasswd` for the local registry); `kubectl version`; `kubectl auth can-i` for namespaces, CRDs, ClusterRoles, Secrets; `aws sts get-caller-identity` for ECR |
+| `preflight` | Required tools for the chosen options (`kubectl kustomize openssl` + `helm` for gitops, `aws` for ECR, `htpasswd` for the local registry); `kubectl version`; `kubectl auth can-i` for namespaces, CRDs, ClusterRoles, Secrets; `aws sts get-caller-identity` for ECR; with `--mode direct` the prometheus-operator CRDs `servicemonitors`/`prometheusrules.monitoring.coreos.com` must exist (<a id="monitoring-crds"></a>install kube-prometheus-stack or its CRDs first, else preflight stops with a clear error) |
 | `bootstrap` | `infra/bootstrap/overlays/<overlay>` (namespaces, reports PV/StorageClass; `NODE_NAME` substituted on k3s, `EFS_FILESYSTEM_ID` on eks) and `infra/ingress/overlays/<overlay>` |
-| `registry` | **local:** Secret `registry/registry-htpasswd` (bcrypt push + pull users), `infra/registry/registry.yaml`, `regcred` (pull user) in `ai-scan-repos` and `jenkins`, `jenkins/registry-push` (push user, Jenkins credential labels). **ecr:** creates the ECR repos if missing (`ai-scan/{review-api,gateway,frontend,scanner-worker,jenkins-agent}`, scan on push, immutable tags) and runs `ecr-login` |
+| `registry` | **local:** Secret `registry/registry-htpasswd` (bcrypt push + pull users; passwords go to `htpasswd -iBn` on stdin, never argv), `infra/registry/registry.yaml`, `regcred` (pull user) in `ai-scan-repos` and `jenkins`, `jenkins/registry-push` (push user, Jenkins credential labels). **ecr:** creates the ECR repos if missing (`ai-scan/{review-api,gateway,frontend,scanner-worker,jenkins-agent}`, scan on push, immutable tags) and runs `ecr-login` |
 | `ecr-login` | `aws ecr get-login-password` → `regcred` (dockerconfigjson) in `ai-scan-repos` and `jenkins`. ECR tokens last 12h: run it from a cron/systemd timer (or rely on the EKS node role for pulls) |
 | `secrets` | `gateway-secrets` (GitHub OAuth `GITHUB_CLIENT_ID/SECRET` + webhook secret), `db-secrets`, `scanner-secrets` (`INTERNAL_API_TOKEN`, AI defaults), `ai-keys-master`, optional `monitoring/grafana-admin` (see [secrets-runbook.md](secrets-runbook.md)) |
-| `images` | Sets registry + tag in `deploy/{review-api,gateway,frontend}/overlays/<overlay>` (`kustomize edit set image`) and `SCANNER_IMAGE` in `deploy/scanner-worker/overlays/<overlay>` |
+| `images` | Sets registry + tag in `deploy/{review-api,gateway,frontend}/overlays/<overlay>` (targeted rewrite of the existing `images:` entry, `newName`/`newTag` only: minimal stable diff) and `SCANNER_IMAGE` in `deploy/scanner-worker/overlays/<overlay>` |
 | `deploy` | **gitops:** `helm upgrade --install argocd` (pinned), argocd-cm health patch, AppProjects `ai-scan` and `ai-scan-ci`, `deploy/argocd/root-app.yaml`. **direct:** `kubectl apply -k` platform → postgres → scanner-worker → review-api → gateway → frontend |
 | `verify` | Root Application Healthy (gitops), rollout status of postgres/review-api/gateway/frontend, `/readyz` of review-api and gateway from inside their pods |
-| `uninstall` | Needs `--yes`. Deletes the root + child Applications (gitops) or the component overlays (direct). Keeps Secrets, PVCs and namespaces (the platform Application is orphaned first so the reports PVC survives). `--purge` also deletes the platform overlay, Argo CD, the registry, ingress and namespaces `ai-scan-repos`, `registry`, `argocd`. Cluster-scoped bootstrap (PVs, StorageClasses) and `jenkins`/`monitoring` are left alone |
+| `uninstall` | Needs `--yes`. **Without `--purge` no data is deleted:** PVCs `postgres-data`, `reports` (and `backups` once added), all Secrets and the namespaces stay. gitops: the `resources-finalizer` is removed from every Application first, so deleting the Applications orphans their resources (no cascade); the PVCs also carry `argocd.argoproj.io/sync-options: Delete=false,Prune=false`. Then the workloads of postgres, scanner-worker, review-api, gateway, frontend are deleted from their rendered overlays **with PersistentVolumeClaims/PersistentVolumes filtered out** (never `kubectl delete -k` on an overlay with a PVC); platform (ServiceAccounts, reports PVC) is kept. A reinstall reuses the data. `--purge` (needs `--yes --purge --confirm-purge ai-scan-repos`) deletes everything: all overlays incl. platform and the PVCs, Argo CD, the registry, ingress and namespaces `ai-scan-repos`, `registry`, `argocd`. Cluster-scoped bootstrap (PVs, StorageClasses) and `jenkins`/`monitoring` are left alone |
 
 ## Secrets
 
@@ -48,10 +48,27 @@ Precedence: defaults < `--config` file < environment < flags. The config file ac
   removed on exit. Output shows **names and keys only**; nothing is written into the repo.
 - Idempotent: an existing Secret is kept unless `--rotate-secrets`. `GITHUB_WEBHOOK_SECRET`,
   `INTERNAL_API_TOKEN` (≥ 32 chars), `POSTGRES_PASSWORD` and `AI_KEYS_ENCRYPTION_KEY` are generated with
-  `openssl rand` only when the Secret does not exist yet.
+  `openssl rand` only when that Secret is (re)written. A generator failure aborts, and every required value is
+  checked non-empty before any Secret is created.
+- Existence checks: only a `NotFound` from `kubectl get` counts as "absent". Any other error (RBAC, API
+  unreachable, timeout) aborts the run instead of overwriting a Secret.
+- Every failing command prints `ERROR: step "<step>" failed …` naming the step.
 - `ai-keys-master` is **never** replaced by the installer, not even with `--rotate-secrets`: it encrypts every
   stored provider key (rotation = re-encrypt first, docs/secrets-runbook.md).
 - `infra/installer/installer.env` is in `.gitignore`; the committed `installer.env.example` has placeholders only.
+
+## Rotation
+
+`--rotate-secrets secrets` (or `install`):
+
+- `POSTGRES_PASSWORD`: `ALTER USER` runs first in the running database (`kubectl exec -i statefulset/postgres --
+  psql`, SQL on stdin), and only then is `db-secrets` updated. If it fails, the Secret is left unchanged.
+- `GITHUB_WEBHOOK_SECRET` (when not given explicitly): a **warning** is printed; update the GitHub App's webhook
+  secret right away, deliveries fail until then.
+- `INTERNAL_API_TOKEN`: new value in `scanner-secrets`.
+- Afterwards `review-api` and `gateway` get a `kubectl rollout restart` (when they exist); scan Jobs pick up the
+  new values on their next run.
+- `ai-keys-master` is never rotated.
 
 ## Images and GitOps
 
