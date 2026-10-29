@@ -32,15 +32,17 @@ def wants = { String svc -> !skipBuild && changed.contains(svc) }
 def img = { String svc -> "${env.REGISTRY}/ai-scan/${svc}:${env.GIT_SHA}" }
 def tarOf = { String svc -> "${env.WORKSPACE}/.images/${svc}.tar" }
 
-// kaniko builds with --no-push and pulls only public base images, so it needs no --insecure-registry /
-// --skip-tls-verify for the in-cluster registry. trivy scans the tarball (--input): no registry access either.
+// kaniko builds with --no-push and today pulls only public base images; it still gets --insecure-registry for the
+// plain-HTTP in-cluster registry so a base/cache image from it never falls back to HTTPS. TLS hosts verify normally.
+// trivy scans the tarball (--input): no registry access.
 def kanikoBuild = { String svc ->
+  def kInsecure = INSECURE_REGISTRIES.contains(env.REGISTRY) ? "--insecure-registry=${env.REGISTRY} " : ''
   container('kaniko') {
     sh """/kaniko/executor --context=dir://${env.WORKSPACE}/${SERVICES[svc][0]} \
           --dockerfile=${env.WORKSPACE}/${SERVICES[svc][0]}/Dockerfile \
           --build-arg=VITE_APP_VERSION=${env.GIT_SHA} \
           --destination=${img(svc)} --no-push --tar-path=${tarOf(svc)} \
-          --cleanup --snapshot-mode=redo"""
+          ${kInsecure}--cleanup --snapshot-mode=redo"""
   }
 }
 def trivyScan = { String svc ->
