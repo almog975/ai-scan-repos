@@ -1,0 +1,44 @@
+rule_files: [rules.yaml]
+tests:
+  # pre-initialised: result="ok" exported as flat 0, every pass errors -> must page
+  - interval: 1m
+    input_series:
+      - {series: 'reconciler_runs_total{namespace="ai-scan-repos",result="ok"}', values: '0x60'}
+      - {series: 'reconciler_runs_total{namespace="ai-scan-repos",result="error"}', values: '0+1x60'}
+    alert_rule_test:
+      - {eval_time: 10m, alertname: AIScanReconcilerNotRunning, exp_alerts: []}
+      - eval_time: 45m
+        alertname: AIScanReconcilerNotRunning
+        exp_alerts:
+          - exp_labels: {severity: critical}
+            exp_annotations:
+              summary: No successful reconciler pass in 15 minutes
+              description: Stuck/overdue reviews are not being recovered. Check review-api logs ("watchdog pass failed") and the DB.
+              runbook_url: https://github.com/almog975/ai-scan-repos/blob/main/docs/monitoring.md#alerts
+  # review-api not exporting at all -> TargetDown's job, ReconcilerNotRunning must stay silent
+  - interval: 1m
+    input_series:
+      - {series: 'up{namespace="ai-scan-repos",job="review-api"}', values: '0x60'}
+    alert_rule_test:
+      - {eval_time: 45m, alertname: AIScanReconcilerNotRunning, exp_alerts: []}
+  # 4 calls in 30m, all errors -> below min volume, no alert
+  - interval: 1m
+    input_series:
+      - {series: 'ai_provider_requests_total{namespace="ai-scan-repos",kind="onprem",outcome="error",source="test"}', values: '0x5 1 2 3 4x60'}
+      - {series: 'ai_provider_requests_total{namespace="ai-scan-repos",kind="onprem",outcome="ok",source="test"}', values: '0x60'}
+    alert_rule_test:
+      - {eval_time: 25m, alertname: AIScanAIProviderErrors, exp_alerts: []}
+  # sustained errors (>=5 per 30m, 100%) -> fires per kind
+  - interval: 1m
+    input_series:
+      - {series: 'ai_provider_requests_total{namespace="ai-scan-repos",kind="onprem",outcome="error",source="worker"}', values: '0+1x60'}
+      - {series: 'ai_provider_requests_total{namespace="ai-scan-repos",kind="onprem",outcome="ok",source="worker"}', values: '0x60'}
+    alert_rule_test:
+      - eval_time: 40m
+        alertname: AIScanAIProviderErrors
+        exp_alerts:
+          - exp_labels: {severity: warning, kind: onprem}
+            exp_annotations:
+              summary: More than half of onprem AI provider calls failed in 30m
+              description: Reviews still complete (AI enrichment is best effort) but without explanations.
+              runbook_url: https://github.com/almog975/ai-scan-repos/blob/main/docs/monitoring.md#alerts
