@@ -1,0 +1,10 @@
+# Default gitleaks rules plus one narrow, path-independent allowlist entry: the pentest canary provider key
+# (security/pentest/pentest_harness.py). It is fake and is asserted to never appear in API responses or logs.
+# .gitleaksignore fingerprints are literal paths, so they miss `gitleaks dir <absolute path>`; this does not.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "pentest canary key (fake)"
+regexTarget = "match"
+regexes = ['''sk-SECRETKEY123''']
