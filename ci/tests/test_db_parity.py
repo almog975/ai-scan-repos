@@ -15,8 +15,6 @@ def test_parity_clean():
     assert r.returncode == 0 and "db parity ok" in r.stdout and "migration round trip ok" in r.stdout, r.stderr[-2000:]
 
 
-@pytest.mark.xfail(reason="high: ci/db-parity.sh:45 `diff ... && echo` (and :47-48 round trip) - under set -e a failing "
-                          "command in an && list does not abort, so schema drift is printed but the script exits 0", strict=True)
 def test_parity_drift_fails(tmp_path):
     dst = tmp_path / "repo"
     shutil.copytree(ROOT, dst, symlinks=True, ignore=shutil.ignore_patterns(".git", "node_modules", "reports", "__pycache__"))

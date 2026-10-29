@@ -42,7 +42,11 @@ psql_ -d postgres -c "CREATE DATABASE $A" -c "CREATE DATABASE $S"
 psql_ -d "$S" < "$ROOT/infra/db/schema.sql"
 dump() { pgdump_ --schema-only --no-owner --no-privileges --exclude-table=alembic_version "$1" \
            | grep -vE '^(--|SET |SELECT pg_catalog|\\restrict|\\unrestrict)' | sed '/^$/d'; }
-diff -u <(dump "$S") <(dump "$A") && echo "db parity ok"
+# Explicit if/exit: under `set -e` a failing command inside an && list does NOT abort the script.
+if ! diff -u <(dump "$S") <(dump "$A"); then echo "[db-parity] FAIL: schema drift (alembic vs infra/db/schema.sql)" >&2; exit 1; fi
+echo "db parity ok"
 # Round trip: downgrade to 0001 and back must succeed on Postgres too.
-(cd "$ROOT/review-api" && export DATABASE_URL="$URL_BASE/$A" && alembic downgrade 0001 && alembic upgrade head) \
-  && echo "migration round trip ok"
+if ! (cd "$ROOT/review-api" && export DATABASE_URL="$URL_BASE/$A" && alembic downgrade 0001 && alembic upgrade head); then
+  echo "[db-parity] FAIL: migration round trip" >&2; exit 1
+fi
+echo "migration round trip ok"
