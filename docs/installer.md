@@ -26,7 +26,7 @@ Precedence: defaults < `--config` file < environment < flags. The config file ac
 
 ## Commands
 
-`install` runs, in order: **preflight → bootstrap → registry → secrets → images → deploy → verify**
+`install` runs, in order: **preflight → bootstrap → registry → secrets → images → egress → deploy → verify**
 (`SKIP_VERIFY=1` to skip the last). Each is also a command on its own, plus `ecr-login` and `uninstall`.
 
 | Step | What it does |
@@ -37,9 +37,10 @@ Precedence: defaults < `--config` file < environment < flags. The config file ac
 | `ecr-login` | `aws ecr get-login-password` → `regcred` (dockerconfigjson) in `ai-scan-repos` and `jenkins`. ECR tokens last 12h: run it from a cron/systemd timer (or rely on the EKS node role for pulls) |
 | `secrets` | `gateway-secrets` (GitHub OAuth `GITHUB_CLIENT_ID/SECRET` + webhook secret), `db-secrets`, `scanner-secrets` (`INTERNAL_API_TOKEN`, AI defaults), `ai-keys-master`, optional `monitoring/grafana-admin` (see [secrets-runbook.md](secrets-runbook.md)) |
 | `images` | Sets registry + tag in `deploy/{review-api,gateway,frontend}/overlays/<overlay>` (targeted rewrite of the existing `images:` entry, `newName`/`newTag` only: minimal stable diff) and `SCANNER_IMAGE` in `deploy/scanner-worker/overlays/<overlay>` |
+| `egress` | Replaces the NetworkPolicy placeholders in `deploy/platform/overlays/<overlay>/kustomization.yaml` (review-api AI + K8s API egress) and `deploy/scanner-worker/overlays/<overlay>/networkpolicy-ai-egress.yaml` from `AI_EGRESS_CIDRS` (comma list, IPv4 `/8`–`/32`, anything broader is refused), `KUBE_API_ENDPOINT` and `KUBE_SERVICE_IP` (IPv4, written as `/32`). Only lines tagged `(installer: VAR)` change; working tree only (open a PR in gitops mode). An unset variable keeps the placeholder with a warning: that traffic stays blocked. See [Egress](#egress) |
 | `deploy` | **gitops:** `helm upgrade --install argocd` (pinned), argocd-cm health patch, AppProjects `ai-scan` and `ai-scan-ci`, `deploy/argocd/root-app.yaml`. **direct:** `kubectl apply -k` platform → postgres → scanner-worker → review-api → gateway → frontend |
 | `verify` | Root Application Healthy (gitops), rollout status of postgres/review-api/gateway/frontend, `/readyz` of review-api and gateway from inside their pods |
-| `uninstall` | Needs `--yes`. **Without `--purge` no data is deleted:** PVCs `postgres-data`, `reports` (and `backups` once added), all Secrets and the namespaces stay. gitops: the `resources-finalizer` is removed from every Application first, so deleting the Applications orphans their resources (no cascade); the PVCs also carry `argocd.argoproj.io/sync-options: Delete=false,Prune=false`. Then the workloads of postgres, scanner-worker, review-api, gateway, frontend are deleted from their rendered overlays **with PersistentVolumeClaims/PersistentVolumes filtered out** (never `kubectl delete -k` on an overlay with a PVC); platform (ServiceAccounts, reports PVC) is kept. A reinstall reuses the data. `--purge` (needs `--yes --purge --confirm-purge ai-scan-repos`) deletes everything: all overlays incl. platform and the PVCs, Argo CD, the registry, ingress and namespaces `ai-scan-repos`, `registry`, `argocd`. Cluster-scoped bootstrap (PVs, StorageClasses) and `jenkins`/`monitoring` are left alone |
+| `uninstall` | Needs `--yes`. **Without `--purge` no data is deleted:** PVCs `postgres-data`, `reports`, `postgres-backups`, all Secrets and the namespaces stay. gitops: the `resources-finalizer` is removed from every Application first, so deleting the Applications orphans their resources (no cascade); the PVCs also carry `argocd.argoproj.io/sync-options: Delete=false,Prune=false`. Then the workloads of postgres, scanner-worker, review-api, gateway, frontend are deleted from their rendered overlays **with PersistentVolumeClaims/PersistentVolumes filtered out** (never `kubectl delete -k` on an overlay with a PVC); platform (ServiceAccounts, reports PVC) is kept. A reinstall reuses the data. `--purge` (needs `--yes --purge --confirm-purge ai-scan-repos`) deletes the app and its data: all overlays incl. platform and the PVCs `postgres-data`, `reports`, `postgres-backups`, the registry with its `registry-data` PVC, Argo CD, the registry, ingress and namespaces `ai-scan-repos`, `registry`, `argocd`. It is **not** everything: namespaces `jenkins` (incl. the `jenkins-home` PVC) and `monitoring`, and cluster-scoped bootstrap (PVs, StorageClasses; reports PV is Retain) are left alone |
 
 ## Secrets
 
@@ -50,7 +51,7 @@ Precedence: defaults < `--config` file < environment < flags. The config file ac
   `INTERNAL_API_TOKEN` (≥ 32 chars), `POSTGRES_PASSWORD` and `AI_KEYS_ENCRYPTION_KEY` are generated with
   `openssl rand` only when that Secret is (re)written. A generator failure aborts, and every required value is
   checked non-empty before any Secret is created.
-- Existence checks: only a `NotFound` from `kubectl get` counts as "absent". Any other error (RBAC, API
+- Existence checks: only the API's `NotFound` for that exact object (`secrets "<name>" not found`) counts as "absent"; a missing kube context or namespace does not. Any other error (RBAC, API
   unreachable, timeout) aborts the run instead of overwriting a Secret.
 - Every failing command prints `ERROR: step "<step>" failed …` naming the step.
 - `ai-keys-master` is **never** replaced by the installer, not even with `--rotate-secrets`: it encrypts every
@@ -69,6 +70,14 @@ Precedence: defaults < `--config` file < environment < flags. The config file ac
 - Afterwards `review-api` and `gateway` get a `kubectl rollout restart` (when they exist); scan Jobs pick up the
   new values on their next run.
 - `ai-keys-master` is never rotated.
+
+## Egress
+
+| Variable | Used for | Find it with |
+|---|---|---|
+| `AI_EGRESS_CIDRS` | review-api provider tests and scanner Jobs → AI provider (TCP 443) | the provider's IPs / Tailscale subnet (docs/onprem-ai-tailscale.md); hostnames are not possible in NetworkPolicy |
+| `KUBE_API_ENDPOINT` | review-api → API server (Job launcher) | `kubectl get endpoints kubernetes -n default -o jsonpath='{.subsets[0].addresses[0].ip}'` |
+| `KUBE_SERVICE_IP` | review-api → `kubernetes.default` ClusterIP | `kubectl get svc kubernetes -n default -o jsonpath='{.spec.clusterIP}'` (k3s `10.43.0.1`) |
 
 ## Images and GitOps
 
