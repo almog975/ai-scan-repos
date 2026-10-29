@@ -108,6 +108,7 @@ def test_default_deny_ingress_present(k3s):
     ("traefik", "review-api", 8001, False),
     ("traefik", "postgres", 5432, False),
     ("scanner", "gateway", 8000, False),
+    ("frontend", "gateway", 8000, True),            # nginx proxy (frontend/nginx.conf)
 ])
 def test_np_matrix(k3s, src, dst, port, ok):
     pods, nps = pods_and_policies(k3s)
@@ -123,10 +124,6 @@ def test_np_matrix(k3s, src, dst, port, ok):
     assert allowed(nps, sl, pods[dst], port, ns) is ok
 
 
-@pytest.mark.xfail(reason="high: deploy/platform/base/networkpolicies.yaml:16-22 postgres-ingress allows only app=review-api "
-                          "and app=gateway, but the migrations Job pods are labelled app=review-api-migrate "
-                          "(deploy/review-api/base/migrations-job.yaml:17) - `alembic upgrade head` cannot reach postgres "
-                          "(the Job's backoff runs out, so every sync's schema migration fails)", strict=True)
 def test_migrate_job_reaches_postgres(k3s):
     pods, nps = pods_and_policies(k3s)
     assert allowed(nps, pods["review-api-migrate"], pods["postgres"], 5432)
