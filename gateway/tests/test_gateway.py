@@ -269,3 +269,57 @@ def test_proxy_metrics_low_cardinality(logged_in):
     assert REGISTRY.get_sample_value("gateway_upstream_duration_seconds_count", {"status": "200"}) == n0 + 1
     text = c.get("/metrics").text
     assert "ai_scan_gateway_proxied_total" in text and RID not in text
+
+
+def test_webhook_replay_new_delivery_id_rejected():
+    """Phase 9: same signed body under a new X-GitHub-Delivery is a replay -> 409, no second review."""
+    c, router = make_client(webhook_auto_review=True)
+    do_login(c, router, uid=7)
+    route = router.post(f"{RA}/reviews").respond(201, json={"id": RID})
+    import time as _t
+    push = json.dumps({"sender": {"id": 7}, "after": "b" * 40, "repository": {
+        "html_url": "https://github.com/a/b", "pushed_at": int(_t.time())}}).encode()
+    assert wh(c, push, delivery="r1").status_code == 202
+    err(wh(c, push, delivery="r2"), 409, "CONFLICT")
+    assert route.call_count == 1
+    # a different (genuine) push body is still accepted
+    push2 = push.replace(b"b" * 40, b"c" * 40)
+    assert wh(c, push2, delivery="r3").status_code == 202 and route.call_count == 2
+
+
+def test_webhook_stale_push_rejected_and_hash_ttl():
+    import time as _t
+    from datetime import datetime, timedelta, timezone
+    c, router = make_client(webhook_auto_review=True, webhook_replay_window_seconds=60)
+    old = json.dumps({"repository": {"html_url": "https://github.com/a/b", "pushed_at": int(_t.time()) - 3600}}).encode()
+    err(wh(c, old, delivery="s1"), 409, "CONFLICT")
+    # hash entries expire after the window
+    assert wh(c, b'{"zen":"x"}', event="ping", delivery="p1").status_code == 202
+    err(wh(c, b'{"zen":"x"}', event="ping", delivery="p2"), 409, "CONFLICT")
+    from app.db import WebhookDelivery
+    SL = c.app.state.SessionLocal
+    with SL() as db:
+        row = db.get(WebhookDelivery, "sha256:" + hashlib.sha256(b'{"zen":"x"}').hexdigest())
+        row.received_at = datetime.now(timezone.utc) - timedelta(seconds=120)
+        db.commit()
+    assert wh(c, b'{"zen":"x"}', event="ping", delivery="p3").status_code == 202
+
+
+def test_api_rate_limit_random_cookies_keyed_by_ip():
+    import secrets
+    c, _ = make_client(rate_limit_api_per_minute=3)
+    codes = [c.get("/api/reviews", cookies={"aiscan_session": secrets.token_hex(8)}).status_code for _ in range(5)]
+    assert codes[:3] == [401] * 3 and codes[-1] == 429
+
+
+def test_api_rate_limit_valid_session_per_user():
+    c, router = make_client(rate_limit_api_per_minute=3)
+    assert do_login(c, router).status_code == 302
+    router.get(f"{RA}/reviews").respond(200, json={"items": []})
+    tok = c.cookies.get("aiscan_session")
+    for _ in range(4):  # same client IP, forged cookies: IP bucket exhausted
+        c.get("/api/reviews", cookies={"aiscan_session": "forged"})
+    c.cookies.set("aiscan_session", tok)
+    assert c.get("/api/reviews").status_code == 200  # user bucket is separate
+    codes = [c.get("/api/reviews").status_code for _ in range(3)]
+    assert codes[-1] == 429
