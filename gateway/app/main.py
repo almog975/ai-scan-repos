@@ -55,6 +55,24 @@ def _aware(dt):
     return dt.replace(tzinfo=timezone.utc) if dt and dt.tzinfo is None else dt
 
 
+def _pushed_at_epoch(v) -> float | None:
+    """repository.pushed_at: GitHub sends epoch seconds on push; accept numeric strings and ISO 8601 too."""
+    if isinstance(v, bool):
+        return None
+    if isinstance(v, (int, float)):
+        return float(v)
+    if isinstance(v, str):
+        v = v.strip()
+        if v.isdigit():
+            return float(v)
+        try:
+            dt = datetime.fromisoformat(v.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+        return _aware(dt).timestamp()
+    return None
+
+
 def create_app(settings: Settings | None = None, transport: httpx.AsyncBaseTransport | None = None) -> FastAPI:
     s = settings or get_settings()
     SessionLocal = make_sessionmaker(s.database_url)
@@ -93,6 +111,46 @@ def create_app(settings: Settings | None = None, transport: httpx.AsyncBaseTrans
         return await call_next(request)
 
     errors.install(app)
+
+    purge_state = {"next": 0.0}
+
+    def purge_webhook_rows() -> int:
+        """Delete delivery-id and payload-hash rows older than the replay window. Returns rows deleted."""
+        window = s.webhook_replay_window_seconds
+        if window <= 0:
+            return 0
+        cutoff = datetime.now(timezone.utc) - timedelta(seconds=window)
+        with SessionLocal() as db:
+            n = db.query(WebhookDelivery).filter(WebhookDelivery.received_at < cutoff).delete(synchronize_session=False)
+            db.commit()
+        return n
+
+    def _maybe_purge():
+        """Periodic purge, piggybacked on webhook traffic: at most once per min(window, 300 s) per replica."""
+        now = time.monotonic()
+        if now < purge_state["next"]:
+            return
+        purge_state["next"] = now + max(1, min(s.webhook_replay_window_seconds, 300))
+        try:
+            purge_webhook_rows()
+        except Exception:  # noqa: BLE001 - never fail a delivery because of housekeeping
+            logging.getLogger("gateway").warning("webhook dedupe purge failed", exc_info=True)
+
+    app.state.purge_webhook_rows = purge_webhook_rows
+
+    @app.on_event("startup")
+    async def _purge_loop():
+        import asyncio
+
+        async def loop():
+            while True:
+                await asyncio.sleep(max(1, min(s.webhook_replay_window_seconds, 3600)))
+                try:
+                    await asyncio.to_thread(purge_webhook_rows)
+                except Exception:  # noqa: BLE001
+                    logging.getLogger("gateway").warning("webhook dedupe purge failed", exc_info=True)
+        if s.webhook_replay_window_seconds > 0:
+            app.state.purge_task = asyncio.create_task(loop())
 
     def _session_user_id(tok: str | None) -> str | None:
         if not tok or len(tok) > 200:
@@ -293,40 +351,51 @@ def create_app(settings: Settings | None = None, transport: httpx.AsyncBaseTrans
         except ValueError:
             raise ApiError(400, "VALIDATION_ERROR", "payload must be a JSON object")
         window = s.webhook_replay_window_seconds
-        pushed = (payload.get("repository") or {}).get("pushed_at") if event == "push" else None
-        if window > 0 and isinstance(pushed, (int, float)) and not isinstance(pushed, bool) \
-                and time.time() - pushed > window:
-            WEBHOOKS.labels("stale").inc()
-            raise ApiError(409, "CONFLICT", "stale delivery (outside the replay window)", {"delivery_id": delivery})
-        # body-hash dedupe: rows keyed "sha256:<hex>" in webhook_deliveries (no schema change, shared by replicas)
-        hkey = "sha256:" + hashlib.sha256(body).hexdigest()
+        if event == "push" and "pushed_at" in (payload.get("repository") or {}):
+            pushed = _pushed_at_epoch(payload["repository"]["pushed_at"])
+            if pushed is None:
+                raise ApiError(400, "VALIDATION_ERROR", "repository.pushed_at must be epoch seconds or ISO 8601")
+            if window > 0 and time.time() - pushed > window:
+                WEBHOOKS.labels("stale").inc()
+                raise ApiError(409, "CONFLICT", "stale delivery (outside the replay window)", {"delivery_id": delivery})
+        _maybe_purge()
+        # replay dedupe on sha256(event + body): rows "sha256:<hex>" in webhook_deliveries (no schema change, shared by
+        # replicas). Checked up front, stored only after the event was processed successfully, so a failed delivery
+        # can be redelivered.
+        hkey = "sha256:" + hashlib.sha256(event.encode() + b"\n" + body).hexdigest()
         with SessionLocal() as db:
             if window > 0:
                 old = db.get(WebhookDelivery, hkey)
-                if old and (datetime.now(timezone.utc) - _aware(old.received_at)).total_seconds() > window:
+                if old and (datetime.now(timezone.utc) - _aware(old.received_at)).total_seconds() <= window:
+                    WEBHOOKS.labels("replay").inc()
+                    raise ApiError(409, "CONFLICT", "duplicate payload (replay)", {"delivery_id": delivery})
+                if old:
                     db.delete(old)
                     db.commit()
             try:
                 db.add(WebhookDelivery(delivery_id=delivery[:200], event=event[:100]))
-                db.flush()
+                db.commit()
             except IntegrityError:
                 db.rollback()
                 WEBHOOKS.labels("duplicate").inc()
                 raise ApiError(409, "CONFLICT", "duplicate delivery", {"delivery_id": delivery})
-            if window > 0:
-                try:
-                    db.add(WebhookDelivery(delivery_id=hkey, event=event[:100], status="payload_hash"))
-                    db.flush()
-                except IntegrityError:
-                    db.rollback()
-                    WEBHOOKS.labels("replay").inc()
-                    raise ApiError(409, "CONFLICT", "duplicate payload (replay)", {"delivery_id": delivery})
-            db.commit()
         status = await _handle_event(event, payload)
+        failed = status == "review_api_unavailable" or status.startswith("review_rejected_5")
         with SessionLocal() as db:
             d = db.get(WebhookDelivery, delivery[:200])
-            d.status = status
-            db.commit()
+            if failed:  # forget the delivery id too: GitHub "Redeliver" (same id) may retry
+                db.delete(d)
+            else:
+                d.status = status
+                if window > 0:
+                    db.add(WebhookDelivery(delivery_id=hkey, event=event[:100], status="payload_hash"))
+            try:
+                db.commit()
+            except IntegrityError:  # a concurrent identical delivery stored the hash first
+                db.rollback()
+        WEBHOOKS.labels(status).inc()
+        if failed:
+            raise ApiError(502, "INTERNAL", "review-api unavailable, delivery not recorded (redeliver to retry)")
         WEBHOOKS.labels(status).inc()
         return {"accepted": True}
 

@@ -55,7 +55,7 @@ Errors appear in a box under the form:
 
 With *Default provider* and no default configured by an admin, only the scanners run (the report says *"AI provider: none"*).
 
-> Known limitation: if the admin's default provider is a **cloud** provider, choosing *Default provider* shows no warning, and the request fails with *"CLOUD_ACK_REQUIRED"* (422). Select the cloud provider explicitly and confirm the warning instead.
+If the admin's default provider is a **cloud** provider, *Default provider* still ends up asking you: the server answers `CLOUD_ACK_REQUIRED`, the UI shows the same cloud warning, and the review starts after you confirm (it is resent with `ack_cloud=true`). The same happens on **Resume**.
 
 **Cloud providers.** Each provider is `onprem` or `cloud` (set by an admin). Choosing a cloud provider (e.g. Grok, `api.x.ai`) shows: *"This provider is a cloud service: repository code leaves the cluster."* Until you tick **I understand that code is sent to a cloud AI provider**, **Start review** stays disabled with *"Confirm the cloud warning first"*; ticking it sends `ack_cloud: true`. Without it the API returns 422 `CLOUD_ACK_REQUIRED`. Reports produced with a cloud provider carry a cloud banner (§6). Resuming a cloud review asks again (§5).
 

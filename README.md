@@ -72,7 +72,7 @@ infra/installer/aiscan-install.sh --config infra/installer/installer.env --dry-r
 infra/installer/aiscan-install.sh --config infra/installer/installer.env install
 ```
 
-The installer runs preflight → bootstrap → registry → secrets → images → deploy (Argo CD + app-of-apps) → verify. Details: [installer.md](docs/installer.md), [k3s.md](docs/k3s.md), [runbook](docs/runbooks/runbook.md).
+`aiscan-install.sh` is a CLI (there is no web installer; the old web wizard was removed in Phase 9). It runs preflight → bootstrap → registry → secrets → images → deploy (Argo CD + app-of-apps) → verify. Details: [installer.md](docs/installer.md), [k3s.md](docs/k3s.md), [runbook](docs/runbooks/runbook.md).
 
 ### Tests
 

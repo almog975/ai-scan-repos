@@ -21,6 +21,8 @@ spec:
             # uvicorn --proxy-headers trusts only 127.0.0.1 by default; behind Traefik/nginx the client IP (rate limits,
             # session ip) would be the proxy pod. The Service is ClusterIP-only, reached through the ingress.
             # Trust X-Forwarded-For only from Traefik: pod CIDR (K3s default 10.42.0.0/16). Override per overlay.
+            # uvicorn takes IP/CIDR literals only (ingress pod IPs are dynamic); the gateway-ingress NetworkPolicy limits
+            # peers to Traefik/frontend/Prometheus. See gateway/README.md "Rate limits".
             - {name: FORWARDED_ALLOW_IPS, value: "10.42.0.0/16"}
             - name: DATABASE_URL   # users/sessions tables live in the app DB (Alembic, review-api migrations Job)
               valueFrom: {secretKeyRef: {name: db-secrets, key: DATABASE_URL}}

@@ -29,6 +29,13 @@ flowchart LR
   end
   J -- "git clone" --> GH
   J -- prompts --> AI{{AI provider<br/>on-prem via Tailscale / cloud}}
+  subgraph DEL[Delivery – no web installer]
+    OP([Operator]) -- "CLI" --> INS[aiscan-install.sh<br/>infra/installer/]
+    JK[Jenkins<br/>kaniko · trivy · crane] -- push image --> REG[(Registry)]
+    INS -- "Argo CD + root app" --> ARGO[Argo CD<br/>ai-scan-root]
+  end
+  ARGO -- "sync deploy/*/overlays/k3s" --> NS
+  REG -. pull .-> J
 ```
 
 | Component | Plan | Folder |
@@ -41,5 +48,7 @@ flowchart LR
 | PostgreSQL | StatefulSet 5Gi | `deploy/` + `infra/db/` |
 | reports PVC | 5Gi, `noexec,nosuid,nodev` | `deploy/` |
 | contracts | OpenAPI + JSON schemas | `contracts/` |
+
+Delivery: the operator runs the CLI installer `infra/installer/aiscan-install.sh` (no web UI; the former web wizard on port 8088 was removed in Phase 9), which installs Argo CD and the app-of-apps. Jenkins builds, scans and pushes images; Argo CD syncs `deploy/<component>/overlays/k3s` from `main` ([ci-cd-flow.md](../ci-cd-flow.md)). The Jenkins tag-bump push is still an open item.
 
 See also: [architecture.md](architecture.md) (as-built, Phase 1 backend), [ADR-0001](../adr/0001-repo-layout.md), [ADR-0002](../adr/0002-k8s-job-per-review.md).

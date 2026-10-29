@@ -60,3 +60,8 @@ App-of-apps: `kubectl apply -n argocd -f deploy/argocd/root-app.yaml` (the insta
 | `ai-scan-gateway-k3s`, `ai-scan-frontend-k3s`, `ai-scan-scanner-worker-k3s` | 3 |
 
 When a tag-bump commit lands on `main`, Argo CD renders the overlay and rolls out the new image. `selfHeal` reverts manual `kubectl` changes – change Git instead. Rollback: [runbooks/rollback.md](runbooks/rollback.md).
+
+## Troubleshooting
+
+- No build after a push: Jenkins also polls (`pollSCM H/5`); otherwise use **Build Now**.
+- GitHub **Redeliver** to the gateway auto-review webhook returns 409 within 24 h of the original (replay protection; after that, an old push is rejected as stale; a failed delivery, answered 502, is not recorded and can be redelivered). See [runbook.md](runbooks/runbook.md#github-webhooks-redeliver-returns-409).

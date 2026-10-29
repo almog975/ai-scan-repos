@@ -18,6 +18,11 @@ docker build -t <host>/ai-scan/frontend:$SHA frontend
 docker push <host>/ai-scan/<svc>:$SHA
 ```
 
+### K3s / EKS (supported path)
+Use the CLI installer `infra/installer/aiscan-install.sh` (no web UI; the old web wizard was removed in Phase 9):
+it bootstraps the cluster, creates secrets, installs Argo CD and the app-of-apps. See [installer.md](../installer.md).
+The manual per-component steps below are for debugging only.
+
 ### Kubernetes (Kustomize, per component)
 Manifests live in `deploy/<component>/{base,overlays/{local,k3s,eks}}`; deploy each with
 `kubectl apply -k deploy/<component>/overlays/$OVERLAY`. Apply order (from [infra-README.md](../infra-README.md)):
@@ -78,8 +83,9 @@ Jenkins (smee relay → test → build → Trivy → push → tag bump) and the 
 Tunables: `HEARTBEAT_TIMEOUT_SECONDS` (900), `MAX_ATTEMPTS` (5), `WATCHDOG_INTERVAL_SECONDS` (60),
 `SCANNER_TIMEOUT_SECONDS` (900 per tool), `CLONE_TIMEOUT_SECONDS` (300).
 
-Finished Jobs are deleted by K8s after 1 h (`ttlSecondsAfterFinished`). Report files on the PVC are not
-cleaned up — TODO retention policy.
+Finished Jobs are deleted by K8s after 1 h (`ttlSecondsAfterFinished`). Report directories older than
+`REPORT_RETENTION_DAYS` (ConfigMap `reports-retention`, default 30) are deleted by CronJob `reports-cleanup`
+(daily 03:00 Asia/Jerusalem); the API then returns 410 `REPORT_EXPIRED`. See [admin-guide.md](../admin-guide.md#7-reports-retention-backups-and-cleanup).
 
 ## 3. Troubleshoot
 
@@ -99,3 +105,28 @@ cleaned up — TODO retention policy.
 | `/report` 404 "report not ready" | Review not `completed` or file missing on the reports volume (PVC not shared?) |
 | Pause has no effect | API and worker don't share the same reports volume |
 | POST /admin/ai-providers 500, /readyz 503 | `AI_KEYS_ENCRYPTION_KEY` empty or not 32 bytes (hex/base64) |
+
+### GitHub webhooks: "Redeliver" returns 409
+
+Two different webhooks exist. Don't confuse them:
+
+| Webhook | Receiver | Dedupe |
+|---|---|---|
+| CI (push → Jenkins build) | smee-client → Jenkins `/github-webhook/` | none in our code. Jenkins also polls (`pollSCM H/5`) |
+| Auto-review (push → review, only with `WEBHOOK_AUTO_REVIEW=true`) | gateway `POST /webhooks/github` | replay protection (below; delivery ids expire after 24 h, a planned change) |
+
+The gateway (`gateway/app/main.py`, `WEBHOOK_REPLAY_WINDOW_SECONDS`, default 86400 = 24 h) checks each signed delivery like this. Every rejection is **409 CONFLICT**.
+
+> Delivery-id and payload-hash rows older than the window are purged periodically by the gateway (fix/phase-9-lows).
+
+1. **Same `X-GitHub-Delivery` within 24 h of the original delivery** → `"duplicate delivery"`. GitHub's **Redeliver** keeps the original delivery GUID, so a Redeliver within 24 h gets this 409. If the first attempt **failed** (review-api unreachable or 5xx) the gateway answered **502** and recorded neither the delivery id nor the payload hash, so a Redeliver of that delivery is processed normally. `unknown_sender` and `review_rejected_4xx` are final outcomes (202) and are recorded. **After 24 h** the id is purged, so a Redeliver passes this check.
+2. **Same body under a new delivery id within the window** → `"duplicate payload (replay)"`. This check is a sha256 of the event name plus body, stored only after successful processing and kept for 24 h.
+3. **`push` whose `repository.pushed_at` is older than the window** → `"stale delivery (outside the replay window)"`.
+
+In practice, Redeliver of a **successfully processed push** is still rejected. Within 24 h, check 1 returns "duplicate". After 24 h, the push itself is older than the window, so check 3 returns "stale", unless that check is changed too. Redeliver succeeds only for non-push events after 24 h, or when the original failed (502, nothing recorded) or never got past the signature or header checks, and the push is less than 24 h old. Check the gateway metric `ai_scan_gateway_webhooks_total{result="duplicate"|"replay"|"stale"}`, or the response body of the GitHub delivery, to see which case hit.
+
+**What to do instead of Redeliver:**
+- **Start the review by hand:** in the UI use **New review** with the repo URL, and put the pushed commit SHA in *Branch, tag or commit*. Or call `POST /api/reviews` with `ref` = that SHA.
+- **Or push a new commit** (an empty commit works: `git commit --allow-empty -m "rescan"`). It produces a new delivery id, body and `pushed_at`.
+- **CI didn't build:** wait for `pollSCM` (≤ 5 min) or use **Build Now** in Jenkins. Redelivering to smee/Jenkins is not deduped by our code.
+- Don't lower `WEBHOOK_REPLAY_WINDOW_SECONDS` or delete `webhook_deliveries` rows just to redeliver, because that reopens replay attacks.
