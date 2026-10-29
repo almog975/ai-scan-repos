@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { api, ApiError, repoName, type Finding, type Report, type Severity } from '../api/client'
+import { api, ApiError, hasAI, repoName, type Finding, type Report, type Severity } from '../api/client'
 import { useI18n } from '../i18n'
 import { Link, navigate } from '../router'
 import { ErrorBox, fmtTime, Ltr, SevBadge } from '../ui'
@@ -83,10 +83,10 @@ export default function ReportView({ id }: { id: string }) {
         onClick={() => (history.length > 1 ? history.back() : navigate(`/reviews/${id}`))}><span className="arrow">←</span> {t('back')}</button></p>
       <h1>{t('report_title')}{rep.repo?.url && <>: <Ltr>{repoName(rep.repo.url)}@{rep.repo.ref ?? '—'}{rep.repo.commit_sha ? ` ${rep.repo.commit_sha.slice(0, 7)}` : ''}</Ltr></>}</h1>
       {rep.partial && <div className="warn" role="status" data-testid="partial">{t('partial_banner')}</div>}
-      {rep.provider?.kind === 'cloud' && <div className="warn cloud" role="note">{t('cloud_banner', { name: rep.provider.name })}</div>}
+      {hasAI(rep.provider) && rep.provider?.kind === 'cloud' && <div className="warn cloud" role="note">{t('cloud_banner', { name: rep.provider.name })}</div>}
       <div className="card meta">
         <p className="muted small">
-          {rep.depth ? `${t(`depth_${rep.depth}`)} · ` : ''}{rep.provider ? <bdi dir="auto">{rep.provider.name}{rep.provider.model ? ` · ${rep.provider.model}` : ''}</bdi> : t('ai_none')}
+          {rep.depth ? `${t(`depth_${rep.depth}`)} · ` : ''}{rep.provider && hasAI(rep.provider) ? <bdi dir="auto">{rep.provider.name}{rep.provider.model ? ` · ${rep.provider.model}` : ''}</bdi> : t('ai_none')}
           {' · '}{t('files_scanned', { n: rep.summary?.files_scanned ?? 0 })}
           {' · '}<Ltr>{fmtTime(rep.started_at)} – {fmtTime(rep.finished_at)}</Ltr>
         </p>

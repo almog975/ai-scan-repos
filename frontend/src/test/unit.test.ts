@@ -81,3 +81,14 @@ describe('P2 UI fixes', () => {
     }
   })
 })
+
+describe('Phase 9 fixes', () => {
+  it('hasAI: the report "none" provider is no AI', async () => {
+    const { hasAI } = await import('../api/client')
+    expect(hasAI({ name: 'none', model: 'none' })).toBe(false)
+    expect(hasAI(null)).toBe(false)
+    expect(hasAI({ name: 'grok', model: 'grok-4' })).toBe(true)
+    expect(format('en', 'ai_none')).toBe('no AI')
+    expect(format('en', 'provider_default_is', { name: 'xAI', kind: 'Cloud' })).toBe('Default provider: xAI (Cloud)')
+  })
+})
