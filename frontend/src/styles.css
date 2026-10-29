@@ -44,6 +44,7 @@ main { flex: 1; padding: 1.5rem 2rem; min-inline-size: 0; max-inline-size: 75rem
 .small { font-size: .875rem; }
 .strong { font-weight: 600; }
 .mono, code, .code { font-family: var(--font-mono); }
+td .mono, td bdi { white-space: nowrap; }
 .eyebrow { margin-block: 0 .5rem; }
 
 .btn { display: inline-flex; align-items: center; gap: .35rem; padding: .5rem 1rem; min-block-size: 2.5rem; border: 1px solid var(--border);
@@ -126,3 +127,6 @@ progress { inline-size: 6rem; vertical-align: middle; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
 .appfooter { margin-block-start: 2rem; padding-block-start: .75rem; border-block-start: 1px solid var(--border); }
 .badge.version { font-weight: 500; }
+.icon { flex: none; inline-size: 1rem; block-size: 1rem; }
+.shell.bare main { display: grid; place-items: center; align-content: center; gap: var(--gap); min-block-size: 100vh; max-inline-size: none; padding: 1.5rem; }
+.shell.bare main > * { inline-size: min(100%, 28rem); }

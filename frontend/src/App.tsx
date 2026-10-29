@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { api, ApiError, type Me } from './api/client'
 import { useI18n, type Lang } from './i18n'
 import { Link, navigate, parse, usePath, type Route } from './router'
-import { ErrorBox, Ltr } from './ui'
+import { ErrorBox, LoginTag, Ltr } from './ui'
 import { APP_VERSION } from './version'
 import Admin from './views/Admin'
 import Home from './views/Home'
@@ -76,7 +76,7 @@ export default function App() {
               </ul>
             </nav>
             <div className="userchip">
-              <span className="user">@<bdi dir="ltr">{me.github_login}</bdi></span>{" "}
+              <span className="user"><LoginTag login={me.github_login} /></span>{" "}
               <label className="lang">{t('lang_switch')}
                 <select value={lang} onChange={e => setLang(e.target.value as Lang)}>
                   <option value="he" lang="he">עברית</option>
