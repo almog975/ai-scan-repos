@@ -27,17 +27,29 @@ GitHub signs only the request body (HMAC `X-Hub-Signature-256`); `X-GitHub-Deliv
 is no signed timestamp header. So:
 
 - **Delivery id**: a repeated `X-GitHub-Delivery` → 409 CONFLICT.
-- **Payload hash**: the sha256 of every accepted body is stored (row `sha256:<hex>` in `webhook_deliveries`, shared by all
-  replicas, no schema change) for `WEBHOOK_REPLAY_WINDOW_SECONDS`. The same body under a new delivery id → 409, so a
-  captured delivery can't retrigger a review. Push bodies are unique per push (`after`, `pushed_at`), so genuine
-  pushes are never dropped.
-- **Timestamp window**: `push` payloads carry `repository.pushed_at` *inside the signed body*; one older than the window
-  → 409. Together with the hash TTL this closes replays after the hash expires. Other events (ping, etc.) have no
-  usable signed timestamp and rely on the hash dedupe alone, which is enough because they never trigger a review.
-  Note: GitHub's manual "Redeliver" resends the same body and is therefore also rejected (409) within the window.
+- **Payload hash**: sha256 of `event + "\n" + body` (row `sha256:<hex>` in `webhook_deliveries`, shared by all replicas,
+  no schema change). It is checked before processing and **stored only after the event was processed successfully**.
+  The same event+body under a new delivery id within `WEBHOOK_REPLAY_WINDOW_SECONDS` (default 86400) → 409, so a
+  captured delivery can't retrigger a review.
+- **Failed deliveries** (review-api unreachable or 5xx) → 502, and neither the delivery id nor the hash is kept, so
+  GitHub's "Redeliver" (same delivery id) or a resend works. A successful delivery redelivered within the window is a 409.
+- **Timestamp window**: `push` payloads carry `repository.pushed_at` *inside the signed body* (epoch seconds; numeric
+  strings and ISO 8601 are also parsed, anything else → 400). Older than the window → 409. Together with the hash TTL
+  this closes replays after the hash expires. Other events have no usable signed timestamp and rely on the hash
+  alone, which is enough because only `push` can trigger a review.
+- **Purge**: rows (delivery ids and hashes) older than the window are deleted periodically: a background task every
+  min(window, 1 h) and, piggybacked on webhook traffic, at most every min(window, 300 s) per replica. Delivery-id
+  dedupe therefore also lasts for the window only.
 
 ## Rate limits
 
 `/auth/*` + `/webhooks/*`: per client IP. `/api/*`: per user **only for a valid session**; requests with no, forged,
-revoked or expired cookies are keyed by client IP (`uvicorn --proxy-headers` + `FORWARDED_ALLOW_IPS`), so random
-cookies can't bypass the limiter.
+revoked or expired cookies are keyed by client IP, so random cookies can't bypass the limiter.
+
+- **Per replica**: the limiter is in-process (fixed 1-minute window). With N gateway replicas the effective limit is up
+  to N × the configured value. A shared limiter (Redis/DB) is out of scope; the base deployment runs 1 replica.
+- **Client IP**: `uvicorn --proxy-headers` trusts `X-Forwarded-For` only from `FORWARDED_ALLOW_IPS`. That setting
+  takes IP/CIDR literals only, and ingress pod IPs are dynamic, so it can't name "the Traefik pods". It stays the pod
+  CIDR (k3s `10.42.0.0/16`, eks VPC `10.40.0.0/16`). The `gateway-ingress` NetworkPolicy is the actual control: only
+  Traefik (kube-system), the frontend nginx and the Prometheus scrape can open a connection to the gateway at all,
+  so no other pod can spoof `X-Forwarded-For`.

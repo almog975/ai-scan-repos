@@ -299,7 +299,7 @@ def test_webhook_stale_push_rejected_and_hash_ttl():
     from app.db import WebhookDelivery
     SL = c.app.state.SessionLocal
     with SL() as db:
-        row = db.get(WebhookDelivery, "sha256:" + hashlib.sha256(b'{"zen":"x"}').hexdigest())
+        row = db.get(WebhookDelivery, "sha256:" + hashlib.sha256(b'ping\n{"zen":"x"}').hexdigest())
         row.received_at = datetime.now(timezone.utc) - timedelta(seconds=120)
         db.commit()
     assert wh(c, b'{"zen":"x"}', event="ping", delivery="p3").status_code == 202
@@ -323,3 +323,52 @@ def test_api_rate_limit_valid_session_per_user():
     assert c.get("/api/reviews").status_code == 200  # user bucket is separate
     codes = [c.get("/api/reviews").status_code for _ in range(3)]
     assert codes[-1] == 429
+
+
+def test_webhook_purge_expired_rows():
+    from datetime import datetime, timedelta, timezone
+    from app.db import WebhookDelivery
+    c, _ = make_client(webhook_replay_window_seconds=60)
+    for i in range(3):
+        assert wh(c, json.dumps({"zen": i}).encode(), event="ping", delivery=f"q{i}").status_code == 202
+    SL = c.app.state.SessionLocal
+    with SL() as db:
+        assert db.query(WebhookDelivery).count() == 6  # 3 delivery ids + 3 payload hashes
+        for row in db.query(WebhookDelivery).filter(WebhookDelivery.delivery_id.in_(["q0", "q1"])).all():
+            row.received_at = datetime.now(timezone.utc) - timedelta(seconds=120)
+        for row in db.query(WebhookDelivery).filter(WebhookDelivery.status == "payload_hash").all():
+            row.received_at = datetime.now(timezone.utc) - timedelta(seconds=120)
+        db.commit()
+    assert c.app.state.purge_webhook_rows() == 5
+    with SL() as db:
+        assert [r.delivery_id for r in db.query(WebhookDelivery).all()] == ["q2"]
+
+
+def test_webhook_hash_covers_event_and_failed_delivery_can_be_redelivered():
+    c, router = make_client(webhook_auto_review=True)
+    do_login(c, router, uid=7)
+    import time as _t
+    push = json.dumps({"sender": {"id": 7}, "after": "d" * 40, "repository": {
+        "html_url": "https://github.com/a/b", "pushed_at": int(_t.time())}}).encode()
+    route = router.post(f"{RA}/reviews").respond(503, json={})
+    err(wh(c, push, delivery="f1"), 502, "INTERNAL")
+    route.respond(201, json={"id": RID})
+    assert wh(c, push, delivery="f1").status_code == 202  # same delivery id (GitHub Redeliver) accepted after failure
+    err(wh(c, push, delivery="f2"), 409, "CONFLICT")
+    body = b'{"zen":"e"}'
+    assert wh(c, body, event="ping", delivery="e1").status_code == 202
+    assert wh(c, body, event="issues", delivery="e2").status_code == 202  # different event, different hash
+
+
+def test_webhook_pushed_at_formats():
+    import time as _t
+    from datetime import datetime, timezone
+    c, _ = make_client(webhook_replay_window_seconds=600)
+    now = int(_t.time())
+    iso_now = datetime.fromtimestamp(now, timezone.utc).isoformat().replace("+00:00", "Z")
+    ok = [str(now), iso_now, float(now)]
+    for i, v in enumerate(ok):
+        assert wh(c, json.dumps({"repository": {"pushed_at": v}, "n": i}).encode(), delivery=f"pa{i}").status_code == 202
+    err(wh(c, json.dumps({"repository": {"pushed_at": "2020-01-01T00:00:00Z"}}).encode(), delivery="pb1"), 409, "CONFLICT")
+    for i, v in enumerate(["yesterday", True, None, [1]]):
+        err(wh(c, json.dumps({"repository": {"pushed_at": v}}).encode(), delivery=f"pc{i}"), 400, "VALIDATION_ERROR")
