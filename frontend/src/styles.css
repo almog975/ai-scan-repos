@@ -74,7 +74,8 @@ input[aria-invalid="true"] { border-color: var(--err); }
 table { inline-size: 100%; border-collapse: collapse; }
 th, td { text-align: start; padding: .5rem; border-block-end: 1px solid var(--border); vertical-align: top; }
 thead th { font-size: .85rem; color: var(--muted); }
-progress { inline-size: 6rem; vertical-align: middle; }
+progress { inline-size: 6rem; vertical-align: middle; accent-color: var(--accent); }
+fieldset.kind { border: 1px solid var(--border); border-radius: var(--radius); padding: .5rem .75rem; }
 .dt { white-space: nowrap; }
 
 .badge { display: inline-flex; align-items: center; gap: .3rem; padding: .1rem .5rem; border-radius: 999px; font-size: .8rem; font-weight: 600;

@@ -151,7 +151,7 @@ function ProviderForm({ p, onClose, onSaved }: { p: AIProvider | null; onClose: 
       <h2 id={hid}>{p ? t('edit_provider') : t('add_provider')}</h2>
       <div className="field"><label htmlFor="pv-name">{t('name')}</label>
         <input id="pv-name" dir="auto" required value={f.name} onChange={e => set('name', e.target.value)} aria-invalid={!f.name.trim() || undefined} /></div>
-      <fieldset><legend>{t('kind')}</legend>
+      <fieldset className="kind"><legend>{t('kind')}</legend>
         {(['onprem', 'cloud'] as Kind[]).map(k => (
           <label key={k} className="check"><input type="radio" name="kind" value={k} checked={f.kind === k}
             onChange={() => setF(s => ({ ...s, kind: k, ack: k === 'cloud' && p?.kind === 'cloud' ? p.cloud_ack.acknowledged : false }))} /> {t(k)}</label>
