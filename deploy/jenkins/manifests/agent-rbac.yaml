@@ -1,0 +1,10 @@
+# ServiceAccount for agent pods. Agents need no Kubernetes API access (the pipeline only builds, scans, pushes
+# and commits to git; Argo CD deploys), so the account gets no Role and no token is mounted.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: jenkins-agent
+  namespace: jenkins
+automountServiceAccountToken: false
+imagePullSecrets:
+  - name: regcred

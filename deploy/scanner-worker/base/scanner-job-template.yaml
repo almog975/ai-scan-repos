@@ -24,6 +24,7 @@ data:
         spec:
           restartPolicy: Never
           serviceAccountName: scanner
+          imagePullSecrets: [{name: regcred}]   # also on SA scanner; explicit so the Job works standalone
           automountServiceAccountToken: false
           securityContext:
             runAsNonRoot: true

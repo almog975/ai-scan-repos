@@ -7,4 +7,7 @@ echo "+ terraform init && terraform apply -var region=${AWS_REGION:-eu-central-1
 echo "TODO: aws eks update-kubeconfig, install Traefik + EFS CSI"
 echo "+ kubectl apply -k $ROOT/infra/bootstrap/overlays/eks   # before Argo CD; set fs-REPLACE_ME first"
 [ "${DRY_RUN:-1}" = 1 ] || kubectl apply -k "$ROOT/infra/bootstrap/overlays/eks"
-echo "TODO: install Argo CD (infra/argocd/README.md), then apply deploy/*/overlays/eks via Argo CD"
+echo "+ kubectl apply -k $ROOT/infra/ingress/overlays/eks   # after Traefik"
+[ "${DRY_RUN:-1}" = 1 ] || kubectl apply -k "$ROOT/infra/ingress/overlays/eks"
+# Argo CD + AppProjects (2a ai-scan, 2b ai-scan-ci) + root app; optional agent image: infra/installer/build-jenkins-agent.sh
+"$ROOT/infra/installer/scripts/install-argocd.sh"

@@ -1,0 +1,146 @@
+# Values for the jenkins/jenkins Helm chart (https://charts.jenkins.io, pinned in deploy/argocd/apps/jenkins.yaml).
+# Rendered by Argo CD (Application ai-scan-jenkins, namespace jenkins). Everything Jenkins needs is in JCasC
+# below; no click-ops. No secrets in git: Jenkins credentials (github-bot, registry-push, smee-url) are K8s Secrets
+# in namespace jenkins labelled jenkins.io/credentials-type (kubernetes-credentials-provider plugin);
+# see deploy/jenkins/README.md for the kubectl commands.
+fullnameOverride: jenkins            # Service jenkins:8080 in namespace jenkins (Infra's IngressRoute targets it)
+
+controller:
+  image:
+    tag: "2.580.2-lts-jdk21"
+  servicePort: 8080
+  serviceType: ClusterIP
+  ingress:
+    enabled: false                   # Infra owns the Traefik IngressRoute for jenkins
+  # Admin login from a pre-created Secret (Almog): a chart-generated random password would change on every
+  # Argo CD render (no Helm lookup) and cause drift.
+  admin:
+    createSecret: false
+    existingSecret: jenkins-admin
+    userKey: jenkins-admin-user
+    passwordKey: jenkins-admin-password
+  numExecutors: 0                    # all builds run on Kubernetes agent pods
+  resources:
+    requests: {cpu: 500m, memory: 1Gi}
+    limits: {memory: 2Gi}
+  testEnabled: false                 # no helm test Pod (Argo CD would treat it as a hook)
+  installLatestPlugins: false
+  installLatestSpecifiedPlugins: false
+  installPlugins:
+    - kubernetes:4560.vc25b_83890c34
+    - workflow-aggregator:608.v67378e9d3db_1
+    - git:5.11.0
+    - github-branch-source:1986.v801e40614d00
+    - configuration-as-code:2141.v3c81c53ddb_f3
+    - job-dsl:3732.v9a_c49a_61a_313
+    - kubernetes-credentials-provider:1.324.v5271cd145cb_1
+    - credentials-binding:728.v902a_273b_8947
+    - pipeline-model-definition:2.2293.v6e7193cec599
+    - junit:1455.v5c1b_eed56292
+    - timestamper:1.30
+    - ws-cleanup:0.49
+  JCasC:
+    defaultConfig: true
+    configScripts:
+      ai-scan: |
+        jenkins:
+          systemMessage: "AI Scan Repos CI (managed by JCasC, deploy/jenkins/values.yaml)"
+        unclassified:
+          location:
+            # Public URL (Infra's IngressRoute, TLS secret jenkins-tls). Default = k3s host.
+            # local: https://jenkins.ai-scan.local/  eks: https://jenkins.ai-scan.example.com/
+            url: "https://jenkins.ai-scan.127.0.0.1.nip.io/"
+      ai-scan-jobs: |
+        jobs:
+          - script: >
+              multibranchPipelineJob('ai-scan-repos') {
+                displayName('AI Scan Repos')
+                branchSources {
+                  branchSource {
+                    source {
+                      github {
+                        id('ai-scan-repos')
+                        repoOwner('almog975')
+                        repository('ai-scan-repos')
+                        repositoryUrl('https://github.com/almog975/ai-scan-repos')
+                        configuredByUrl(true)
+                        credentialsId('github-bot')
+                        traits {
+                          gitHubBranchDiscovery { strategyId(1) }
+                          gitHubPullRequestDiscovery { strategyId(1) }
+                        }
+                      }
+                    }
+                  }
+                }
+                factory { workflowBranchProjectFactory { scriptPath('Jenkinsfile') } }
+                orphanedItemStrategy { discardOldItems { numToKeep(10) } }
+                triggers { periodicFolderTrigger { interval('5m') } }   // branch indexing fallback if smee is down
+              }
+
+persistence:
+  enabled: true
+  existingClaim: jenkins-home        # Infra-owned PVC; the chart does not create one
+
+serviceAccount:
+  create: true
+  name: jenkins
+rbac:
+  create: true                       # Role in ns jenkins: controller may create/delete agent pods there
+  readSecrets: true                  # needed by kubernetes-credentials-provider (Secrets in ns jenkins only)
+
+agent:
+  enabled: true
+  namespace: jenkins
+  podName: ai-scan-agent
+  # The chart's default template is replaced by ai-scan-agent below.
+  disableDefaultAgent: true
+  podTemplates:
+    ai-scan-agent: |
+      - name: ai-scan-agent
+        label: ai-scan-agent
+        serviceAccount: jenkins-agent
+        nodeUsageMode: EXCLUSIVE
+        idleMinutes: 0
+        imagePullSecrets:
+          - name: regcred
+        containers:
+          - name: jnlp
+            image: jenkins/inbound-agent:3395.v6e5377b_0fb_3c-1-jdk21
+            resourceRequestCpu: 100m
+            resourceRequestMemory: 256Mi
+          - name: tools
+            # ci/agent/Dockerfile (node20, python3, trivy, kustomize, crane). Infra/Almog builds and pushes it once.
+            image: registry.ai-scan.127.0.0.1.nip.io/ai-scan/jenkins-agent:CHANGE_ME_AGENT_SHA
+            command: sleep
+            args: infinity
+            ttyEnabled: true
+            resourceRequestCpu: 500m
+            resourceRequestMemory: 1Gi
+            resourceLimitMemory: 3Gi
+            envVars:
+              # ci/db-parity.sh -> postgres sidecar below (same pod network namespace).
+              - envVar: {key: PGHOST, value: 127.0.0.1}
+              - envVar: {key: PGPORT, value: "5432"}
+              - envVar: {key: PGUSER, value: postgres}
+          - name: postgres
+            # Throwaway DB for ci/db-parity.sh. Only reachable inside the agent pod (127.0.0.1), deleted with the pod;
+            # trust auth so no password exists anywhere. Same major as production (16).
+            image: postgres:16-alpine
+            ttyEnabled: false
+            envVars:
+              - envVar: {key: POSTGRES_HOST_AUTH_METHOD, value: trust}
+              - envVar: {key: POSTGRES_INITDB_ARGS, value: "--auth-local=trust --auth-host=trust"}
+            resourceRequestCpu: 100m
+            resourceRequestMemory: 256Mi
+            resourceLimitMemory: 512Mi
+          - name: kaniko
+            # Kaniko (debug tag has a shell for `sh` steps). No Docker socket, no privileged pod.
+            image: gcr.io/kaniko-project/executor:v1.23.2-debug
+            command: sleep
+            args: infinity
+            ttyEnabled: true
+            runAsUser: 0
+            resourceRequestCpu: 500m
+            resourceRequestMemory: 1Gi
+            resourceLimitMemory: 4Gi

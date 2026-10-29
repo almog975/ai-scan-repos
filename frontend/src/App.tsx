@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { api, ApiError, type Me } from './api/client'
 import { useI18n, type Lang } from './i18n'
 import { Link, navigate, parse, usePath, type Route } from './router'
-import { ErrorBox } from './ui'
+import { ErrorBox, Ltr } from './ui'
+import { APP_VERSION } from './version'
 import Admin from './views/Admin'
 import Home from './views/Home'
 import Login from './views/Login'
@@ -75,7 +76,7 @@ export default function App() {
               </ul>
             </nav>
             <div className="userchip">
-              <span>@<bdi dir="ltr">{me.github_login}</bdi></span>
+              <span className="user">@<bdi dir="ltr">{me.github_login}</bdi></span>{" "}
               <label className="lang">{t('lang_switch')}
                 <select value={lang} onChange={e => setLang(e.target.value as Lang)}>
                   <option value="he" lang="he">עברית</option>
@@ -99,6 +100,9 @@ export default function App() {
           )}
           <ErrorBox error={err} onDismiss={() => setErr(null)} />
           {view}
+          <footer className="appfooter">
+            <span className="badge version" data-testid="app-version">{t('version')} <Ltr>{APP_VERSION}</Ltr></span>
+          </footer>
         </main>
       </div>
     </>

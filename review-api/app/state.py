@@ -18,11 +18,11 @@ TERMINAL = {State.completed, State.failed, State.cancelled}
 # Cancel is allowed from every ACTIVE state; failed is reachable from every ACTIVE state (attempts exhausted or
 # admin force-fail). queued/retrying -> stuck covers a Job that died before its first heartbeat.
 TRANSITIONS: dict[State, set[State]] = {
-    State.queued: {State.running, State.paused, State.stuck, State.cancelled, State.failed},
+    State.queued: {State.running, State.stuck, State.cancelled, State.failed},
     State.running: {State.paused, State.stuck, State.completed, State.failed, State.cancelled},
     State.paused: {State.queued, State.running, State.cancelled, State.failed},
     State.stuck: {State.queued, State.retrying, State.failed, State.cancelled},
-    State.retrying: {State.running, State.paused, State.stuck, State.failed, State.cancelled},
+    State.retrying: {State.running, State.stuck, State.failed, State.cancelled},
     State.failed: {State.retrying},
     State.completed: set(),
     State.cancelled: set(),

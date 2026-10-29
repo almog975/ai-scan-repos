@@ -2,3 +2,6 @@ tests
 __pycache__
 .pytest_cache
 .coverage
+reports
+.pytest_cache
+__pycache__

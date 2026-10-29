@@ -1,4 +1,17 @@
-.PHONY: test
-# Passes with no tests (pytest exit 5) or when pytest is not installed.
+COMPONENT := gateway
+include ../mk/common.mk
+PY ?= python3
+# JUnit path; skipped when the caller already passes --junitxml via PYTEST_ADDOPTS (Jenkinsfile does).
+JUNIT ?= $(REPORTS)/junit.xml
+JUNIT_OPT = $(if $(findstring junitxml,$(PYTEST_ADDOPTS)),,--junitxml=$(JUNIT))
+
+.PHONY: test build
+# Unit tests on the agent (never in the Dockerfile). Exit code = pytest's; JUnit for Jenkins' junit step.
 test:
-	@if python3 -c "import pytest" 2>/dev/null; then python3 -m pytest -q || [ $$? -eq 5 ]; else echo "[gateway] pytest not installed - skipping"; fi
+	@$(PY) -c "import pytest" 2>/dev/null || { echo "[$(COMPONENT)] pytest not installed for $(PY) (pip install -r requirements-dev.txt)" >&2; exit 2; }
+	@mkdir -p $(REPORTS)
+	$(PY) -m pytest -q -o addopts= -p no:cacheprovider $(JUNIT_OPT) tests
+
+# Image tagged with the git sha (never latest).
+build: require-docker
+	$(DOCKER) build --pull -t $(IMAGE) --label org.opencontainers.image.revision=$(GIT_SHA) .

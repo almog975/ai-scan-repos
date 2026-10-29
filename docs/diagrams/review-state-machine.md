@@ -10,7 +10,6 @@ stateDiagram-v2
     [*] --> queued: POST /reviews (row created)
     queued --> running: POST /reviews — start_attempt(mark_running=True), same request
     queued --> running: first heartbeat — POST /internal/reviews/{id}/progress (after resume)
-    queued --> paused: POST /reviews/{id}/pause
     queued --> cancelled: POST /reviews/{id}/cancel
     queued --> failed: pending (no trigger; watchdog does not sweep queued)
     running --> paused: POST /reviews/{id}/pause (Job deleted)
@@ -25,7 +24,6 @@ stateDiagram-v2
     retrying --> running: first heartbeat — POST /internal/reviews/{id}/progress
     retrying --> retrying: watchdog relaunch, attempt n+1
     retrying --> failed: watchdog — 5 attempts exhausted
-    retrying --> paused: POST /reviews/{id}/pause
     retrying --> cancelled: POST /reviews/{id}/cancel
     paused --> queued: POST /reviews/{id}/resume (same attempt, own checkpoint)
     paused --> running: pending (allowed, no trigger)
@@ -40,7 +38,7 @@ stateDiagram-v2
 | — | queued | user creates review | `POST /reviews` | commit_sha resolved and pinned; 409 if an active review exists for repo+sha; capacity check | ✅ |
 | queued | running | Job launched in the create request | `POST /reviews` → `start_attempt(mark_running=True)` | attempt 1 row, `last_heartbeat=now` | ✅ (not on heartbeat) |
 | queued | running | first worker heartbeat | `POST /internal/reviews/{id}/progress` | `last_heartbeat` | ✅ |
-| queued/running/retrying | paused | user | `POST /reviews/{id}/pause` | Job deleted; attempt stays open; `paused_at` | ✅ |
+| running | paused | user | `POST /reviews/{id}/pause` | Job deleted; attempt stays open; `paused_at`. From any other state: 409 | ✅ |
 | running | stuck | heartbeat older than `HEARTBEAT_TIMEOUT_SECONDS` (900), Job `failed` (backoffLimit 0, `activeDeadlineSeconds` 21600) or `missing`, or worker `outcome=error` | watchdog `sweep()` every 60 s | attempt ends `stuck`; Job deleted (Background) | ✅ (transient) |
 | stuck | retrying | attempts left | watchdog `relaunch()` same sweep | attempt n+1 launched | ✅ |
 | retrying | retrying | attempt n+1 also stuck | watchdog | attempt n+2 launched | ✅ |

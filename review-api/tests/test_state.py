@@ -22,7 +22,7 @@ def test_states_equal_contract():
     ("stuck", "failed", True), ("failed", "retrying", True), ("running", "completed", True),
     ("running", "cancelled", True),
     ("completed", "running", False), ("cancelled", "running", False), ("failed", "running", False),
-    ("queued", "completed", False), ("paused", "completed", False), ("completed", "retrying", False),
+    ("queued", "completed", False), ("queued", "paused", False), ("retrying", "paused", False), ("paused", "completed", False), ("completed", "retrying", False),
 ])
 def test_transitions(src, dst, ok):
     r = rv(State(src))

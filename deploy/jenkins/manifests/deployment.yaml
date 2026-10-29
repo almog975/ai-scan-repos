@@ -1,0 +1,50 @@
+# smee.io relay: forwards GitHub webhooks (sent to the smee channel) to Jenkins' github-webhook endpoint.
+# The channel URL is secret-ish and NOT in git: Secret smee-url (key url) in namespace jenkins, see README.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: smee-client
+  namespace: jenkins
+  labels: {app.kubernetes.io/name: smee-client, app.kubernetes.io/part-of: ai-scan-ci}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app.kubernetes.io/name: smee-client}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: smee-client, app.kubernetes.io/part-of: ai-scan-ci}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: smee
+          image: node:20.18-alpine
+          command: ["sh", "-c"]
+          args:
+            - exec npx --yes smee-client@5.0.0 --url "$SMEE_URL" --target "$TARGET_URL"
+          env:
+            - name: SMEE_URL
+              valueFrom:
+                secretKeyRef: {name: smee-url, key: url}
+            - name: TARGET_URL
+              value: http://jenkins.jenkins.svc:8080/github-webhook/
+            - name: HOME
+              value: /tmp
+            - name: npm_config_cache
+              value: /tmp/.npm
+          resources:
+            requests: {cpu: 10m, memory: 64Mi}
+            limits: {memory: 192Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: tmp
+          emptyDir: {}

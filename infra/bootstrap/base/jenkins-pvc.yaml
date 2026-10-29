@@ -1,0 +1,8 @@
+# Jenkins home. Applied by the installer (not Argo CD). Jenkins Helm: persistence.existingClaim=jenkins-home
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata: {name: jenkins-home, namespace: jenkins, labels: {app: jenkins}}
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: local-path
+  resources: {requests: {storage: 20Gi}}

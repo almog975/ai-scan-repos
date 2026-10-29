@@ -1,0 +1,27 @@
+# AppProject for CI tooling (Application ai-scan-jenkins, deploy/argocd/apps/jenkins.yaml).
+# Separate from ai-scan so the app project keeps a single destination (ai-scan-repos).
+# Apply BEFORE deploy/argocd/root-app.yaml (installer step 2b). Infra-owned (adopted from the Pipelines proposal).
+# Whitelist = exactly what `helm template jenkins/jenkins 5.10.3 -f deploy/jenkins/values.yaml` + deploy/jenkins/manifests render.
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: ai-scan-ci
+  namespace: argocd
+spec:
+  description: AI Scan Repos CI (Jenkins, smee-client)
+  sourceRepos:
+    - https://github.com/almog975/ai-scan-repos.git
+    - https://github.com/almog975/ai-scan-repos
+    - https://charts.jenkins.io
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: jenkins
+  clusterResourceWhitelist: []          # jenkins chart + manifests render no cluster-scoped objects
+  namespaceResourceWhitelist:
+    - {group: "", kind: ConfigMap}
+    - {group: "", kind: Service}
+    - {group: "", kind: ServiceAccount}
+    - {group: apps, kind: StatefulSet}
+    - {group: apps, kind: Deployment}
+    - {group: rbac.authorization.k8s.io, kind: Role}
+    - {group: rbac.authorization.k8s.io, kind: RoleBinding}

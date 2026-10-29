@@ -3,3 +3,6 @@ __pycache__
 .pytest_cache
 .coverage
 *.db
+reports
+.pytest_cache
+__pycache__
