@@ -57,6 +57,8 @@ main { flex: 1; padding: 1.5rem 2rem; min-inline-size: 0; max-inline-size: 75rem
 .arrow { display: inline-block; }
 [dir="rtl"] .arrow { transform: scaleX(-1); }
 .reason, .hint { color: var(--muted); font-size: .875rem; }
+.action { display: inline-flex; flex-direction: column; align-items: flex-start; gap: .15rem; }
+.action .reason { font-size: .75rem; max-inline-size: 14rem; }
 
 .field { display: flex; flex-direction: column; gap: .25rem; margin-block-end: 1rem; }
 input[type="text"], input[type="url"], input[type="password"], input:not([type]), select, textarea {
