@@ -338,15 +338,34 @@ cidr_ok() {
   [ "$m" -ge 8 ] && [ "$m" -le 32 ] || return 1   # never /0../7: that would open egress to the internet
   for o in ${ip//./ }; do [ "$o" -le 255 ] || return 1; done
 }
+ip2int() { local a b c d; IFS=. read -r a b c d <<<"$1"; echo $(( (a << 24) | (b << 16) | (c << 8) | d )); }
+# cidr_overlap A B: true when the two IPv4 CIDRs share any address
+cidr_overlap() {
+  local a=${1%/*} am=${1#*/} b=${2%/*} bm=${2#*/} m mask
+  m=$(( am < bm ? am : bm )); mask=$(( m == 0 ? 0 : (0xFFFFFFFF << (32 - m)) & 0xFFFFFFFF ))
+  [ $(( $(ip2int "$a") & mask )) -eq $(( $(ip2int "$b") & mask )) ]
+}
+# cluster ranges an AI CIDR must not overlap (it would open scanner egress to in-cluster pods/Services).
+# Defaults: k3s/local 10.42.0.0/16 + 10.43.0.0/16; eks VPC CNI pods = VPC 10.40.0.0/16, Services 172.20.0.0/16.
+cluster_cidrs() {
+  case "$OVERLAY" in
+    eks) echo "${POD_CIDR:-10.40.0.0/16} ${SERVICE_CIDR:-172.20.0.0/16}" ;;
+    *) echo "${POD_CIDR:-10.42.0.0/16} ${SERVICE_CIDR:-10.43.0.0/16}" ;;
+  esac
+}
 egress() {
   STEP=egress
   log "egress: NetworkPolicy endpoints (overlay $OVERLAY)"
   local plat="$ROOT/deploy/platform/overlays/$OVERLAY/kustomization.yaml"
   local scan="$ROOT/deploy/scanner-worker/overlays/$OVERLAY/networkpolicy-ai-egress.yaml"
-  local list="" c ip var
+  local list="" c cc ip var
   if [ -n "${AI_EGRESS_CIDRS:-}" ]; then
     for c in ${AI_EGRESS_CIDRS//,/ }; do
       cidr_ok "$c" || die "AI_EGRESS_CIDRS: bad or too broad CIDR '$c' (IPv4 a.b.c.d/8..32)"
+      for cc in $(cluster_cidrs); do
+        cidr_ok "$cc" || die "POD_CIDR/SERVICE_CIDR: bad CIDR '$cc'"
+        ! cidr_overlap "$c" "$cc" || die "AI_EGRESS_CIDRS: '$c' overlaps cluster range $cc (POD_CIDR/SERVICE_CIDR)"
+      done
       list+="${list:+, }{ipBlock: {cidr: $c}}"
     done
     echo "+ set AI egress [$AI_EGRESS_CIDRS] in deploy/{platform,scanner-worker}/overlays/$OVERLAY"

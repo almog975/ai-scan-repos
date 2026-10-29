@@ -80,3 +80,21 @@ def test_purge_message_accurate(sb):
 def test_only_secret_notfound_is_absent(sb, err):
     r = sb.run("secrets", env={"SHIM_GET_ERR": err})
     assert r.returncode != 0 and sb.secrets() == {}
+
+
+@pytest.mark.parametrize("overlay,cidr", [("k3s", "10.0.0.0/8"), ("k3s", "10.42.5.0/24"), ("k3s", "10.43.0.1/32"),
+                                          ("local", "10.32.0.0/11"), ("eks", "10.40.7.7/32"), ("eks", "172.16.0.0/12")])
+def test_ai_cidr_overlapping_cluster_rejected(sb, overlay, cidr):
+    env = {"AI_EGRESS_CIDRS": f"192.0.2.10/32,{cidr}"}
+    if overlay == "eks":
+        env["REGISTRY_HOST"] = "reg.example.com"
+    r = sb.run("--overlay", overlay, "--mode", "direct", "egress", env=env)
+    assert r.returncode != 0 and "overlaps cluster range" in r.stderr + r.stdout
+    assert subprocess.run(["git", "-C", str(sb.tmp / "repo"), "diff", "--quiet"]).returncode == 0
+
+
+def test_ai_cidr_custom_pod_cidr_and_non_overlap_ok(sb):
+    r = sb.run("egress", env={"AI_EGRESS_CIDRS": "11.0.0.0/8,100.64.0.0/10"})
+    assert r.returncode == 0, r.stderr
+    r = sb.run("egress", env={"AI_EGRESS_CIDRS": "100.64.0.0/10", "POD_CIDR": "100.64.0.0/16"})
+    assert r.returncode != 0 and "overlaps" in r.stderr + r.stdout

@@ -78,6 +78,7 @@ Precedence: defaults < `--config` file < environment < flags. The config file ac
 | `AI_EGRESS_CIDRS` | review-api provider tests and scanner Jobs → AI provider (TCP 443) | the provider's IPs / Tailscale subnet (docs/onprem-ai-tailscale.md); hostnames are not possible in NetworkPolicy |
 | `KUBE_API_ENDPOINT` | review-api → API server (Job launcher) | `kubectl get endpoints kubernetes -n default -o jsonpath='{.subsets[0].addresses[0].ip}'` |
 | `KUBE_SERVICE_IP` | review-api → `kubernetes.default` ClusterIP | `kubectl get svc kubernetes -n default -o jsonpath='{.spec.clusterIP}'` (k3s `10.43.0.1`) |
+| `POD_CIDR`, `SERVICE_CIDR` | overlap check only: an `AI_EGRESS_CIDRS` entry that overlaps either is rejected (so `10.0.0.0/8` fails) | defaults k3s/local `10.42.0.0/16` + `10.43.0.0/16`, eks `10.40.0.0/16` (VPC CNI) + `172.20.0.0/16` |
 
 ## Images and GitOps
 
