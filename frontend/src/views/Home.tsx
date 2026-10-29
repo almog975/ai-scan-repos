@@ -52,7 +52,9 @@ export default function Home() {
 
   const urlOk = GITHUB_URL.test(url.trim())
   const showUrlErr = (touched || url.length > 0) && !urlOk
-  const prov = providers.find(p => p.id === pid)
+  // provider_id null = the default provider (server settings); its kind decides the cloud warning too.
+  const def = providers.find(p => p.is_default)
+  const prov = pid ? providers.find(p => p.id === pid) : def
   const cloud = prov?.kind === 'cloud'
   const reason = !urlOk ? t('start_disabled_url') : cloud && !ack ? t('cloud_ack_required') : ''
 
@@ -103,7 +105,7 @@ export default function Home() {
           <label htmlFor="provider">{t('provider')}</label>
           <select id="provider" value={pid} onChange={e => { setPid(e.target.value); setAck(false) }}
             aria-describedby={cloud ? cloudId : undefined}>
-            <option value="">{t('provider_none')}</option>
+            <option value="">{def ? t('provider_default_is', { name: def.name, kind: t(def.kind) }) : t('provider_none')}</option>
             {providers.map(p => <option key={p.id} value={p.id}>{p.name} ({t(p.kind)})</option>)}
           </select>
           {prov && <span><KindBadge kind={prov.kind} /></span>}

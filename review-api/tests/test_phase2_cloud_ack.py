@@ -68,3 +68,21 @@ def test_grok_xai_is_cloud_from_db_row_and_needs_ack(client, A, H, launcher, mon
     assert r.status_code == 201 and r.json()["provider"] == {"id": pid, "kind": "cloud", "cloud_warning": True}
     assert got["env"]["AI_PROVIDER"] == "openai_compatible" and got["env"]["AI_KIND"] == "cloud"
     assert got["env"]["AI_BASE_URL"] == xai
+
+
+def test_public_list_marks_default_provider_and_default_cloud_needs_ack(client, H, A):
+    """Phase 9: the new-review form needs the default provider's kind (ProviderPublic.is_default)."""
+    cloud, onprem = mkprov("cloud", BASE), mkprov("onprem", "http://10.0.0.5:8000/v1")
+    rows = client.get("/ai-providers", headers=H).json()
+    for row in rows:
+        check("ProviderPublic", row)
+    assert not any(r["is_default"] for r in rows)
+    s = client.get("/admin/settings", headers=A).json()
+    assert client.put("/admin/settings", json={**s, "default_provider_id": cloud}, headers=A).status_code == 200
+    rows = {p["id"]: p for p in client.get("/ai-providers", headers=H).json()}
+    assert rows[cloud]["is_default"] is True and rows[onprem]["is_default"] is False
+    # provider_id null -> default (cloud): needs ack_cloud=true
+    r = client.post("/reviews", json={"repo_url": URL, "depth": "brief", "provider_id": None}, headers=H)
+    assert r.status_code == 422 and r.json()["error"]["code"] == "CLOUD_ACK_REQUIRED"
+    r = client.post("/reviews", json={"repo_url": URL, "depth": "brief", "provider_id": None, "ack_cloud": True}, headers=H)
+    assert r.status_code == 201 and r.json()["provider"] == {"id": cloud, "kind": "cloud", "cloud_warning": True}

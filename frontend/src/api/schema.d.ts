@@ -243,6 +243,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** @description Allowed only from running; 409 CONFLICT from any other state. The attempt stays open; resume continues it from the checkpoint. */
         post: operations["pauseReview"];
         delete?: never;
         options?: never;
@@ -725,6 +726,11 @@ export interface components {
             name: string;
             kind: components["schemas"]["provider_kind"];
             cloud_warning: boolean;
+            /**
+             * @description True for the provider used when createReview gets provider_id null (settings.default_provider_id). Lets the new-review form show the cloud warning for the default provider.
+             * @default false
+             */
+            is_default: boolean;
         };
         /** @description Admin acknowledgement that a cloud provider sends repository code outside the cluster. */
         CloudAck: {

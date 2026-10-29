@@ -30,6 +30,10 @@ class Stack:
         self.partial = {}   # id -> bool (partial results exist)
         self.calls = []     # (method, path, csrf_ok)
         self.sse_subscribers = 0
+        self.providers = []        # GET /api/ai-providers (ProviderPublic[])
+        self.created = []          # POST /api/reviews bodies
+        # report.json provider when no AI ran (contracts/report.schema.json)
+        self.report_provider = {"name": "none", "kind": "onprem", "model": "none"}
 
     def new_review(self, repo_url, depth, provider_id):
         rid = str(uuid.uuid4())
@@ -44,7 +48,7 @@ class Stack:
         r = self.reviews[rid]
         partial = r["state"] != "completed"
         summary = {"high": 1, "medium": 2} if not partial else {"high": 1}
-        j = {"review_id": rid, "partial": partial, "summary": summary, "provider": None,
+        j = {"review_id": rid, "partial": partial, "summary": summary, "provider": self.report_provider, "depth": r["depth"],
              "findings": [{"id": "f1", "severity": "high", "title": "SQL injection in app.py"}]}
         md = ("# Security report\n\n" + ("> **Partial report** – scan did not finish.\n\n" if partial else "")
               + "## HIGH\n\n- SQL injection in `app.py` <script>window.__xss=1</script>\n")
@@ -138,13 +142,18 @@ def make_handler(stack: Stack):
                 stack.sessions.pop(sid, None)
                 return self.send(204, "", headers=[("Set-Cookie", "aiscan_session=; Path=/; Max-Age=0")])
             if path == "/api/ai-providers":
-                return self.send(200, [])
+                return self.send(200, stack.providers)
             if path == "/api/reviews":
                 with stack.lock:
                     if m == "GET":
                         items = sorted(stack.reviews.values(), key=lambda r: r["created_at"], reverse=True)
                         return self.send(200, {"items": items, "page": 1, "page_size": 20, "total": len(items)})
                     b = self.body()
+                    stack.created.append(b)
+                    prov = next((p for p in stack.providers if p["id"] == b.get("provider_id")
+                                 or (not b.get("provider_id") and p.get("is_default"))), None)
+                    if prov and prov["kind"] == "cloud" and not b.get("ack_cloud"):
+                        return self.send(422, {"error": {"code": "CLOUD_ACK_REQUIRED", "message": "cloud provider: resend with ack_cloud=true"}})
                     return self.send(201, stack.new_review(b["repo_url"], b.get("depth", "quick"), b.get("provider_id")))
             mt = re.fullmatch(r"/api/reviews/([0-9a-f-]+)(?:/(\w+(?:\.\w+)?))?", path)
             if not mt or mt.group(1) not in stack.reviews:
