@@ -1,6 +1,6 @@
 // AI Scan Repos monorepo pipeline (Phase 6). Images: <registry>/ai-scan/<svc>:<git-sha> (never 'latest').
 // Runs on the Kubernetes agent pod template 'ai-scan-agent' (deploy/jenkins/values.yaml, JCasC):
-//   container 'tools'  : node20 + python3 + trivy + kustomize + crane + git (ci/agent/Dockerfile)
+//   container 'tools'  : node22 + python3 + trivy + kustomize + crane + git (ci/agent/Dockerfile)
 //   container 'kaniko' : image builds without a Docker daemon (no privileged pod on k3s)
 // Images are built to a tarball (no push), scanned with trivy --input, then pushed with crane on main only.
 def SERVICES = [ // svc : [source folder, deploy folder]

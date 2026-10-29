@@ -112,7 +112,7 @@ agent:
             resourceLimitCpu: 500m
             resourceLimitMemory: 512Mi
           - name: tools
-            # ci/agent/Dockerfile (node20, python3, trivy, kustomize, crane). Infra/Almog builds and pushes it once.
+            # ci/agent/Dockerfile (node22, python3, trivy, kustomize, crane). Infra/Almog builds and pushes it once.
             image: registry.registry:5000/ai-scan/jenkins-agent:CHANGE_ME_AGENT_SHA   # kubelet pulls via the K3s mirror (infra/registry/registries.yaml.example)
             command: sleep
             args: infinity
