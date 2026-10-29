@@ -38,7 +38,11 @@ spec:
             description: The scanner Job stopped reporting (OOM, node loss, network policy). The reconciler should mark it stuck within two passes.
             runbook_url: https://github.com/almog975/ai-scan-repos/blob/main/docs/runbooks/stuck-review.md
         - alert: AIScanReconcilerNotRunning
-          expr: sum(increase(reconciler_runs_total{namespace="ai-scan-repos", result="ok"}[15m])) == 0
+          # `or vector(0)`: still fires when every pass errors and no result="ok" sample exists (labels are also
+          # pre-initialised to 0 in review-api); gated on review-api exporting the metric at all (else TargetDown).
+          expr: |
+            (sum(increase(reconciler_runs_total{namespace="ai-scan-repos", result="ok"}[15m])) or vector(0)) == 0
+            and on() count(reconciler_runs_total{namespace="ai-scan-repos"}) > 0
           for: 15m
           labels: {severity: critical}
           annotations:
@@ -71,8 +75,10 @@ spec:
             runbook_url: https://github.com/almog975/ai-scan-repos/blob/main/docs/monitoring.md#alerts
         - alert: AIScanAIProviderErrors
           expr: |
+            # plain ratio (no clamp_min: increase() is fractional, a clamp skews low-volume ratios) + minimum volume
             sum by (kind) (increase(ai_provider_requests_total{namespace="ai-scan-repos", outcome="error"}[30m]))
-              / clamp_min(sum by (kind) (increase(ai_provider_requests_total{namespace="ai-scan-repos"}[30m])), 1) > 0.5
+              / sum by (kind) (increase(ai_provider_requests_total{namespace="ai-scan-repos"}[30m])) > 0.5
+            and sum by (kind) (increase(ai_provider_requests_total{namespace="ai-scan-repos"}[30m])) >= 5
           for: 15m
           labels: {severity: warning}
           annotations:

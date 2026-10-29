@@ -331,7 +331,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum by (state) (rate(review_attempts_sum{namespace=\"ai-scan-repos\"}[1h])) / sum by (state) (rate(review_attempts_count{namespace=\"ai-scan-repos\"}[1h]))",
+          "expr": "sum by (state) (rate(review_attempts_used_sum{namespace=\"ai-scan-repos\"}[1h])) / sum by (state) (rate(review_attempts_used_count{namespace=\"ai-scan-repos\"}[1h]))",
           "legendFormat": "{{state}}",
           "refId": "A"
         }
@@ -448,8 +448,8 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(increase(stuck_detections_total{namespace=\"ai-scan-repos\"}[1h]))",
-          "legendFormat": "stuck",
+          "expr": "sum by (reason) (increase(stuck_detections_total{namespace=\"ai-scan-repos\"}[1h]))",
+          "legendFormat": "{{reason}}",
           "refId": "A"
         }
       ],
