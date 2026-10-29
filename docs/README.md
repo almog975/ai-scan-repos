@@ -9,6 +9,8 @@ Architecture notes, ADRs and runbooks for AI Scan Repos.
 - `diagrams/` – [architecture v1 (target)](diagrams/architecture-v1.md) ([SVG](diagrams/architecture-v1.svg)), [Phase 1 backend as built](diagrams/architecture.md), [review state machine](diagrams/review-state-machine.md)
 - `runbooks/` – [runbook](runbooks/runbook.md), [demo script](runbooks/demo-script.md), [admin: AI providers](runbooks/admin-ai-providers.md), [stuck review](runbooks/stuck-review.md), [resume after days](runbooks/resume-after-days.md), [rollback](runbooks/rollback.md)
 - [ci.md](ci.md) – CI/CD and GitOps flow
+- [installer.md](installer.md) – installer: config (local registry / ECR), secrets, Argo CD, verify, uninstall
+- [monitoring.md](monitoring.md) – metrics, alerts, Grafana dashboard
 - [severity-mapping.md](severity-mapping.md) – scanner severities → normalized severity
 - [report-md-spec.md](report-md-spec.md) – structure of report.md and its report.json sources
  Contract docs: [../contracts/README.md](../contracts/README.md).
