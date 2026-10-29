@@ -17,10 +17,11 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 from pathlib import Path
 
 from .ai_client import DEFAULT_MODELS, AIClient, parse_ai_json
-from .health import STAGE
+from .health import AI_CALLS, STAGE
 from .api_client import ReviewAPI, Superseded
 from .checkpoint import (Checkpoint, atomic_write_json, atomic_write_text, attempt_dir, now, previous_attempts,
                          review_dir)
@@ -149,6 +150,33 @@ class Worker:
         self._ai_degraded = False
         self._superseded: str | None = None
         self._stop = threading.Event()
+        self._ai_lock = threading.Lock()
+        self._ai_stats = {"calls": 0, "errors": 0, "seconds": 0.0}  # delta since the last accepted heartbeat
+
+    def _with_ai(self, body: dict) -> dict:
+        """Attach (and reset) the AI-call delta; review-api turns it into ai_provider_* metrics."""
+        with self._ai_lock:
+            if self._ai_stats["calls"]:
+                body["ai"] = {**self._ai_stats, "seconds": round(self._ai_stats["seconds"], 3)}
+                self._ai_stats = {"calls": 0, "errors": 0, "seconds": 0.0}
+        return body
+
+    def _restore_ai(self, body: dict) -> None:
+        ai = body.get("ai")
+        if ai:
+            with self._ai_lock:
+                for k in ("calls", "errors", "seconds"):
+                    self._ai_stats[k] += ai[k]
+
+    def _send(self, body: dict) -> None:
+        self._with_ai(body)
+        try:
+            self.api.report(self.cfg.review_id, body)
+        except Superseded:
+            raise
+        except Exception:
+            self._restore_ai(body)
+            raise
 
     # ---- heartbeat -----------------------------------------------------------------------
     def _heartbeat_loop(self) -> None:
@@ -157,9 +185,8 @@ class Worker:
         while not self._stop.wait(self.cfg.heartbeat_seconds):
             st = self.cp.state
             try:
-                self.api.report(self.cfg.review_id, {"attempt": self.cfg.attempt, "budget_no": self.cfg.budget_no,
-                                                     "stage": st["stage"], "progress": st["progress"],
-                                                     "commit_sha": st["commit_sha"]})
+                self._send({"attempt": self.cfg.attempt, "budget_no": self.cfg.budget_no,
+                            "stage": st["stage"], "progress": st["progress"], "commit_sha": st["commit_sha"]})
             except Superseded as exc:
                 self._superseded = str(exc) or "superseded"
                 return
@@ -205,7 +232,7 @@ class Worker:
             body["outcome"] = outcome
         if error:
             body["error"] = error[:500]
-        self.api.report(self.cfg.review_id, body)
+        self._send(body)
         if not outcome and (self.rdir / "PAUSE").exists():
             raise Paused()
 
@@ -262,12 +289,25 @@ class Worker:
             shutil.rmtree(tmp, ignore_errors=True)  # source code never outlives the job
 
     # ---- AI --------------------------------------------------------------------------------
+    def _count_ai(self, t0: float, ok: bool) -> None:
+        dt = time.monotonic() - t0
+        AI_CALLS.labels(self.cfg.ai_kind or "unknown", "ok" if ok else "error").inc()
+        with self._ai_lock:
+            self._ai_stats["calls"] += 1
+            self._ai_stats["errors"] += 0 if ok else 1
+            self._ai_stats["seconds"] += dt
+
     def _ask(self, prompt: str) -> str | None:
+        t0 = time.monotonic()
         try:
             if self._ai_degraded and hasattr(self.ai, "complete_once"):
-                return self.ai.complete_once(prompt)  # provider already failed after retries: don't hammer it
-            return self.ai.complete(prompt)
+                out = self.ai.complete_once(prompt)  # provider already failed after retries: don't hammer it
+            else:
+                out = self.ai.complete(prompt)
+            self._count_ai(t0, True)
+            return out
         except Exception as exc:  # noqa: BLE001
+            self._count_ai(t0, False)
             self._ai_degraded = True
             with (self.cp.dir / "logs" / "ai.log").open("a") as fh:
                 fh.write(f"{now()} {type(exc).__name__}: {str(exc)[:300]}\n")

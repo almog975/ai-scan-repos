@@ -7,6 +7,8 @@ from prometheus_client import CONTENT_TYPE_LATEST, CollectorRegistry, Counter, G
 READY = threading.Event()
 REGISTRY = CollectorRegistry()  # own registry: the worker may run in-process with review-api (tests)
 SCAN_ATTEMPTS = Counter("scan_attempts_total", "Scanner attempts finished by this pod", ["outcome"], registry=REGISTRY)
+AI_CALLS = Counter("scan_ai_calls_total", "AI provider calls made by this scanner Job", ["kind", "outcome"],
+                   registry=REGISTRY)
 STAGE = Gauge("scan_stage", "1 for the stage the worker is in", ["stage"], registry=REGISTRY)
 
 
