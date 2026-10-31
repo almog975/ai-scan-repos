@@ -46,9 +46,11 @@ Then it commits as `ai-scan-ci-bot` with `ci(<target>): <svcs> -> <sha> [skip ci
 (`deploy/multi-<sha>` when one build changed several components: one atomic PR, one revert point), and
 `ci/deploy/open-pr.sh` pushes that branch and opens a PR to `main` via the GitHub REST API (credential `github-bot`,
 fine-grained PAT: [deploy/jenkins/README.md](../deploy/jenkins/README.md#github-bot-pat-deploy-pr-flow)). A rebuild
-of the same sha force-updates the branch and reuses the open PR (HTTP 422 "already exists").
+of the same sha keeps the existing branch (same tree) and reuses the open PR (HTTP 422 "already exists").
 
-**Flow: build → PR → Almog merges → Argo CD syncs.** Jenkins never pushes to `main`. The merge on `main` is not
+> **Open item closed (2026-10-31):** the tag-bump push is no longer a stub. It goes through an automatic PR opened with the Jenkins credential `github-bot` (usernamePassword) ([ADR-0004](adr/0004-gitops.md)).
+
+**Flow: build → PR → Almog merges → Argo CD syncs.** Jenkins never pushes to `main` and never force-pushes; a rebuild whose `deploy/*` branch already exists reuses it only if it holds the same bump. The merge on `main` is not
 rebuilt: it only touches `deploy/**` (and merge/squash messages carry the PR title's `[skip ci]`); `deploy/*`
 branches are excluded from indexing and their PR builds are skipped by the Loop guard.
 
