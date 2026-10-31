@@ -1,5 +1,5 @@
 """Phase 6 Jenkinsfile: static checks + a Python model of the Loop-guard/changed logic simulated on real git repos.
-Strict xfail = gap. The git push of the tag bump is a stub (commented out), so the real loop is unverified."""
+Strict xfail = gap. The tag-bump push + PR is ci/deploy/open-pr.sh, simulated in test_deploy_pr.py."""
 import re, shutil, subprocess
 import pytest
 from conftest import ROOT
@@ -119,7 +119,7 @@ def test_changed_simulation(repo, files, expect):
 
 
 def test_tag_bump_commit_is_skipped(repo):
-    msg = re.search(r'git commit -m "([^"]+)"', JF).group(1)
+    msg = re.search(r"commit -m '([^']+)'", JF).group(1)
     assert "[skip ci]" in msg
     files, m, a = commit(repo, ["deploy/frontend/overlays/k3s/kustomization.yaml"], "ci(k3s): frontend -> abc [skip ci]", BOT_EMAIL)
     assert model(files, m, a) == "skip"
@@ -132,9 +132,10 @@ def test_shared_changes_test_dependents(repo, f):
     assert model(*commit(repo, [f], "change")) not in ([], "skip")
 
 
-def test_push_is_stub_unverified():
-    push = [l for l in JF.splitlines() if "git push" in l]
-    assert push and all(l.strip().startswith("//") for l in push), "push is live now: re-verify the loop guard end to end"
+def test_push_is_pr_not_direct_to_main():
+    assert "git push" not in CODE, "Jenkinsfile must not push itself; ci/deploy/open-pr.sh pushes a deploy/* branch"
+    sh = (ROOT / "ci/deploy/open-pr.sh").read_text()
+    assert 'HEAD:refs/heads/${DEPLOY_BRANCH}' in sh and "HEAD:main" not in sh and "GIT_ASKPASS" in sh
 
 
 def test_insecure_flags_for_plain_http_registry_kaniko_and_crane():

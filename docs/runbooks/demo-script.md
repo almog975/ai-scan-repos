@@ -25,9 +25,9 @@ A final, step-by-step live demo of AI Scan Repos on the K3s deployment. The time
 | 7:00–8:00 | Cloud warning | **New review**, pick Grok (cloud) → show the warning and the **Start review** button disabled until the checkbox is ticked | "Code leaves the network only after an explicit acknowledgement (`ack_cloud`), and the report carries a cloud banner." Do not start it. |
 | 8:00–10:00 | Report | Open the prepared NodeGoat brief report: summary, severity counts, filters, a finding with its AI explanation and fix, **Download report.md** | "The scanners find, the AI explains. Everything is also in report.json and report.md." |
 | 10:00–11:30 | Recovery | Show [stuck-review.md](stuck-review.md) and the Grafana panel for stuck reviews and heartbeats | "The reconciler detects a missing heartbeat, marks the review stuck and retries from the checkpoint, up to 5 attempts." |
-| 11:30–13:30 | CI/CD | Jenkins: last `main` run, with the stages Loop guard → Test → Build → Scan → Push → Deploy; Argo CD: `ai-scan-root` and the child apps | "Trivy blocks HIGH and CRITICAL. The tag bump goes in Git and Argo CD syncs it. Rollback is a git revert." Say the open item out loud: the bump push is pending Almog's decision. |
+| 11:30–13:30 | CI/CD | Jenkins: last `main` run, with the stages Loop guard → Test → Build → Scan → Push → Deploy; Argo CD: `ai-scan-root` and the child apps | "Trivy blocks HIGH and CRITICAL. The tag bump goes in Git and Argo CD syncs it. Rollback is a git revert." Show the auto-opened deploy PR (`ci(k3s): … [skip ci]`), merge it, Argo CD syncs. |
 | 13:30–14:00 | Hebrew | Footer language switch → עברית (RTL) | "Fully localised, with accessibility checks run with axe." |
-| 14:00–15:00 | Wrap-up | README → Status | Point out the open items: tag-bump push, key re-encryption, backups. |
+| 14:00–15:00 | Wrap-up | README → Status | Point out the open items: key re-encryption, backups. |
 
 ## If something breaks
 

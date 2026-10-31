@@ -68,6 +68,10 @@ controller:
                         traits {
                           gitHubBranchDiscovery { strategyId(1) }
                           gitHubPullRequestDiscovery { strategyId(1) }
+                          // Deploy-stage bot branches (deploy/<c>-<sha>, PRs to main) and human rollback/* branches only
+                          // touch deploy/**: never index them as branch jobs. PRs are matched on their target (main),
+                          // so PR-N jobs for them still exist; the Jenkinsfile Loop guard skips those (CHANGE_BRANCH).
+                          headWildcardFilter { includes('*'); excludes('deploy/* rollback/*') }
                         }
                       }
                     }

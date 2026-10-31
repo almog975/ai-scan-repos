@@ -49,6 +49,6 @@ flowchart LR
 | reports PVC | 5Gi, `noexec,nosuid,nodev` | `deploy/` |
 | contracts | OpenAPI + JSON schemas | `contracts/` |
 
-Delivery: the operator runs the CLI installer `infra/installer/aiscan-install.sh` (no web UI; the former web wizard on port 8088 was removed in Phase 9), which installs Argo CD and the app-of-apps. Jenkins builds, scans and pushes images; Argo CD syncs `deploy/<component>/overlays/k3s` from `main` ([ci-cd-flow.md](../ci-cd-flow.md)). The Jenkins tag-bump push is still an open item.
+Delivery: the operator runs the CLI installer `infra/installer/aiscan-install.sh` (no web UI; the former web wizard on port 8088 was removed in Phase 9), which installs Argo CD and the app-of-apps. Jenkins builds, scans and pushes images; Argo CD syncs `deploy/<component>/overlays/k3s` from `main` ([ci-cd-flow.md](../ci-cd-flow.md)). Tag bumps reach `main` as automatic Jenkins PRs that Almog merges.
 
 See also: [architecture.md](architecture.md) (as-built, Phase 1 backend), [ADR-0001](../adr/0001-repo-layout.md), [ADR-0002](../adr/0002-k8s-job-per-review.md).

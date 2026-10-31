@@ -86,7 +86,7 @@ cd frontend/e2e && python -m pytest -q   # Playwright e2e (mock stack); AISCAN_F
 
 Jenkins (k8s agent, kaniko, no Docker daemon): **Test** (contracts, unit, schemathesis, DB parity) → **Build** → **Trivy** (fail on HIGH/CRITICAL) → **Push** `<registry>/ai-scan/<svc>:<sha>` (main) → **tag bump** in `deploy/<component>/overlays/k3s` (`[skip ci]`). Argo CD (app-of-apps `ai-scan-root`, apps `ai-scan-<component>-k3s`, ns `ai-scan-repos`) syncs `main` with prune + selfHeal. Rollback = `git revert` of the tag bump via PR.
 
-**Open item:** pushing the tag-bump commit is still a stub, awaiting Almog's decision between a direct commit to `main` and an automatic PR.
+**Deploy:** Jenkins pushes the tag bump to `deploy/<svc>-<sha>` and opens a PR (`[skip ci]`); Almog merges; Argo CD syncs ([docs/ci-cd-flow.md](docs/ci-cd-flow.md)). Needs the `github-bot` PAT ([deploy/jenkins/README.md](deploy/jenkins/README.md#github-bot-pat-deploy-pr-flow)).
 
 [ci-cd-flow.md](docs/ci-cd-flow.md) (diagram) · [ci.md](docs/ci.md) · [ci-cd.md](docs/ci-cd.md) · [ADR-0004 GitOps](docs/adr/0004-gitops.md) · [rollback](docs/runbooks/rollback.md)
 
@@ -108,7 +108,7 @@ Folder READMEs: [contracts](contracts/README.md) · [frontend](frontend/README.m
 - Phases 0–8: contracts, backend, scanner with AI, recovery and reconciler, frontend (English/Hebrew, accessibility checked), K3s overlays, CI build interface, monitoring, installer.
 
 **Open:**
-- Jenkins tag-bump push (decision pending, see above).
+- `github-bot` PAT not created yet: until then the Deploy stage fails at the PR step (images are already pushed).
 - No tool to re-encrypt AI keys after rotating the master key ([ADR-0003](docs/adr/0003-ai-key-rotation.md), deferred).
 - No automatic backups of reports or the database.
 

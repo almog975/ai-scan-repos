@@ -38,9 +38,9 @@ not injected). It equals the image tag, so the running build can be matched to a
 - Locally: without `PGHOST` the script falls back to `docker run postgres:16-alpine`. With your own server:
   `PGHOST=… PGPORT=… [PGPASSWORD=…] ci/db-parity.sh` (throwaway databases are created and dropped).
 
-## Deploy tag bump – open decision
+## Deploy tag bump – automatic PR
 
-The Deploy stage (main only) runs `kustomize edit set image` / `set configmap scanner-image` and commits with
-`[skip ci]` locally. **Pushing is a deliberate TODO stub** – neither a push to `main` nor an automatic PR is
-implemented until Almog decides on the target (direct push to main vs. a GitOps branch/PR) and creates the
-`github-bot` credential (PAT/App). Until then, image tags in `deploy/` are bumped manually.
+The Deploy stage (main only) runs `kustomize edit set image` / `set configmap scanner-image`, commits with
+`[skip ci]` on `deploy/<svc>-<sha>` (or `deploy/multi-<sha>`), and `ci/deploy/open-pr.sh` pushes it and opens a PR
+to `main` (credential `github-bot`, see deploy/jenkins/README.md). Almog merges; Argo CD syncs. Details:
+[ci-cd-flow.md](ci-cd-flow.md).
