@@ -83,8 +83,8 @@ Precedence: defaults < `--config` file < environment < flags. The config file ac
 ## Images and GitOps
 
 `images` edits the overlays **in the working tree only**. The installer never commits or pushes. In gitops mode
-Argo CD deploys what is on `main`, so open a PR with the diff the installer prints. The CI Deploy tag-bump push
-stays a documented stub (docs/ci-cd.md) until it is decided.
+Argo CD deploys what is on `main`, so open a PR with the diff the installer prints. CI tag bumps arrive as automatic
+Jenkins PRs from `deploy/*` branches (docs/ci-cd.md).
 
 ## RBAC
 

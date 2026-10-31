@@ -78,7 +78,11 @@ pipeline {
       def haveBase = sh(script: "git cat-file -e '${base}^{commit}' 2>/dev/null && echo yes || echo no", returnStdout: true).trim() == 'yes'
       def files  = haveBase ? sh(script: "git diff --name-only ${base} HEAD", returnStdout: true).trim().split('\n').findAll { it } : []
       if (!haveBase) { echo "Base ${base} not found; selecting all components." }
-      if (author == BOT_EMAIL) {
+      def br = env.CHANGE_BRANCH ?: env.BRANCH_NAME ?: ''
+      if (br.startsWith('deploy/')) {
+        // Bot PR branches (also excluded from branch indexing in deploy/jenkins/values.yaml); defence in depth.
+        skipBuild = true; echo "Branch ${br} is a Deploy PR branch; skipping."
+      } else if (author == BOT_EMAIL) {
         skipBuild = true; echo "Last commit authored by ${BOT_NAME}; skipping."
       } else if (msg.contains('[skip ci]')) {
         skipBuild = true; echo 'Last commit has [skip ci]; skipping.'
@@ -179,17 +183,23 @@ pipeline {
             }
           }
         }
-        sh """
-          git config user.name '${BOT_NAME}' && git config user.email '${BOT_EMAIL}'
-          git add deploy/*/overlays/${params.TARGET}/kustomization.yaml
-          git diff --cached --quiet || git commit -m "ci(${params.TARGET}): ${changed.join(',')} -> ${env.GIT_SHA} [skip ci]"
-        """
-        // ---------------------------------------------------------------------------
-        // TODO(push): stub until Almog approves and creates the 'github-bot' credential.
-        // withCredentials([usernamePassword(credentialsId: 'github-bot', usernameVariable: 'GU', passwordVariable: 'GT')]) {
-        //   sh 'git push "https://${GU}:${GT}@github.com/almog975/ai-scan-repos.git" HEAD:main'
-        // }
-        // ---------------------------------------------------------------------------
+        // One branch + one PR per build: the bump is a single commit (atomic deploy, single revert point).
+        // 1 component -> deploy/<component>-<sha>; several -> deploy/multi-<sha> (components listed in the PR
+        // title/body); joining names would make long, unbounded ref names for shared-path builds (all 4).
+        def comps = changed.join(',')
+        env.DEPLOY_BRANCH = "deploy/${changed.size() == 1 ? changed[0] : 'multi'}-${env.GIT_SHA}"
+        sh "git checkout -B '${env.DEPLOY_BRANCH}' && git add deploy/*/overlays/${params.TARGET}/kustomization.yaml"
+        if (!sh(script: 'git diff --cached --name-only', returnStdout: true).trim()) {
+          echo 'Overlays already at this tag; no PR.'; return
+        }
+        sh "git -c user.name='${BOT_NAME}' -c user.email='${BOT_EMAIL}' commit -m 'ci(${params.TARGET}): ${comps} -> ${env.GIT_SHA} [skip ci]'"
+        // Push the branch and open the PR to main (Almog merges -> Argo CD syncs). Single-quoted sh: the token is
+        // only expanded by the shell inside the masked withCredentials block; see ci/deploy/open-pr.sh.
+        withCredentials([usernamePassword(credentialsId: 'github-bot', usernameVariable: 'GU', passwordVariable: 'GT')]) {
+          withEnv(["COMPONENTS=${comps}", "TARGET=${params.TARGET}"]) {
+            sh 'set +x; ci/deploy/open-pr.sh'
+          }
+        }
       } }
     }
   }

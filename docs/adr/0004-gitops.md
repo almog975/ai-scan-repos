@@ -21,7 +21,7 @@ We will use GitOps:
 - + CI needs only registry and Git credentials, not cluster access.
 - − Manual `kubectl` hotfixes are reverted; all changes must go through Git.
 - − Jenkins needs write access to the repo for tag bumps; the loop guard (`[skip ci]`, deploy/-only) prevents rebuild loops.
-- − Open item: the Jenkins tag-bump `git push` is still a TODO stub (`github-bot` credential not created). Awaiting Almog's decision: a direct commit to `main` by Jenkins, or an automatic PR. Meanwhile tags are bumped manually via PR.
+- Closed open item (decision 2026-10-31): the Jenkins tag bump goes through an automatic PR (`deploy/<svc>-<sha>` → `main`) opened with the Jenkins credential `github-bot` (usernamePassword, fine-grained PAT scoped to this repo); Almog merges; Argo CD syncs. CI never pushes to `main` and never force-pushes.
 - Schema migrations are not rolled back by Git reverts; handled separately.
 
 ## Alternatives

@@ -25,4 +25,4 @@ Recorded screen capture, 1920×1080, browser zoom 110%, UI in English. It uses t
 Notes:
 - Record scene 10 from a review that has already finished, so you do not have to wait.
 - Do not show secrets, real keys or the `.env` file. Blur the session cookie if dev tools are open.
-- Scene 13: the tag-bump push is still an open item, so show the commit made inside the Jenkins run and the Argo CD sync of the current `main`. Do not claim the push is automated.
+- Scene 13: show the Deploy stage log (`Opened PR: …`), the PR `ci(k3s): <svc> -> <sha> [skip ci]` on GitHub, merge it, then the Argo CD sync. Rollback = a revert PR (`rollback/<c>-<sha>`), merge, sync.

@@ -8,11 +8,13 @@ Flow background: [ci-cd-flow.md](../ci-cd-flow.md).
 - Argo CD apps `ai-scan-<component>-k3s` are **Synced/Healthy** and track `main` (`deploy/argocd/apps/*.yaml`).
 - The known-good image (`<registry>/ai-scan/<component>:<good-sha>`) is still in the registry (never delete old tags
   before a demo).
-- You can push to `almog975/ai-scan-repos` (PR to `main`, or direct push if branch protection allows it).
+- You can push a branch to `almog975/ai-scan-repos` and open/merge a PR to `main` (`gh` logged in, or the GitHub UI).
 - Tools: `git`, `kubectl` (context = the k3s cluster), optional `argocd` CLI logged in with
   `argocd login argocd.ai-scan.127.0.0.1.nip.io --grpc-web` (argocd-server runs insecure behind Traefik).
 
 ## 1. Find the bad tag-bump commit
+Jenkins deploys arrive as merged PRs from `deploy/<component>-<sha>` (or `deploy/multi-<sha>`); revert the merge
+(`git revert -m 1 <merge-sha>`) or, for a squash/rebase merge, the bump commit itself.
 ```bash
 git fetch origin
 git log origin/main --oneline -- deploy/<component>/overlays/k3s
@@ -24,14 +26,15 @@ kubectl -n ai-scan-repos get cm scanner-image -o jsonpath='{.data.SCANNER_IMAGE}
 A Jenkins bump commit can touch several components (e.g. gateway + scanner-worker). Reverting it rolls back all of
 them; to roll back only one, edit that overlay back to the good tag instead (same `kustomize edit` commands as below).
 
-## 2. Revert and push
+## 2. Revert through a PR
 ```bash
 git switch -c rollback/<component>-<bad-sha> origin/main
-git revert --no-edit <bump-sha>
+git revert --no-edit <bump-sha>           # merge commit of the deploy PR: git revert --no-edit -m 1 <merge-sha>
 kustomize build deploy/<component>/overlays/k3s | grep -E 'image:|SCANNER_IMAGE'   # must show the good tag
 git push -u origin rollback/<component>-<bad-sha>
 gh pr create --base main --title "Rollback <component> to <good-sha>" --body "Reverts <bump-sha>."
-# merge the PR (normal merge, no force). If direct pushes to main are allowed: git push origin HEAD:main
+# or the GitHub UI: "Revert" button on the merged deploy PR creates the same revert PR.
+# Merge the PR (normal merge, no force, no direct push to main), then Argo CD syncs (step 3).
 ```
 If later bumps touched the same file, `git revert` conflicts: set the good tag by hand, then `git revert --continue`:
 ```bash
@@ -87,17 +90,18 @@ sync policy; disable auto-sync on `ai-scan-root` too for the duration, or prefer
 - **DB migrations do not roll back.** review-api's migrations Job only upgrades. If the bad release added an alembic
   migration, the old image must be compatible with the new schema; a downgrade is a separate manual step.
 - **Next bump:** the following Jenkins build writes a new tag again; fix forward on a branch.
-- **Push stub:** until the `github-bot` credential is approved, Jenkins tag bumps are local to the agent; bumps on
-  `main` are made via PR, and rolled back the same way.
+- **Deploy PRs:** Jenkins opens a PR per build (`deploy/*`); an unmerged deploy PR is simply closed, no rollback
+  needed. `rollback/*` branches are excluded from Jenkins indexing and the merge is skipped as `deploy/**`-only.
 
 ## Demo script
 ```bash
 C=gateway; R=registry.registry:5000
-BAD=$(git log origin/main --format=%h -1 -- deploy/$C/overlays/k3s)
+BAD=$(git log origin/main --first-parent --format=%h -1 -- deploy/$C/overlays/k3s)
 git show --stat $BAD
-git switch -c rollback/$C-$BAD origin/main && git revert --no-edit $BAD
+git switch -c rollback/$C-$BAD origin/main
+git revert --no-edit -m 1 $BAD      # BAD = merge commit of the deploy PR; for a squash merge drop "-m 1"
 kustomize build deploy/$C/overlays/k3s | grep "image: $R/ai-scan/$C"
-git push -u origin HEAD && gh pr create --fill --base main && gh pr merge --merge
+git push -u origin HEAD && gh pr create --fill --base main && gh pr merge --merge   # or open/merge in the UI
 argocd app sync ai-scan-$C-k3s --grpc-web && argocd app wait ai-scan-$C-k3s --sync --health --grpc-web
 kubectl -n ai-scan-repos rollout status deploy/$C --timeout=180s
 kubectl -n ai-scan-repos get deploy $C -o jsonpath='{.spec.template.spec.containers[0].image}'; echo

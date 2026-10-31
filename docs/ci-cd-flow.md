@@ -10,10 +10,11 @@ flowchart LR
     T --> B[Build<br/>kaniko → image tarball]
     B --> S[Scan<br/>trivy --input, fail on HIGH/CRITICAL]
     S --> P[Push – main only<br/>crane push]
-    P --> K[Deploy – main only<br/>tag bump in deploy/&lt;svc&gt;/overlays/k3s<br/>commit '[skip ci]']
+    P --> K[Deploy – main only<br/>tag bump in deploy/&lt;svc&gt;/overlays/k3s<br/>commit '[skip ci]' on deploy/* branch]
   end
   P --> REG[(Registry)]
-  K -.->|git push: OPEN ITEM<br/>stub| GH[(GitHub main)]
+  K -->|push deploy/&lt;svc&gt;-&lt;sha&gt;<br/>+ open PR, github-bot| PR[PR to main]
+  PR -->|Almog reviews + merges| GH[(GitHub main)]
   GH -->|poll| A[Argo CD ai-scan-root]
   A --> Apps[ai-scan-&lt;component&gt;-k3s<br/>ns ai-scan-repos]
   Apps -->|pull image| REG
@@ -30,7 +31,7 @@ Runs on the Kubernetes agent pod template `ai-scan-agent` (containers `tools` an
 | Build | kaniko builds each changed component to a tarball (no push) |
 | Scan | `trivy image --input <tar> --exit-code 1 --severity CRITICAL,HIGH` |
 | Push | `main` only: `crane push` to `<registry>/ai-scan/<svc>:<short sha>` with credential `registry-push` |
-| Deploy | `main` only: tag bump (below) |
+| Deploy | `main` only: tag bump on a `deploy/*` branch + PR to `main` (below) |
 
 Images are never `latest`. postgres and platform have no image built here.
 
@@ -41,9 +42,17 @@ Overlays ship with `newTag: GIT_SHA_PLACEHOLDER`. For each changed component, in
 - frontend, gateway, review-api: `kustomize edit set image ai-scan/<svc>=<registry>/ai-scan/<svc>:<sha>`
 - scanner-worker: `kustomize edit set configmap scanner-image --from-literal=SCANNER_IMAGE=<registry>/ai-scan/scanner-worker:<sha>`. review-api reads it via `configMapKeyRef` and uses it for each review's Job.
 
-Then it commits as `ai-scan-ci-bot` with `ci(<target>): <svcs> -> <sha> [skip ci]`.
+Then it commits as `ai-scan-ci-bot` with `ci(<target>): <svcs> -> <sha> [skip ci]` on branch `deploy/<svc>-<sha>`
+(`deploy/multi-<sha>` when one build changed several components: one atomic PR, one revert point), and
+`ci/deploy/open-pr.sh` pushes that branch and opens a PR to `main` via the GitHub REST API (credential `github-bot`,
+fine-grained PAT: [deploy/jenkins/README.md](../deploy/jenkins/README.md#github-bot-pat-deploy-pr-flow)). A rebuild
+of the same sha keeps the existing branch (same tree) and reuses the open PR (HTTP 422 "already exists").
 
-> **Open item, awaiting Almog's decision:** the `git push` of that commit is a commented-out stub (`TODO(push)`, credential `github-bot` not created). The choice is between Jenkins committing the tag bump directly to `main` and opening an automatic PR. Until then the bump stays in the Jenkins workspace, and tags in `deploy/` are bumped manually through a PR (the installer's `images` step prints the diff).
+> **Open item closed (2026-10-31):** the tag-bump push is no longer a stub. It goes through an automatic PR opened with the Jenkins credential `github-bot` (usernamePassword) ([ADR-0004](adr/0004-gitops.md)).
+
+**Flow: build → PR → Almog merges → Argo CD syncs.** Jenkins never pushes to `main` and never force-pushes; a rebuild whose `deploy/*` branch already exists reuses it only if it holds the same bump. The merge on `main` is not
+rebuilt: it only touches `deploy/**` (and merge/squash messages carry the PR title's `[skip ci]`); `deploy/*`
+branches are excluded from indexing and their PR builds are skipped by the Loop guard.
 
 ## 3. Argo CD sync
 

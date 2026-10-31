@@ -24,8 +24,12 @@
   - frontend, gateway, review-api: `kustomize edit set image ai-scan/<svc>=<registry>/ai-scan/<svc>:<sha>`.
   - scanner-worker: sets `SCANNER_IMAGE=<registry>/ai-scan/scanner-worker:<sha>` in the `scanner-image`
     configMapGenerator via `kustomize edit set configmap` (kustomize >= 5.1 in the agent image).
-  - Commits as `ai-scan-ci-bot <ci-bot@ai-scan.local>` with `[skip ci]`, main only; push is a TODO stub
-    (`github-bot` credential, pending Almog's approval).
+  - Commits as `ai-scan-ci-bot <ci-bot@ai-scan.local>` with `[skip ci]` on branch `deploy/<component>-<sha>`
+    (several components in one build: `deploy/multi-<sha>`, one atomic PR), then `ci/deploy/open-pr.sh` pushes the
+    branch (credential `github-bot`, GIT_ASKPASS) and opens a PR to `main` (title `ci(<target>): <svcs> -> <sha>
+    [skip ci]`; an existing PR (422) is reused). Flow: **build → PR → Almog merges → Argo CD syncs**.
+  - Loop guard: `deploy/*` / `rollback/*` excluded from branch indexing (values.yaml), `deploy/*` PR builds skipped
+    in the Jenkinsfile, and the merge on `main` is skipped as `deploy/**`-only.
 - Argo CD (app-of-apps): bootstrap once with `kubectl apply -n argocd -f deploy/argocd/root-app.yaml`
   (after Infra's AppProjects `ai-scan` and `ai-scan-ci`). Jenkins itself is the child app `ai-scan-jenkins`
   (deploy/argocd/apps/jenkins.yaml, ns jenkins, project ai-scan-ci); see deploy/jenkins/README.md.
