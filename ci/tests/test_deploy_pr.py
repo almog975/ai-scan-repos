@@ -119,17 +119,40 @@ def test_push_pr_and_422_idempotent_no_leak(world):
     assert git("rev-parse", br, cwd=bare) == git("rev-parse", "HEAD", cwd=work)
     pr = Fake.prs[br]
     assert pr["base"] == "main" and "[skip ci]" in pr["title"] and "gateway" in pr["body"] and "bbbbbbb" in pr["body"]
-    # re-run (Jenkins replay: new commit on the same branch) -> force-updated branch, 422 handled, still 1 PR
+    first = git("rev-parse", br, cwd=bare)
+    # re-run (Jenkins replay: new commit, same bump) -> branch kept (no force push), 422 handled, still 1 PR
     bump(work, "bbbbbbb", br)
+    env = {**os.environ, "GIT_COMMITTER_DATE": "2000-01-01T00:00:00Z"}  # a distinct commit, same tree
+    git(*BOT, "commit", "-q", "--amend", "--no-edit", "--date=2000-01-01T00:00:00Z", cwd=work, env=env)
+    assert git("rev-parse", "HEAD", cwd=work) != first
     r2 = run(work, url, br, "bbbbbbb")
     assert r2.returncode == 0, r2.stderr
+    assert "already has this tag bump" in r2.stdout
     assert "PR already exists (422)" in r2.stdout and "/pull/1" in r2.stdout and len(Fake.prs) == 1
-    assert git("rev-parse", br, cwd=bare) == git("rev-parse", "HEAD", cwd=work)
+    assert git("rev-parse", br, cwd=bare) == first
     # token: used (Bearer on every API call) but never printed or stored
     assert Fake.api_auth and all(a == f"Bearer {TOKEN}" for a in Fake.api_auth)
     for out in (r.stdout, r.stderr, r2.stdout, r2.stderr, (work / ".git/config").read_text()):
         assert TOKEN not in out
     assert git("remote", cwd=work) == ""
+
+
+def test_existing_branch_with_other_content_is_not_overwritten(world):
+    work, bare, url = world
+    br = "deploy/gateway-ddddddd"
+    bump(work, "ddddddd", br)
+    assert run(work, url, br, "ddddddd").returncode == 0
+    first = git("rev-parse", br, cwd=bare)
+    bump(work, "eeeeeee", br)  # different tree on the same branch name
+    r = run(work, url, br, "ddddddd")
+    assert r.returncode == 1 and "refusing to overwrite" in r.stderr and TOKEN not in r.stdout + r.stderr
+    assert git("rev-parse", br, cwd=bare) == first and git("rev-parse", "main", cwd=bare) != first
+
+
+def test_script_never_force_pushes_or_targets_main():
+    sh = SCRIPT.read_text()
+    code = "\n".join(l for l in sh.splitlines() if not l.lstrip().startswith("#"))
+    assert "--force" not in code and " -f " not in code and "+HEAD" not in code and "HEAD:main" not in code
 
 
 def test_wrong_token_fails_and_other_422_fails(world):

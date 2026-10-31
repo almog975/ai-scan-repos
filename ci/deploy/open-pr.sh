@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Deploy stage helper (Jenkinsfile, main only): push the tag-bump commit (HEAD) to DEPLOY_BRANCH and open a PR to
-# main. Idempotent: a re-run force-updates the bot-owned branch and treats "PR already exists" (422) as success.
+# main. Never force-pushes: a re-run whose branch already exists succeeds only if the remote branch has the same tree
+# (same tag bump), otherwise it fails; "PR already exists" (422) is treated as success.
 # Token handling: GU/GT come from withCredentials(usernamePassword 'github-bot'). The token is handed to git via a
 # GIT_ASKPASS script that reads it from the environment (never in the URL, argv, logs or .git/config) and to curl
 # via a header file (-H @file, not argv). Tests: ci/tests/test_deploy_pr.py (local bare repo + fake GitHub API).
@@ -21,10 +22,20 @@ case "$1" in Username*) printf '%s\n' "$GU" ;; *) printf '%s\n' "$GT" ;; esac
 ASK
 chmod 700 "$tmp/askpass"
 
-# 1. push (credential.helper= disables any stored helper; nothing is written to .git/config)
-GIT_ASKPASS="$tmp/askpass" GIT_TERMINAL_PROMPT=0 \
-  git -c credential.helper= push --force "$PUSH_URL" "HEAD:refs/heads/${DEPLOY_BRANCH}"
-echo "Pushed $(git rev-parse --short HEAD) to ${DEPLOY_BRANCH}"
+# 1. push (credential.helper= disables any stored helper; nothing is written to .git/config). No --force: the
+#    refspec has no "+", so an existing branch is never rewritten.
+agit() { GIT_ASKPASS="$tmp/askpass" GIT_TERMINAL_PROMPT=0 git -c credential.helper= "$@"; }
+if agit push "$PUSH_URL" "HEAD:refs/heads/${DEPLOY_BRANCH}"; then
+  echo "Pushed $(git rev-parse --short HEAD) to ${DEPLOY_BRANCH}"
+else
+  # rebuild of the same sha: accept the existing branch only if it carries exactly this bump
+  agit fetch -q "$PUSH_URL" "refs/heads/${DEPLOY_BRANCH}" || { echo "push of ${DEPLOY_BRANCH} failed" >&2; exit 1; }
+  if [ "$(git rev-parse 'FETCH_HEAD^{tree}')" = "$(git rev-parse 'HEAD^{tree}')" ]; then
+    echo "${DEPLOY_BRANCH} already has this tag bump ($(git rev-parse --short FETCH_HEAD)); not pushing"
+  else
+    echo "${DEPLOY_BRANCH} exists with different content; refusing to overwrite (no force push)" >&2; exit 1
+  fi
+fi
 
 # 2. PR via REST API
 ( umask 077; printf 'Authorization: Bearer %s\n' "$GT" > "$tmp/auth" )
