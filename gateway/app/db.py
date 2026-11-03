@@ -3,7 +3,7 @@ users + sessions + webhook_deliveries. For sqlite (dev/tests) it creates the tab
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import BigInteger, DateTime, ForeignKey, String, Text, create_engine
+from sqlalchemy import BigInteger, DateTime, Enum, ForeignKey, Text, create_engine
 from sqlalchemy.dialects.postgresql import INET
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 from sqlalchemy.types import CHAR, TypeDecorator
@@ -31,6 +31,10 @@ class GUID(TypeDecorator):
         return None if value is None else str(value)
 
 
+USER_ROLES = ("user", "admin")  # == CREATE TYPE user_role AS ENUM ('user', 'admin')
+USER_ROLE = Enum(*USER_ROLES, name="user_role", create_type=False, native_enum=True, validate_strings=True)
+
+
 class Base(DeclarativeBase):
     pass
 
@@ -42,8 +46,9 @@ class User(Base):
     login: Mapped[str] = mapped_column(Text)
     email: Mapped[str | None] = mapped_column(Text, nullable=True)
     avatar_url: Mapped[str | None] = mapped_column(Text, nullable=True)
-    # user_role enum on Postgres; plain text binds fine (implicit cast from unknown)
-    role: Mapped[str] = mapped_column(String(16), default="user")
+    # Postgres enum user_role (created by review-api Alembic 0002). Must bind as the enum type: a VARCHAR bind fails
+    # with DatatypeMismatch on INSERT/UPDATE. Values match the migration exactly; create_type=False (Alembic owns it).
+    role: Mapped[str] = mapped_column(USER_ROLE, default="user")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 

@@ -50,3 +50,8 @@ if ! (cd "$ROOT/review-api" && export DATABASE_URL="$URL_BASE/$A" && alembic dow
   echo "[db-parity] FAIL: migration round trip" >&2; exit 1
 fi
 echo "migration round trip ok"
+# Gateway on real Postgres: OAuth login INSERT into users (role is enum user_role, sessions.ip is inet).
+if ! (cd "$ROOT/gateway" && GATEWAY_PG_URL="$URL_BASE/$A" python -m pytest -q -p no:cacheprovider tests/test_db_pg_enum.py); then
+  echo "[db-parity] FAIL: gateway insert on Postgres" >&2; exit 1
+fi
+echo "gateway postgres insert ok"

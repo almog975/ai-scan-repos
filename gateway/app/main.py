@@ -74,6 +74,16 @@ def _pushed_at_epoch(v) -> float | None:
     return None
 
 
+
+def _client_ip(request):
+    """sessions.ip is inet on Postgres: store only a parseable address (a non-IP host would fail the login INSERT)."""
+    import ipaddress
+    host = request.client.host if request.client else None
+    try:
+        return str(ipaddress.ip_address(host)) if host else None
+    except ValueError:
+        return None
+
 def create_app(settings: Settings | None = None, transport: httpx.AsyncBaseTransport | None = None) -> FastAPI:
     s = settings or get_settings()
     bad = s.webhook_problems()
@@ -290,7 +300,7 @@ def create_app(settings: Settings | None = None, transport: httpx.AsyncBaseTrans
                 u.role = "admin"
             db.flush()
             db.add(Session(id=hash_token(tok), user_id=u.id, user_agent=(request.headers.get("user-agent") or "")[:300],
-                           ip=request.client.host if request.client else None,
+                           ip=_client_ip(request),
                            expires_at=datetime.now(timezone.utc) + timedelta(hours=s.session_ttl_hours)))
             db.commit()
         # The GitHub token is not persisted (users.gh_token_enc stays NULL in Phase 1).
