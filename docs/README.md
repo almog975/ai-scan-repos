@@ -18,3 +18,4 @@ Architecture notes, ADRs and runbooks for AI Scan Repos.
 - [severity-mapping.md](severity-mapping.md) – scanner severities → normalized severity
 - [report-md-spec.md](report-md-spec.md) – structure of report.md and its report.json sources
  Contract docs: [../contracts/README.md](../contracts/README.md).
+- [docker-desktop.md](docker-desktop.md) - local overlays on Docker Desktop K8s: secrets, apply order, StorageClass

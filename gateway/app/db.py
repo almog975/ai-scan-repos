@@ -72,7 +72,17 @@ class WebhookDelivery(Base):
     status: Mapped[str] = mapped_column(Text, default="accepted")
 
 
+def normalize_db_url(url: str) -> str:
+    """Force the psycopg (v3) driver: bare postgresql:// / postgres:// make SQLAlchemy load psycopg2,
+    which the image does not ship. Explicit drivers (postgresql+xxx://) and other dialects are untouched."""
+    for prefix in ("postgresql://", "postgres://"):
+        if url.startswith(prefix):
+            return "postgresql+psycopg://" + url[len(prefix):]
+    return url
+
+
 def make_sessionmaker(url: str):
+    url = normalize_db_url(url)
     kw = {}
     if url.startswith("sqlite"):
         kw["connect_args"] = {"check_same_thread": False}

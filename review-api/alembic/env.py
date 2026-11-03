@@ -4,10 +4,10 @@ from alembic import context
 from sqlalchemy import engine_from_config, pool
 
 from app import models  # noqa: F401
-from app.db import Base
+from app.db import Base, normalize_db_url
 
 config = context.config
-config.set_main_option("sqlalchemy.url", os.environ.get("DATABASE_URL", "sqlite:///./review-api.db"))
+config.set_main_option("sqlalchemy.url", normalize_db_url(os.environ.get("DATABASE_URL", "sqlite:///./review-api.db")))
 target_metadata = Base.metadata
 
 
