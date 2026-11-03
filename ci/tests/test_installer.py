@@ -161,7 +161,7 @@ def test_images_rewrite_idempotent_and_valid(fake, tmp_path):
             ["kustomize", "build", str(root / f"deploy/{c}/overlays/local")], capture_output=True, text=True,
             check=True).stdout) if d]
         text = yaml.safe_dump_all(docs)
-        imgs |= {w for w in text.split() if "registry.ai-scan.local/ai-scan/" in w}
+        imgs |= {w for w in text.split() if "k3d-ai-scan-registry.localhost:5111/ai-scan/" in w}
     assert any(i.endswith("review-api:deadbeef") for i in imgs)
     assert any("scanner-worker:deadbeef" in i for i in imgs)
     assert not any("GIT_SHA_PLACEHOLDER" in i for i in imgs)

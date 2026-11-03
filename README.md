@@ -64,7 +64,18 @@ docker compose up --build   # AISCAN_HTTP_PORT (default 8080) and WORK_DIR are i
 
 Services: postgres → `migrate` (alembic) → review-api (local launcher, :8001 on localhost) → gateway (:8000) → frontend (:8080).
 
-### 3. K3s (GitOps)
+### 3. Local Kubernetes (k3d on Docker Desktop, Windows via WSL2)
+
+```bash
+cp .env.example .env     # INTERNAL_API_TOKEN >= 32 chars here
+make local-k8s           # k3d cluster + registry, images, secrets from .env, deploy, Argo CD
+# open https://ai-scan.localhost  (OAuth App callback: https://ai-scan.localhost/auth/github/callback)
+make local-k8s-down
+```
+
+Prerequisites, Argo CD access and troubleshooting: [docs/local-k3d.md](docs/local-k3d.md).
+
+### 4. K3s (GitOps)
 
 ```bash
 cp infra/installer/installer.env.example infra/installer/installer.env   # fill REPLACE_ME (never committed)

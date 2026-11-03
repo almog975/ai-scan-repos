@@ -3,5 +3,13 @@ kind: Kustomization
 resources: [../../base]
 images:
   - name: ai-scan/gateway
-    newName: registry.ai-scan.local/ai-scan/gateway
-    newTag: GIT_SHA_PLACEHOLDER
+    newName: k3d-ai-scan-registry.localhost:5111/ai-scan/gateway
+    newTag: dev
+# :dev is rebuilt and re-pushed by infra/local/k3d.sh, so always pull from the k3d registry (cheap, same host).
+patches:
+  - target: {kind: Deployment, name: gateway}
+    patch: |
+      - {op: add, path: /spec/template/spec/containers/0/imagePullPolicy, value: Always}
+      # k3d: Traefik on https://ai-scan.localhost (*.localhost resolves to 127.0.0.1 in browsers).
+      # GitHub OAuth App callback: https://ai-scan.localhost/auth/github/callback
+      - {op: replace, path: /spec/template/spec/containers/0/env/2, value: {name: PUBLIC_URL, value: "https://ai-scan.localhost"}}
