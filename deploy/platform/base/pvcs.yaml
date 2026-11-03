@@ -1,4 +1,4 @@
-# Default: local-path RWO (local overlay). k3s overlay -> static PV reports-local (noexec,nosuid,nodev);
+# Default: local-path RWO (local overlay removes it -> cluster default). k3s overlay -> static PV reports-local (noexec,nosuid,nodev);
 # eks overlay -> EFS RWX. See docs/storage-plan.md
 ---
 apiVersion: v1

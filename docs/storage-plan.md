@@ -2,8 +2,8 @@
 
 | PVC | Size | local | k3s | eks |
 |---|---|---|---|---|
-| `postgres-data` | 5Gi RWO | local-path | local-path | gp3 (EBS CSI) |
-| `reports` (mounted `/reports`) | 5Gi | local-path RWO | static PV `reports-local` RWO, `/srv/ai-scan/reports` | EFS `efs-sc` RWX |
+| `postgres-data` | 5Gi RWO | cluster default (Docker Desktop: hostpath, k3d: local-path) | local-path | gp3 (EBS CSI) |
+| `reports` (mounted `/reports`) | 5Gi | cluster default RWO | static PV `reports-local` RWO, `/srv/ai-scan/reports` | EFS `efs-sc` RWX |
 | clone dir `/work` | emptyDir sizeLimit 2Gi | same | same | same |
 
 `reports` must be `noexec,nosuid,nodev`.

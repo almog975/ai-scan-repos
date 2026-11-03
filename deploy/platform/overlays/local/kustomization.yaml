@@ -1,9 +1,13 @@
-# Single-node local (Docker Desktop / k3d / K3s on laptop): local-path, ai-scan.local host.
-# noexec on reports is NOT enforced here (local-path ignores mountOptions) - dev only.
+# Single-node local (Docker Desktop / k3d / K3s on laptop): ai-scan.local host.
+# PVCs use the cluster's DEFAULT StorageClass (storageClassName removed): Docker Desktop = hostpath,
+# k3d/K3s = local-path. noexec on reports is NOT enforced here (mountOptions ignored) - dev only.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources: [../../base]
 patches:
+  - target: {kind: PersistentVolumeClaim, name: reports}
+    patch: |
+      - {op: remove, path: /spec/storageClassName}   # cluster default (Docker Desktop: hostpath)
   # local: per-environment egress endpoints (placeholders, RFC 5737). Keep the AI CIDR in sync with
   # deploy/scanner-worker/overlays/local/networkpolicy-ai-egress.yaml. API endpoint: kubectl get endpoints kubernetes -n default.
   - target: {kind: NetworkPolicy, name: review-api-ai-egress}

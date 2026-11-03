@@ -6,12 +6,22 @@ class Base(DeclarativeBase):
     pass
 
 
+def normalize_db_url(url: str) -> str:
+    """Force the psycopg (v3) driver: bare postgresql:// / postgres:// make SQLAlchemy load psycopg2,
+    which the image does not ship. Explicit drivers (postgresql+xxx://) and other dialects are untouched."""
+    for prefix in ("postgresql://", "postgres://"):
+        if url.startswith(prefix):
+            return "postgresql+psycopg://" + url[len(prefix):]
+    return url
+
+
 _engine = None
 _SessionLocal = None
 
 
 def init_engine(url: str):
     global _engine, _SessionLocal
+    url = normalize_db_url(url)
     kwargs = {}
     if url.startswith("sqlite"):
         kwargs["connect_args"] = {"check_same_thread": False}

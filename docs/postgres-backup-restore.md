@@ -5,7 +5,7 @@
 ## What runs
 - CronJob `postgres-backup` (ns `ai-scan-repos`, `deploy/postgres/base/backup-cronjob.yaml`), daily 02:30 Asia/Jerusalem,
   `concurrencyPolicy: Forbid`.
-- `pg_dump --format=custom` of `$POSTGRES_DB` into PVC `postgres-backups` (10Gi; `local-path` on local/k3s, `gp3` on eks)
+- `pg_dump --format=custom` of `$POSTGRES_DB` into PVC `postgres-backups` (10Gi; cluster default on local, `local-path` on k3s, `gp3` on eks)
   as `<db>-<UTC timestamp>.dump`. Written to a `.partial` file, checked with `pg_restore --list`, then renamed.
 - Retention: ConfigMap `postgres-backup-config` key `BACKUP_RETENTION_DAYS` (default 14). Older `*.dump` files are deleted.
 - Runs as uid/gid 70 (postgres in `postgres:16-alpine`), read-only root FS, all caps dropped, seccomp RuntimeDefault,

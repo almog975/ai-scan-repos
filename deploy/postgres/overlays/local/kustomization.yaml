@@ -1,3 +1,12 @@
+# local (Docker Desktop / k3d): PVCs use the cluster DEFAULT StorageClass (Docker Desktop: hostpath,
+# k3d/K3s: local-path) instead of the base's hardcoded local-path.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources: [../../base]
+patches:
+  - target: {kind: PersistentVolumeClaim, name: postgres-data}
+    patch: |
+      - {op: remove, path: /spec/storageClassName}
+  - target: {kind: PersistentVolumeClaim, name: postgres-backups}
+    patch: |
+      - {op: remove, path: /spec/storageClassName}
