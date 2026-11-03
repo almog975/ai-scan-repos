@@ -57,7 +57,7 @@ prereqs() {
 use_cluster() {
   export KUBECONFIG="$TMP/kubeconfig"
   echo "+ k3d kubeconfig get $CLUSTER > \$TMP/kubeconfig"
-  dry || k3d kubeconfig get "$CLUSTER" > "$KUBECONFIG"
+  dry || { ( umask 077; k3d kubeconfig get "$CLUSTER" > "$KUBECONFIG" ); chmod 600 "$KUBECONFIG"; }
 }
 
 up() {
@@ -142,13 +142,17 @@ argocd() {
   run helm upgrade --install argocd argo/argo-cd -n argocd --create-namespace --version "$ARGOCD_CHART_VERSION" \
     --set 'configs.params.server\.insecure=true' --wait --timeout 10m
   if [ -n "${GITHUB_REPO_TOKEN:-}" ]; then
+    local xtrace=0; [[ $- == *x* ]] && xtrace=1
+    set +x   # never trace the token (same guard as ci/deploy/open-pr.sh)
     echo "+ kubectl -n argocd create secret generic repo-ai-scan-repos [keys: type url username password] | apply; label secret-type=repository"
     if ! dry; then
       ( umask 077; printf 'type=git\nurl=%s\nusername=x-access-token\npassword=%s\n' "$REPO_URL" "$GITHUB_REPO_TOKEN" > "$TMP/repo.env" )
       kubectl -n argocd create secret generic repo-ai-scan-repos --from-env-file="$TMP/repo.env" \
         --dry-run=client -o yaml | kubectl apply -f - >/dev/null
       kubectl -n argocd label --overwrite secret repo-ai-scan-repos argocd.argoproj.io/secret-type=repository >/dev/null
+      rm -f "$TMP/repo.env"
     fi
+    if [ "$xtrace" = 1 ]; then set -x; fi
   else
     echo "  WARNING: GITHUB_REPO_TOKEN unset: Argo CD cannot read the private repo (apps stay Unknown/ComparisonError)" >&2
   fi

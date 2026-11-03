@@ -82,9 +82,15 @@ kubectl -n argocd port-forward svc/argocd-server 8081:80        # http://localho
 kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d
 ```
 
+Ingress hosts `argocd.ai-scan.localhost` / `jenkins.ai-scan.localhost` also exist (Traefik default certificate).
 (`k3d kubeconfig merge ai-scan --kubeconfig-switch-context` points your kubectl at the cluster.) Argo CD deploys
 GitHub `main`, not your working tree: local overlay edits reach it only after they are merged. The script's direct
-apply and Argo CD manage the same objects; Argo CD wins after its next sync. The k3s apps in `deploy/argocd/apps/`
+apply and Argo CD manage the same objects; Argo CD wins after its next sync, **except the egress endpoints**: the
+NetworkPolicies `review-api-ai-egress`, `review-api-kube-api-egress` (platform app) and `scanner-egress`
+(scanner-worker app) get cluster-specific `spec.egress` from the installer (`AI_EGRESS_CIDRS`, `KUBE_API_ENDPOINT`).
+The local apps list them under `ignoreDifferences` (`/spec/egress`) with `RespectIgnoreDifferences=true`, so
+self-heal neither reports them OutOfSync nor reverts them to the committed placeholders. To change them, re-run
+`make local-k8s` (with a new `AI_EGRESS_CIDRS`), not a git commit. The k3s apps in `deploy/argocd/apps/`
 are not used locally.
 
 ## Troubleshooting
@@ -98,7 +104,7 @@ are not used locally.
 - Scan Jobs cannot be created: the `review-api-kube-api-egress` NetworkPolicy (K3s enforces NetworkPolicies) needs
   the API endpoint; `make local-k8s` pins it. Without the script the committed default is the Docker range 172.16.0.0/12.
 - `ModuleNotFoundError: psycopg2`: the apps normalize `postgresql://` to `postgresql+psycopg://`; rebuild images.
-- Scanner Jobs use `:dev` with the default pull policy (IfNotPresent): after rebuilding scanner-worker, delete the
-  cached image on the node or `make local-k8s-down` + `make local-k8s`.
+- Scanner Jobs pull `:dev` with `Always` (review-api env `SCANNER_IMAGE_PULL_POLICY`, local overlay only), so a
+  rebuilt scanner-worker is used by the next scan.
 - Login redirects to the wrong host: the gateway's `PUBLIC_URL` is `https://ai-scan.localhost`
   (`deploy/gateway/overlays/local`); it must match the OAuth App.

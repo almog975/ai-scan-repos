@@ -98,3 +98,38 @@ def test_make_targets():
     for t, sub in (("local-k8s", "up"), ("local-k8s-down", "down"), ("local-k8s-status", "status")):
         out = subprocess.run(["make", "-n", t], cwd=ROOT, capture_output=True, text=True).stdout
         assert f"infra/local/k3d.sh  {sub}" in out or f"infra/local/k3d.sh {sub}" in out, out
+
+
+def test_argocd_local_ignores_installer_owned_egress():
+    """Argo CD self-heal must not revert the egress endpoints aiscan-install.sh fills (AI_EGRESS_CIDRS, KUBE_API_ENDPOINT)."""
+    want = {"platform": {"review-api-ai-egress", "review-api-kube-api-egress"}, "scanner-worker": {"scanner-egress"}}
+    for app, names in want.items():
+        d = yaml.safe_load((ROOT / f"deploy/argocd/local/apps/{app}.yaml").read_text())
+        assert "RespectIgnoreDifferences=true" in d["spec"]["syncPolicy"]["syncOptions"]
+        got = {i["name"] for i in d["spec"]["ignoreDifferences"]
+               if i["kind"] == "NetworkPolicy" and i["jsonPointers"] == ["/spec/egress"] and i["namespace"] == "ai-scan-repos"}
+        assert got == names
+    # every NetworkPolicy the installer's egress step rewrites is covered (names from the installer-marked overlays)
+    plat = (ROOT / "deploy/platform/overlays/local/kustomization.yaml").read_text()
+    for n in ("review-api-ai-egress", "review-api-kube-api-egress"):
+        assert f"name: {n}" in plat
+    assert "name: scanner-egress" in (ROOT / "deploy/scanner-worker/overlays/local/kustomization.yaml").read_text()
+
+
+@pytest.mark.skipif(not shutil.which("kustomize"), reason="kustomize")
+def test_local_scanner_pull_always_and_ingress_hosts():
+    out = subprocess.run(["kustomize", "build", str(ROOT / "deploy/review-api/overlays/local")],
+                         capture_output=True, text=True, check=True).stdout
+    dep = next(d for d in yaml.safe_load_all(out) if d and d["kind"] == "Deployment")
+    env = {e["name"]: e.get("value") for e in dep["spec"]["template"]["spec"]["containers"][0]["env"]}
+    assert env["SCANNER_IMAGE_PULL_POLICY"] == "Always"
+    ing = subprocess.run(["kustomize", "build", str(ROOT / "infra/ingress/overlays/local")],
+                         capture_output=True, text=True, check=True).stdout
+    assert "ai-scan.local`" not in ing and "argocd.ai-scan.localhost" in ing and "jenkins.ai-scan.localhost" in ing
+
+
+def test_repo_token_guarded_and_kubeconfig_private():
+    s = SCRIPT.read_text()
+    i = s.index('if [ -n "${GITHUB_REPO_TOKEN:-}" ]; then')
+    assert s.index("set +x", i) < s.index("$GITHUB_REPO_TOKEN", i + 40)
+    assert 'chmod 600 "$KUBECONFIG"' in s

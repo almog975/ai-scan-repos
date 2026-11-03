@@ -13,3 +13,7 @@ patches:
   - target: {kind: Job, name: review-api-migrate}
     patch: |
       - {op: add, path: /spec/template/spec/containers/0/imagePullPolicy, value: Always}
+  # scanner Jobs: pull the re-pushed :dev on every scan (review-api sets imagePullPolicy on the Job it creates)
+  - target: {kind: Deployment, name: review-api}
+    patch: |
+      - {op: add, path: /spec/template/spec/containers/0/env/-, value: {name: SCANNER_IMAGE_PULL_POLICY, value: Always}}
