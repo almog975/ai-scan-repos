@@ -7,7 +7,9 @@ from app import models  # noqa: F401
 from app.db import Base, normalize_db_url
 
 config = context.config
-config.set_main_option("sqlalchemy.url", normalize_db_url(os.environ.get("DATABASE_URL", "sqlite:///./review-api.db")))
+# configparser interpolates %: a URL-encoded password (p%40ss) would raise. Escape before set_main_option.
+config.set_main_option("sqlalchemy.url",
+                       normalize_db_url(os.environ.get("DATABASE_URL", "sqlite:///./review-api.db")).replace("%", "%%"))
 target_metadata = Base.metadata
 
 

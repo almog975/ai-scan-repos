@@ -47,6 +47,7 @@ def test_oauth_login_inserts_user_on_postgres():
     for r in (r1, r2):
         assert r.status_code in (200, 302, 303, 307), r.text
     from sqlalchemy import create_engine, text
-    with create_engine(PG_URL).connect() as conn:
+    from app.db import normalize_db_url
+    with create_engine(normalize_db_url(PG_URL)).connect() as conn:   # bare postgresql:// would pick psycopg2
         roles = dict(conn.execute(text("SELECT login, role::text FROM users WHERE github_id IN (990001, 990002)")).all())
     assert set(roles) == {"pg-first", "pg-second"} and set(roles.values()) <= {"user", "admin"}

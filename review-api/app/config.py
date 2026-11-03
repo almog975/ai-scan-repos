@@ -23,6 +23,9 @@ class Settings(BaseSettings):
     # Kubernetes Job settings
     k8s_namespace: str = "ai-scan-repos"
     scanner_image: str = "registry.local/ai-scan-repos/scanner-worker:0.1.0"  # never :latest; env SCANNER_IMAGE
+    # Optional scanner container imagePullPolicy (Always|IfNotPresent|Never). Empty = template/K8s default.
+    # The local k3d overlay sets Always: the mutable :dev tag is re-pushed by infra/local/k3d.sh.
+    scanner_image_pull_policy: str = ""
     reports_pvc: str = "reports"
     scanner_service_account: str = "scanner"
     scanner_secret_name: str = "scanner-secrets"

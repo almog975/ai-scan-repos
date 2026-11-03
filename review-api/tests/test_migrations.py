@@ -19,3 +19,15 @@ def test_upgrade_downgrade_cycle(tmp_path, monkeypatch):
     command.downgrade(cfg, "0001")
     assert "github_accounts" in inspect(create_engine(url)).get_table_names()
     command.upgrade(cfg, "head")
+
+
+def test_database_url_with_percent_escape(tmp_path, monkeypatch):
+    """A URL-encoded password (p%40ss) must survive alembic's configparser interpolation (alembic/env.py)."""
+    d = tmp_path / "p%40ss"
+    d.mkdir()
+    url = f"sqlite:///{d / 'm.db'}"
+    monkeypatch.setenv("DATABASE_URL", url)
+    cfg = Config(str(ROOT / "alembic.ini"))
+    cfg.set_main_option("script_location", str(ROOT / "alembic"))
+    command.upgrade(cfg, "head")
+    assert "reviews" in inspect(create_engine(url)).get_table_names()

@@ -200,3 +200,13 @@ def test_job_attempt_unique_across_budgets():
     names = [job_name_for(RID, n, b) for b in (1, 2, 3) for n in range(1, 6)]
     assert len(set(names)) == 15 and names[0] == f"scan-{RID}-a1" and names[5] == f"scan-{RID}-a6"
     assert all(len(x) <= 63 for x in names)
+
+
+@pytest.mark.parametrize("template", ["", str(TPL)])
+def test_scanner_image_pull_policy(template):
+    s = Settings(scanner_job_template=template, scanner_image="reg/ai-scan/scanner-worker:dev")
+    assert "imagePullPolicy" not in build_job_manifest(s, SPEC)["spec"]["template"]["spec"]["containers"][0]
+    s = Settings(scanner_job_template=template, scanner_image="reg/ai-scan/scanner-worker:dev", scanner_image_pull_policy="Always")
+    assert build_job_manifest(s, SPEC)["spec"]["template"]["spec"]["containers"][0]["imagePullPolicy"] == "Always"
+    with pytest.raises(ValueError):
+        build_job_manifest(Settings(scanner_image="r/s:dev", scanner_image_pull_policy="sometimes"), SPEC)

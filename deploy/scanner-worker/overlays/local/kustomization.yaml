@@ -4,10 +4,11 @@ resources: [../../base]
 namespace: ai-scan-repos
 generatorOptions:
   disableNameSuffixHash: true
+# Scanner Job pull policy: review-api sets Always (env SCANNER_IMAGE_PULL_POLICY, deploy/review-api/overlays/local).
 configMapGenerator:
   - name: scanner-image
     literals:
-      - SCANNER_IMAGE=registry.ai-scan.local/ai-scan/scanner-worker:GIT_SHA_PLACEHOLDER
+      - SCANNER_IMAGE=k3d-ai-scan-registry.localhost:5111/ai-scan/scanner-worker:dev
 patches:
   - path: networkpolicy-ai-egress.yaml
     target:

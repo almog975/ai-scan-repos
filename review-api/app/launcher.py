@@ -121,6 +121,10 @@ def build_job_manifest(s: Settings, spec: JobSpec, ai_secret: str | None = None)
     c = ps.setdefault("containers", [{}])[0]
     c.setdefault("name", "scanner")
     c["image"] = s.scanner_image
+    if s.scanner_image_pull_policy:
+        if s.scanner_image_pull_policy not in ("Always", "IfNotPresent", "Never"):
+            raise ValueError("SCANNER_IMAGE_PULL_POLICY must be Always|IfNotPresent|Never")
+        c["imagePullPolicy"] = s.scanner_image_pull_policy
     c["args"] = ["--review-id", spec.review_id]
     ours = contract_env(spec) + [{"name": "REPORTS_DIR", "value": "/reports"},
                                  {"name": "REVIEW_API_URL", "value": s.review_api_internal_url}]

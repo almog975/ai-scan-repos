@@ -82,7 +82,7 @@ if [ "$REGISTRY_TYPE" = ecr ]; then
 else
   case "$OVERLAY" in
     k3s) REGISTRY_HOST="${REGISTRY_HOST:-registry.registry:5000}" ;;   # in-cluster Service, plain HTTP
-    local) REGISTRY_HOST="${REGISTRY_HOST:-registry.ai-scan.local}" ;;
+    local) REGISTRY_HOST="${REGISTRY_HOST:-k3d-ai-scan-registry.localhost:5111}" ;;   # k3d registry (infra/local/k3d.sh)
     eks) : "${REGISTRY_HOST:?REGISTRY_HOST required for eks with a local registry}" ;;
   esac
   IMAGE_PREFIX="$REGISTRY_HOST/ai-scan"
