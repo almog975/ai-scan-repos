@@ -112,6 +112,8 @@ git commit -am "feat(frontend): demo change" && git push
 ## Testing a branch before it's merged
 
 Both the job and the Application follow `main`. To try a branch end to end without touching `main`:
-- **Jenkins:** in ai-scan-cicd > Configure, set Branch Specifier to `*/<branch>`. The bot pushes the tag bump
-  back to the branch it built. A Jenkins restart resets the job to `main` (JCasC).
+- **Jenkins:** add `--set controller.containerEnv[0].value=<branch>` to the Jenkins `helm upgrade` (sets
+  `CICD_BRANCH`, default `main`). The job's branch and its BUILD_ALL / TRIVY_SEVERITY parameters are defined in
+  JCasC, so restarts and config reloads keep them; don't edit them in Configure (a reload overwrites that).
+  The bot pushes the tag bump back to the branch it built.
 - **Argo CD:** `kubectl -n argocd patch application ai-scan --type merge -p '{"spec":{"source":{"targetRevision":"<branch>"}}}'`.

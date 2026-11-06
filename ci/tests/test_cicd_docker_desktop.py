@@ -130,3 +130,13 @@ def test_one_stage_per_service_per_step_and_split_gitops():
             assert f"{{ expression {{ svcOn('{svc}') }} }};" in JF.split(f"stage('{step}: {svc}')")[1].split("\n")[0]
     assert "stage('GitOps: commit')" in JF and "stage('GitOps: push')" in JF
     assert "pipeline-graph-view:" in (ROOT / "deploy/jenkins/local/values-local.yaml").read_text()
+
+
+def test_job_params_and_branch_survive_jcasc_reload():
+    raw = (ROOT / "deploy/jenkins/local/values-local.yaml").read_text()
+    job = JENKINS["controller"]["JCasC"]["configScripts"]["ai-scan-cicd"]
+    assert "booleanParam('BUILD_ALL', false" in job and "stringParam('TRIVY_SEVERITY', 'CRITICAL'" in job
+    assert "branch('*/${CICD_BRANCH:-main}')" in job
+    assert {"name": "CICD_BRANCH", "value": "main"} in JENKINS["controller"]["containerEnv"]
+    for p in ("BUILD_ALL", "TRIVY_SEVERITY"):
+        assert f"name: '{p}'" in JF

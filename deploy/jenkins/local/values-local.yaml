@@ -15,6 +15,11 @@ controller:
   admin:
     username: admin
   numExecutors: 0                    # builds run on Kubernetes agent pods
+  # Branch the ai-scan-cicd job builds (and the bot pushes the tag bump to). It lives in JCasC, so a reload
+  # keeps it. To test a PR branch before merge:  --set controller.containerEnv[0].value=feat/my-branch
+  containerEnv:
+    - name: CICD_BRANCH
+      value: main
   resources:
     requests: {cpu: 250m, memory: 768Mi}
     limits: {cpu: "2", memory: 2Gi}
@@ -60,12 +65,18 @@ controller:
                   pipelineTriggers { triggers { pollSCM { scmpoll_spec('H/2 * * * *') } } }
                 }
                 logRotator { numToKeep(30) }
+                // Declared here (not only in the Jenkinsfile) so a JCasC reload never leaves the job
+                // unparameterized ("is not parameterized" on buildWithParameters). Keep in sync with the Jenkinsfile.
+                parameters {
+                  booleanParam('BUILD_ALL', false, 'Build every service, not only the changed ones')
+                  stringParam('TRIVY_SEVERITY', 'CRITICAL', 'Fail the build on these trivy severities (fixable only), e.g. CRITICAL,HIGH')
+                }
                 definition {
                   cpsScm {
                     scm {
                       git {
                         remote { url('https://github.com/almog975/ai-scan-repos.git') }   // public: clone needs no credentials
-                        branch('*/main')
+                        branch('*/${CICD_BRANCH:-main}')   // JCasC substitutes controller.containerEnv CICD_BRANCH
                       }
                     }
                     scriptPath('ci/cicd/Jenkinsfile.docker-desktop')
