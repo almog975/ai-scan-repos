@@ -1,0 +1,9 @@
+.DS_Store
+.git/
+*.swp
+*.bak
+*.tmp
+*.orig
+values.local.yaml
+values.local.yaml.example
+README.md

@@ -1,0 +1,91 @@
+# Default values for the ai-scan chart (local / Docker Desktop).
+# NOT FOR PRODUCTION: the secrets below are well-known placeholders.
+
+global:
+  appEnv: local
+  # Registry prefix for the app images. "" = local `docker build` names (ai-scan-repos-*).
+  imageRegistry: ghcr.io/almog975
+  imageTag: latest
+  imagePullPolicy: IfNotPresent
+
+# Image base names (final image = <imageRegistry>/<name>:<imageTag>)
+images:
+  reviewApi: ai-scan-repos-review-api
+  gateway: ai-scan-repos-gateway
+  frontend: ai-scan-repos-frontend
+  scanner: ai-scan-repos-scanner-worker
+
+postgres:
+  enabled: true
+  image: postgres:16-alpine
+  storage: 1Gi
+  storageClassName: ""        # "" = cluster default (Docker Desktop: hostpath)
+  user: aiscan
+  password: aiscan-local-dev-only
+  db: aiscan
+  resources:
+    requests: {cpu: 100m, memory: 256Mi}
+    limits: {cpu: "1", memory: 1Gi}
+
+reviewApi:
+  replicas: 1
+  port: 8001
+  resources:
+    requests: {cpu: 100m, memory: 128Mi}
+    limits: {cpu: 500m, memory: 512Mi}
+  # Extra env for review-api (PR #28 compatible: dev mode allows :latest scanner image)
+  environment: dev
+  skipScannerValidation: true
+  # Helm hook Job "review-api-migrate" (post-install/post-upgrade). The Deployment
+  # also migrates in an initContainer, so this is an idempotent safety net.
+  migrateJob:
+    enabled: true
+
+gateway:
+  replicas: 1
+  port: 8000
+  # "" = auto: http://<ingress.host> when ingress is enabled, else http://localhost:8080
+  publicUrl: ""
+  cookieSecure: false
+  allowedUsers: almog975
+  adminUsers: almog975
+  # Trusted proxy IPs for X-Forwarded-* (local: any; ingress-nginx pod IP varies)
+  forwardedAllowIps: "*"
+  # Optional pre-created Secret with real GITHUB_CLIENT_ID / GITHUB_CLIENT_SECRET.
+  # Loaded after gateway-secrets so it overrides the placeholders. Missing = ignored.
+  oauthSecretName: gateway-oauth
+  resources:
+    requests: {cpu: 100m, memory: 128Mi}
+    limits: {cpu: 500m, memory: 512Mi}
+
+frontend:
+  replicas: 1
+  port: 8080
+  service:
+    type: ClusterIP
+  resources:
+    requests: {cpu: 100m, memory: 128Mi}
+    limits: {cpu: 500m, memory: 512Mi}
+
+scanner:
+  imagePullPolicy: IfNotPresent
+  activeDeadlineSeconds: 21600
+  reportsStorage: 1Gi
+  aiProvider: none
+  aiModel: local-model
+  aiBaseUrl: ""
+
+ingress:
+  enabled: true
+  className: nginx
+  host: localhost
+
+# NOT FOR PRODUCTION placeholders (same values as deploy/overlays/local/secrets).
+# Never commit real values: use --set or a gitignored values.local.yaml.
+secrets:
+  aiKeysEncryptionKey: 000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f
+  githubClientId: local-dev-github-client-id
+  githubClientSecret: local-dev-github-client-secret-not-for-prod
+  githubWebhookSecret: local-dev-webhook-secret-not-for-production
+  internalApiToken: local-dev-only-internal-api-token-32b   # >= 32 chars
+  aiApiKey: ""

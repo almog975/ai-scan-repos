@@ -1,0 +1,65 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gateway
+  labels: {app: gateway}
+spec:
+  replicas: {{ .Values.gateway.replicas }}
+  selector:
+    matchLabels: {app: gateway}
+  template:
+    metadata:
+      labels: {app: gateway}
+      annotations:
+        checksum/secrets: {{ include (print $.Template.BasePath "/secrets.yaml") . | sha256sum }}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        {{- include "ai-scan.podSecurityContext" 10001 | nindent 8 }}
+      containers:
+        - name: gateway
+          image: {{ include "ai-scan.image" (list . "gateway") }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          ports:
+            - {name: http, containerPort: {{ .Values.gateway.port }}}
+          env:
+            - {name: APP_ENV, value: {{ .Values.global.appEnv | quote }}}
+            # OAuth callback is derived by the gateway: PUBLIC_URL + /auth/github/callback
+            - {name: PUBLIC_URL, value: {{ include "ai-scan.publicUrl" . | quote }}}
+            - {name: COOKIE_SECURE, value: {{ .Values.gateway.cookieSecure | quote }}}
+            - {name: ALLOWED_GITHUB_LOGINS, value: {{ .Values.gateway.allowedUsers | quote }}}
+            - {name: ADMIN_GITHUB_LOGINS, value: {{ .Values.gateway.adminUsers | quote }}}
+            - {name: REVIEW_API_URL, value: "http://review-api:{{ .Values.reviewApi.port }}"}
+            - {name: FORWARDED_ALLOW_IPS, value: {{ .Values.gateway.forwardedAllowIps | quote }}}
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef: {name: db-secrets, key: DATABASE_URL}
+            - name: INTERNAL_API_TOKEN
+              valueFrom:
+                secretKeyRef: {name: scanner-secrets, key: INTERNAL_API_TOKEN}
+          envFrom:
+            - secretRef: {name: gateway-secrets}
+            {{- with .Values.gateway.oauthSecretName }}
+            # Real OAuth creds (created by you, never committed). Overrides placeholders.
+            - secretRef: {name: {{ . }}, optional: true}
+            {{- end }}
+          startupProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 2
+            failureThreshold: 30
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 20
+            timeoutSeconds: 3
+          readinessProbe:
+            httpGet: {path: /readyz, port: http}
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources: {{- toYaml .Values.gateway.resources | nindent 12 }}
+          securityContext:
+            {{- include "ai-scan.containerSecurityContext" . | nindent 12 }}
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - {name: tmp, emptyDir: {}}

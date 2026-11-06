@@ -1,0 +1,75 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: scanner-image
+  labels: {{- include "ai-scan.labels" . | nindent 4 }}
+data:
+  SCANNER_IMAGE: {{ include "ai-scan.image" (list . "scanner") | quote }}
+---
+# Template review-api fills in (${...}) for each scan Job.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: scanner-job-template
+  labels: {{- include "ai-scan.labels" . | nindent 4 }}
+data:
+  job.yaml: |
+    apiVersion: batch/v1
+    kind: Job
+    metadata:
+      name: scan-${REVIEW_ID}-a${JOB_ATTEMPT}
+      namespace: {{ .Release.Namespace }}
+      labels: {app: scanner, review-id: "${REVIEW_ID}", attempt: "${ATTEMPT}", budget-no: "${BUDGET_NO}"}
+    spec:
+      backoffLimit: 0
+      ttlSecondsAfterFinished: 3600
+      activeDeadlineSeconds: {{ .Values.scanner.activeDeadlineSeconds }}
+      template:
+        metadata:
+          labels: {app: scanner, review-id: "${REVIEW_ID}", attempt: "${ATTEMPT}", budget-no: "${BUDGET_NO}"}
+        spec:
+          restartPolicy: Never
+          serviceAccountName: scanner
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            fsGroup: 10001
+            seccompProfile: {type: RuntimeDefault}
+          containers:
+            - name: scanner
+              image: ${IMAGE}
+              args: ["--review-id", "${REVIEW_ID}"]
+              ports: [{name: health, containerPort: 8002}]
+              livenessProbe: {httpGet: {path: /healthz, port: health}, periodSeconds: 30, failureThreshold: 4}
+              readinessProbe: {httpGet: {path: /readyz, port: health}, periodSeconds: 15}
+              env:
+                - {name: REVIEW_ID, value: "${REVIEW_ID}"}
+                - {name: ATTEMPT, value: "${ATTEMPT}"}
+                - {name: DEPTH, value: "${DEPTH}"}
+                - {name: REPO_URL, value: "${REPO_URL}"}
+                - {name: REPORTS_DIR, value: /reports}
+                - {name: WORK_DIR, value: /work}
+                - {name: HOME, value: /tmp}
+                - {name: REVIEW_API_URL, value: "http://review-api:{{ .Values.reviewApi.port }}"}
+              envFrom:
+                - secretRef: {name: scanner-secrets}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                runAsNonRoot: true
+                runAsUser: 10001
+                runAsGroup: 10001
+                capabilities: {drop: [ALL]}
+              resources:
+                requests: {cpu: 250m, memory: 512Mi}
+                limits: {cpu: "2", memory: 2Gi, ephemeral-storage: 4Gi}
+              volumeMounts:
+                - {name: work, mountPath: /work}
+                - {name: tmp, mountPath: /tmp}
+                - {name: reports, mountPath: /reports}
+          volumes:
+            - {name: work, emptyDir: {sizeLimit: 2Gi}}
+            - {name: tmp, emptyDir: {sizeLimit: 1Gi}}
+            - {name: reports, persistentVolumeClaim: {claimName: reports}}

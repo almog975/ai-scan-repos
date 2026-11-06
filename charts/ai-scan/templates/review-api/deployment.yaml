@@ -1,0 +1,81 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: review-api
+  labels: {app: review-api}
+spec:
+  replicas: {{ .Values.reviewApi.replicas }}
+  selector:
+    matchLabels: {app: review-api}
+  template:
+    metadata:
+      labels: {app: review-api}
+      annotations:
+        checksum/secrets: {{ include (print $.Template.BasePath "/secrets.yaml") . | sha256sum }}
+        checksum/scanner: {{ include (print $.Template.BasePath "/scanner/configmap.yaml") . | sha256sum }}
+    spec:
+      serviceAccountName: review-api
+      securityContext:
+        {{- include "ai-scan.podSecurityContext" 10001 | nindent 8 }}
+      # Migration design: wait for postgres, then `alembic upgrade head` before the
+      # API starts (same as the old local overlay). Works with plain `helm install`
+      # and with `--wait` (no dependency on a hook Job).
+      initContainers:
+        {{- include "ai-scan.waitPostgres" . | nindent 8 }}
+        {{- include "ai-scan.migrateContainer" . | nindent 8 }}
+      containers:
+        - name: review-api
+          image: {{ include "ai-scan.image" (list . "reviewApi") }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          args: [uvicorn, --factory, "app.main:get_app", --host, 0.0.0.0, --port, {{ .Values.reviewApi.port | quote }}]
+          ports:
+            - {name: http, containerPort: {{ .Values.reviewApi.port }}}
+          env:
+            - {name: APP_ENV, value: {{ .Values.global.appEnv | quote }}}
+            - {name: ENVIRONMENT, value: {{ .Values.reviewApi.environment | quote }}}
+            - {name: SKIP_SCANNER_VALIDATION, value: {{ .Values.reviewApi.skipScannerValidation | quote }}}
+            - {name: JOB_LAUNCHER, value: kubernetes}
+            - {name: K8S_NAMESPACE, value: {{ .Release.Namespace | quote }}}
+            - {name: REPORTS_DIR, value: /reports}
+            - {name: REPORTS_PVC, value: reports}
+            - {name: SCANNER_SERVICE_ACCOUNT, value: scanner}
+            - {name: SCANNER_SECRET_NAME, value: scanner-secrets}
+            - {name: SCANNER_IMAGE_PULL_POLICY, value: {{ .Values.scanner.imagePullPolicy | quote }}}
+            - name: SCANNER_IMAGE
+              valueFrom:
+                configMapKeyRef: {name: scanner-image, key: SCANNER_IMAGE}
+            - {name: REVIEW_API_INTERNAL_URL, value: "http://review-api:{{ .Values.reviewApi.port }}"}
+            - {name: SCANNER_JOB_TEMPLATE, value: /etc/scanner-job/job.yaml}
+            - {name: SCANNER_ACTIVE_DEADLINE_SECONDS, value: {{ .Values.scanner.activeDeadlineSeconds | quote }}}
+            - name: INTERNAL_API_TOKEN
+              valueFrom:
+                secretKeyRef: {name: scanner-secrets, key: INTERNAL_API_TOKEN}
+          envFrom:
+            - secretRef: {name: db-secrets}
+            - secretRef: {name: ai-keys-master}
+          startupProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 2
+            failureThreshold: 30
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 20
+            timeoutSeconds: 3
+          readinessProbe:
+            httpGet: {path: /readyz, port: http}
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources: {{- toYaml .Values.reviewApi.resources | nindent 12 }}
+          securityContext:
+            {{- include "ai-scan.containerSecurityContext" . | nindent 12 }}
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}
+            - {name: reports, mountPath: /reports}
+            - {name: scanner-job-template, mountPath: /etc/scanner-job, readOnly: true}
+      volumes:
+        - {name: tmp, emptyDir: {}}
+        - name: reports
+          persistentVolumeClaim: {claimName: reports}
+        - name: scanner-job-template
+          configMap: {name: scanner-job-template}

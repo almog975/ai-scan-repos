@@ -1,0 +1,17 @@
+{{- if .Values.postgres.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-data
+  labels: {app: postgres}
+  annotations:
+    helm.sh/resource-policy: keep   # data survives helm uninstall
+spec:
+  accessModes: [ReadWriteOnce]
+  {{- with .Values.postgres.storageClassName }}
+  storageClassName: {{ . }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.postgres.storage }}
+{{- end }}

@@ -1,0 +1,34 @@
+{{- if .Values.reviewApi.migrateJob.enabled }}
+# Helm hook: runs `alembic upgrade head` after every install/upgrade.
+# Idempotent safety net - review-api also migrates in its initContainer, so
+# nothing waits on this Job (no deadlock with `helm install --wait`).
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: review-api-migrate
+  labels:
+    app: review-api-migrate
+    {{- include "ai-scan.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-weight: "0"
+    helm.sh/hook-delete-policy: before-hook-creation
+spec:
+  backoffLimit: 6
+  activeDeadlineSeconds: 600
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels: {app: review-api-migrate}
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext:
+        {{- include "ai-scan.podSecurityContext" 10001 | nindent 8 }}
+      initContainers:
+        {{- include "ai-scan.waitPostgres" . | nindent 8 }}
+      containers:
+        {{- include "ai-scan.migrateContainer" . | nindent 8 }}
+      volumes:
+        - {name: tmp, emptyDir: {}}
+{{- end }}

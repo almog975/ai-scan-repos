@@ -57,3 +57,8 @@ No Secret YAML in git for k3s/eks (create from the CLI). `deploy/overlays/local`
 
 ## Owners
 Infra: `base/` and `overlays/` content. Pipelines: image tags, `argocd/`, `Jenkinsfile`. See `.github/CODEOWNERS`.
+
+## Helm alternative (Docker Desktop)
+For a simple local run without Kustomize, use the Helm chart in [`charts/ai-scan`](../charts/ai-scan/README.md):
+`helm install ai-scan ./charts/ai-scan -n ai-scan-repos --create-namespace`, then open http://localhost
+(needs ingress-nginx). Don't install it and a Kustomize overlay in the same namespace at the same time.

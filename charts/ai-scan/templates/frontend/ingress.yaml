@@ -1,0 +1,28 @@
+{{- if .Values.ingress.enabled }}
+# One rule: everything -> frontend. The frontend nginx already proxies
+# /api, /auth, /me, /webhooks to the gateway, so no extra paths needed.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: frontend
+  labels: {{- include "ai-scan.labels" . | nindent 4 }}
+  annotations:
+    # Server-Sent Events (/api/reviews/<id>/progress): no buffering, long reads
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  rules:
+    - host: {{ .Values.ingress.host | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: frontend
+                port:
+                  number: {{ .Values.frontend.port }}
+{{- end }}
