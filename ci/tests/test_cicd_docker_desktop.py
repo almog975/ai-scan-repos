@@ -113,3 +113,11 @@ def test_first_build_builds_all_and_no_change_is_not_built():
     assert "(params.BUILD_ALL || !haveBase)" in guard
     no_change = guard.split("if (!changed)")[1].split("}")[0]
     assert "NOT_BUILT" in no_change
+
+
+def test_tool_containers_work_in_the_agent_workspace():
+    # kaniko --cleanup deletes its image WORKDIR (/workspace); a later `sh` must not chdir there.
+    tmpl = yaml.safe_load(JENKINS["agent"]["podTemplates"]["ai-scan-ci"])[0]
+    for c in tmpl["containers"]:
+        if c["name"] != "jnlp":
+            assert c.get("workingDir") == "/home/jenkins/agent", c["name"]

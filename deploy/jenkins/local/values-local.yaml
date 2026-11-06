@@ -129,6 +129,7 @@ agent:
             resourceLimitCpu: 500m
             resourceLimitMemory: 512Mi
           - name: python
+            workingDir: /home/jenkins/agent
             image: python:3.12-slim
             command: sleep
             args: "99999999"
@@ -138,6 +139,7 @@ agent:
             resourceLimitCpu: "1"
             resourceLimitMemory: 1Gi
           - name: node
+            workingDir: /home/jenkins/agent
             image: node:22-bookworm-slim
             command: sleep
             args: "99999999"
@@ -147,6 +149,9 @@ agent:
             resourceLimitCpu: "1"
             resourceLimitMemory: 2Gi
           - name: kaniko                # image builds without a Docker daemon
+            # kaniko --cleanup wipes the container filesystem after each build, including the image WORKDIR
+            # /workspace, so the next `sh` can't chdir there. The agent workspace is a volume: kaniko skips it.
+            workingDir: /home/jenkins/agent
             image: gcr.io/kaniko-project/executor:v1.23.2-debug
             command: sleep
             args: "99999999"
@@ -156,6 +161,7 @@ agent:
             resourceLimitCpu: "2"
             resourceLimitMemory: 3Gi
           - name: trivy
+            workingDir: /home/jenkins/agent
             image: aquasec/trivy:0.58.1
             command: sleep
             args: "99999999"
@@ -165,6 +171,7 @@ agent:
             resourceLimitCpu: "1"
             resourceLimitMemory: 2Gi
           - name: crane                 # pushes the scanned tarball to ghcr.io
+            workingDir: /home/jenkins/agent
             image: gcr.io/go-containerregistry/crane:debug
             command: sleep
             args: "99999999"
