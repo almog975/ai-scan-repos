@@ -1,5 +1,8 @@
 # Schema migrations: `alembic upgrade head` once per sync, before the review-api Deployment rolls.
-# Argo CD runs it as a PreSync hook and deletes the previous one first; plain `kubectl apply -k` users run it once by hand.
+# Argo CD runs it as a PreSync hook and deletes the previous one first.
+# Plain `kubectl apply -k`: Job is immutable — delete it before re-apply, or rely on ttlSecondsAfterFinished
+# (and on the local overlay's review-api initContainer, which also runs alembic).
+# Labels app=review-api-migrate match platform NetworkPolicies postgres-clients-egress + postgres-ingress.
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -10,7 +13,7 @@ metadata:
     argocd.argoproj.io/hook: PreSync
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
 spec:
-  backoffLimit: 2
+  backoffLimit: 6
   activeDeadlineSeconds: 600
   ttlSecondsAfterFinished: 86400
   template:
@@ -19,6 +22,31 @@ spec:
       restartPolicy: Never
       automountServiceAccountToken: false
       securityContext: {runAsNonRoot: true, runAsUser: 10001, runAsGroup: 10001, fsGroup: 10001, fsGroupChangePolicy: OnRootMismatch, seccompProfile: {type: RuntimeDefault}}
+      initContainers:
+        - name: wait-postgres
+          image: ai-scan/review-api:GIT_SHA   # same image as the migrate container (overlay images: rewrites both)
+          command: [python, -c]
+          args:
+            - |
+              import os, socket, time
+              from urllib.parse import urlparse
+              raw = os.environ["DATABASE_URL"].replace("postgresql+psycopg", "postgresql", 1)
+              u = urlparse(raw)
+              host, port = u.hostname, u.port or 5432
+              for _ in range(60):
+                  try:
+                      s = socket.create_connection((host, port), 2)
+                      s.close()
+                      break
+                  except OSError:
+                      time.sleep(2)
+              else:
+                  raise SystemExit(f"postgres not reachable at {host}:{port}")
+          envFrom:
+            - secretRef: {name: db-secrets}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+          resources: {requests: {cpu: 25m, memory: 64Mi}, limits: {cpu: 200m, memory: 128Mi}}
+          volumeMounts: [{name: tmp, mountPath: /tmp}]
       containers:
         - name: migrate
           image: ai-scan/review-api:GIT_SHA   # same image as the Deployment (overlay images: rewrites both)

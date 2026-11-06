@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata: {name: default, namespace: ai-scan-repos}
+imagePullSecrets: []
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata: {name: review-api, namespace: ai-scan-repos}
+imagePullSecrets: []
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata: {name: scanner, namespace: ai-scan-repos}
+imagePullSecrets: []

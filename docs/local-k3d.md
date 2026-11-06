@@ -1,5 +1,52 @@
 # Local full stack on k3d (Docker Desktop)
 
+## Lightweight overlay (`deploy/overlays/local`)
+
+One `kubectl apply -k` for Docker Desktop Kubernetes **or** k3d. No in-cluster registry, no
+manual Secret creation, and **no NetworkPolicies** (the strict default-deny + allows stay in
+`deploy/platform/base` and the k3s/eks overlays). Secrets are committed **dev-only placeholders**
+marked `ai-scan.local/not-for-production` / `NOT FOR PRODUCTION` — never reuse them outside a
+personal laptop cluster.
+
+`deploy/*/overlays/local` + `make local-k8s` (below) are unchanged: they still use the k3d
+registry (`:dev`, `imagePullPolicy: Always`) and Argo CD.
+
+### Quickstart (PowerShell or bash)
+
+```powershell
+docker build -t ai-scan-repos-review-api:latest -f review-api/Dockerfile .
+docker build -t ai-scan-repos-gateway:latest gateway
+docker build -t ai-scan-repos-frontend:latest frontend
+docker build -t ai-scan-repos-scanner-worker:latest -f scanner-worker/Dockerfile .
+# k3d only — Docker Desktop Kubernetes already sees local images:
+# k3d image import ai-scan-repos-review-api:latest ai-scan-repos-gateway:latest ai-scan-repos-frontend:latest ai-scan-repos-scanner-worker:latest -c <cluster>
+kubectl apply -k deploy/overlays/local
+kubectl get pods -n ai-scan-repos
+kubectl -n ai-scan-repos port-forward svc/frontend 8080:8080
+```
+
+Open http://localhost:8080. Teardown:
+
+```powershell
+kubectl delete -k deploy/overlays/local
+```
+
+Migrate Job logs (and the review-api `migrate` initContainer also runs `alembic upgrade head`):
+
+```powershell
+kubectl -n ai-scan-repos logs job/review-api-migrate
+kubectl -n ai-scan-repos logs deploy/review-api -c migrate
+```
+
+Re-apply note: Jobs are immutable. Either wait for `ttlSecondsAfterFinished` (120s in this
+overlay) or `kubectl -n ai-scan-repos delete job review-api-migrate --ignore-not-found` before
+a second apply. The Deployment initContainer keeps the schema current either way.
+
+OAuth: edit `deploy/overlays/local/secrets/gateway-secrets.env` (or patch the Secret) with a real
+GitHub OAuth App callback `http://localhost:8080/auth/github/callback`, then re-apply.
+
+---
+
 One command brings up postgres, review-api (+ migrations), scanner Jobs, gateway, frontend and Argo CD on a local
 [k3d](https://k3d.io) cluster (K3s in Docker). K3s ships Traefik and the `local-path` StorageClass, so the
 `deploy/*/overlays/local` overlays behave like the K3s ones. Docker Desktop's built-in Kubernetes is **not** used.

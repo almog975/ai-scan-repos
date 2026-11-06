@@ -1,0 +1,211 @@
+# Lightweight local stack: Docker Desktop Kubernetes or k3d.
+# One command: kubectl apply -k deploy/overlays/local
+# Does NOT replace deploy/*/overlays/local (those stay for make local-k8s / Argo CD local).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: ai-scan-repos
+
+resources:
+  - namespace.yaml
+  - ../../platform/base
+  - ../../postgres/base
+  - ../../scanner-worker/base
+  - ../../review-api/base
+  - ../../gateway/base
+  - ../../frontend/base
+
+# Local image names (docker build / k3d image import). No registry host, no GIT_SHA_PLACEHOLDER.
+images:
+  - name: ai-scan/review-api
+    newName: ai-scan-repos-review-api
+    newTag: latest
+  - name: ai-scan/gateway
+    newName: ai-scan-repos-gateway
+    newTag: latest
+  - name: ai-scan/frontend
+    newName: ai-scan-repos-frontend
+    newTag: latest
+
+generatorOptions:
+  disableNameSuffixHash: true
+  annotations:
+    ai-scan.local/not-for-production: "true"
+
+# Committed placeholders only — see secrets/README.md. NOT FOR PRODUCTION.
+secretGenerator:
+  - name: db-secrets
+    envs: [secrets/db-secrets.env]
+  - name: ai-keys-master
+    envs: [secrets/ai-keys-master.env]
+  - name: gateway-secrets
+    envs: [secrets/gateway-secrets.env]
+  - name: scanner-secrets
+    envs: [secrets/scanner-secrets.env]
+
+configMapGenerator:
+  - name: scanner-image
+    literals:
+      # :latest matches the imported scanner image; APP_ENV=local skips the production pin check.
+      - SCANNER_IMAGE=ai-scan-repos-scanner-worker:latest
+
+patches:
+  - path: patches/delete-np.yaml
+    target:
+      group: networking.k8s.io
+      version: v1
+      kind: NetworkPolicy
+      name: default-deny-ingress
+  - path: patches/delete-np.yaml
+    target:
+      group: networking.k8s.io
+      version: v1
+      kind: NetworkPolicy
+      name: default-deny-egress
+  - path: patches/delete-np.yaml
+    target:
+      group: networking.k8s.io
+      version: v1
+      kind: NetworkPolicy
+      name: allow-dns-egress
+  - path: patches/delete-np.yaml
+    target:
+      group: networking.k8s.io
+      version: v1
+      kind: NetworkPolicy
+      name: postgres-clients-egress
+  - path: patches/delete-np.yaml
+    target:
+      group: networking.k8s.io
+      version: v1
+      kind: NetworkPolicy
+      name: frontend-egress
+  - path: patches/delete-np.yaml
+    target:
+      group: networking.k8s.io
+      version: v1
+      kind: NetworkPolicy
+      name: gateway-egress
+  - path: patches/delete-np.yaml
+    target:
+      group: networking.k8s.io
+      version: v1
+      kind: NetworkPolicy
+      name: github-egress
+  - path: patches/delete-np.yaml
+    target:
+      group: networking.k8s.io
+      version: v1
+      kind: NetworkPolicy
+      name: review-api-ai-egress
+  - path: patches/delete-np.yaml
+    target:
+      group: networking.k8s.io
+      version: v1
+      kind: NetworkPolicy
+      name: review-api-kube-api-egress
+  - path: patches/delete-np.yaml
+    target:
+      group: networking.k8s.io
+      version: v1
+      kind: NetworkPolicy
+      name: postgres-ingress
+  - path: patches/delete-np.yaml
+    target:
+      group: networking.k8s.io
+      version: v1
+      kind: NetworkPolicy
+      name: review-api-ingress
+  - path: patches/delete-np.yaml
+    target:
+      group: networking.k8s.io
+      version: v1
+      kind: NetworkPolicy
+      name: gateway-ingress
+  - path: patches/delete-np.yaml
+    target:
+      group: networking.k8s.io
+      version: v1
+      kind: NetworkPolicy
+      name: frontend-ingress
+  - path: patches/delete-np.yaml
+    target:
+      group: networking.k8s.io
+      version: v1
+      kind: NetworkPolicy
+      name: reports-cleanup-deny-all
+  - path: patches/delete-np.yaml
+    target:
+      group: networking.k8s.io
+      version: v1
+      kind: NetworkPolicy
+      name: scanner-egress
+  - path: patches/delete-ingressroute-ai-scan.yaml
+    target:
+      group: traefik.io
+      version: v1alpha1
+      kind: IngressRoute
+      name: ai-scan
+  - path: patches/delete-ingressroute-ai-scan-http.yaml
+    target:
+      group: traefik.io
+      version: v1alpha1
+      kind: IngressRoute
+      name: ai-scan-http
+  - path: patches/delete-middleware-security-headers.yaml
+    target:
+      group: traefik.io
+      version: v1alpha1
+      kind: Middleware
+      name: security-headers
+  - path: patches/delete-middleware-api-ratelimit.yaml
+    target:
+      group: traefik.io
+      version: v1alpha1
+      kind: Middleware
+      name: api-ratelimit
+  - path: patches/delete-middleware-redirect-https.yaml
+    target:
+      group: traefik.io
+      version: v1alpha1
+      kind: Middleware
+      name: redirect-https
+  - path: patches/delete-serverstransport-gateway-sse.yaml
+    target:
+      group: traefik.io
+      version: v1alpha1
+      kind: ServersTransport
+      name: gateway-sse
+  - path: patches/delete-servicemonitor-review-api.yaml
+    target:
+      group: monitoring.coreos.com
+      version: v1
+      kind: ServiceMonitor
+      name: review-api
+  - path: patches/delete-servicemonitor-gateway.yaml
+    target:
+      group: monitoring.coreos.com
+      version: v1
+      kind: ServiceMonitor
+      name: gateway
+  - path: patches/delete-prometheusrule-ai-scan-repos.yaml
+    target:
+      group: monitoring.coreos.com
+      version: v1
+      kind: PrometheusRule
+      name: ai-scan-repos
+  - path: patches/delete-np.yaml
+    target:
+      group: networking.k8s.io
+      version: v1
+      kind: NetworkPolicy
+      name: postgres-backup
+
+  - path: patches/workloads.yaml
+  - path: patches/sa-no-regcred.yaml
+  - target: {kind: PersistentVolumeClaim, name: reports}
+    path: patches/pvc-storage.json
+  - target: {kind: PersistentVolumeClaim, name: postgres-data}
+    path: patches/pvc-storage.json
+  - target: {kind: PersistentVolumeClaim, name: postgres-backups}
+    path: patches/pvc-storage.json

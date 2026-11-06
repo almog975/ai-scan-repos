@@ -1,0 +1,65 @@
+# Local: IfNotPresent + APP_ENV=local (allows :latest scanner image; OAuth placeholders).
+# initContainer runs alembic so review-api tolerates the migrate Job racing / not finishing yet.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: review-api, namespace: ai-scan-repos}
+spec:
+  template:
+    spec:
+      initContainers:
+        - name: migrate
+          image: ai-scan/review-api:GIT_SHA
+          imagePullPolicy: IfNotPresent
+          args: [alembic, upgrade, head]
+          envFrom:
+            - secretRef: {name: db-secrets}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+          resources: {requests: {cpu: 50m, memory: 128Mi}, limits: {cpu: 500m, memory: 256Mi}}
+          volumeMounts: [{name: tmp, mountPath: /tmp}]
+      containers:
+        - name: review-api
+          imagePullPolicy: IfNotPresent
+          env:
+            - {name: APP_ENV, value: local}
+            - {name: SCANNER_IMAGE_PULL_POLICY, value: IfNotPresent}
+---
+apiVersion: batch/v1
+kind: Job
+metadata: {name: review-api-migrate, namespace: ai-scan-repos}
+spec:
+  # Short TTL so a re-apply can recreate the Job after it finishes (Jobs are immutable).
+  ttlSecondsAfterFinished: 120
+  template:
+    metadata:
+      labels: {app: review-api-migrate}
+    spec:
+      initContainers:
+        - name: wait-postgres
+          imagePullPolicy: IfNotPresent
+      containers:
+        - name: migrate
+          imagePullPolicy: IfNotPresent
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: gateway, namespace: ai-scan-repos}
+spec:
+  template:
+    spec:
+      containers:
+        - name: gateway
+          imagePullPolicy: IfNotPresent
+          env:
+            - {name: APP_ENV, value: local}
+            - {name: PUBLIC_URL, value: "http://localhost:8080"}
+            - {name: COOKIE_SECURE, value: "false"}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: frontend, namespace: ai-scan-repos}
+spec:
+  template:
+    spec:
+      containers:
+        - name: frontend
+          imagePullPolicy: IfNotPresent

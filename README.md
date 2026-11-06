@@ -64,7 +64,29 @@ docker compose up --build   # AISCAN_HTTP_PORT (default 8080) and WORK_DIR are i
 
 Services: postgres → `migrate` (alembic) → review-api (local launcher, :8001 on localhost) → gateway (:8000) → frontend (:8080).
 
-### 3. Local Kubernetes (k3d on Docker Desktop, Windows via WSL2)
+### 3. Local Kubernetes (lightweight, Docker Desktop or k3d)
+
+No registry, no manual secrets, no NetworkPolicies. PowerShell-friendly (no WSL required for this path).
+
+```powershell
+# from the repo root — build local tags
+docker build -t ai-scan-repos-review-api:latest -f review-api/Dockerfile .
+docker build -t ai-scan-repos-gateway:latest gateway
+docker build -t ai-scan-repos-frontend:latest frontend
+docker build -t ai-scan-repos-scanner-worker:latest -f scanner-worker/Dockerfile .
+# k3d only (skip on Docker Desktop Kubernetes):
+#   k3d image import ai-scan-repos-review-api:latest ai-scan-repos-gateway:latest ai-scan-repos-frontend:latest ai-scan-repos-scanner-worker:latest -c <cluster>
+kubectl apply -k deploy/overlays/local
+kubectl get pods -n ai-scan-repos
+kubectl -n ai-scan-repos port-forward svc/frontend 8080:8080
+# open http://localhost:8080
+# migrate logs: kubectl -n ai-scan-repos logs job/review-api-migrate
+# teardown:     kubectl delete -k deploy/overlays/local
+```
+
+Full notes (placeholders are NOT FOR PRODUCTION): [docs/local-k3d.md](docs/local-k3d.md#lightweight-overlay).
+
+### 3b. Local Kubernetes via `make local-k8s` (k3d + registry + Argo CD)
 
 ```bash
 cp .env.example .env     # INTERNAL_API_TOKEN >= 32 chars here
@@ -73,7 +95,7 @@ make local-k8s           # k3d cluster + registry, images, secrets from .env, de
 make local-k8s-down
 ```
 
-Prerequisites, Argo CD access and troubleshooting: [docs/local-k3d.md](docs/local-k3d.md).
+Uses `deploy/*/overlays/local` (k3d registry `:dev`), not `deploy/overlays/local`. Windows: run inside WSL2. Details: [docs/local-k3d.md](docs/local-k3d.md).
 
 ### 4. K3s (GitOps)
 
