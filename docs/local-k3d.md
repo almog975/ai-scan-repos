@@ -14,10 +14,11 @@ registry (`:dev`, `imagePullPolicy: Always`) and Argo CD.
 ### Quickstart (PowerShell or bash)
 
 ```powershell
-docker build -t ai-scan-repos-review-api:latest -f review-api/Dockerfile .
+# Contexts are the service dirs (same as each Makefile / Jenkins kaniko), not the repo root.
+docker build -t ai-scan-repos-review-api:latest review-api
 docker build -t ai-scan-repos-gateway:latest gateway
 docker build -t ai-scan-repos-frontend:latest frontend
-docker build -t ai-scan-repos-scanner-worker:latest -f scanner-worker/Dockerfile .
+docker build -t ai-scan-repos-scanner-worker:latest scanner-worker
 # k3d only — Docker Desktop Kubernetes already sees local images:
 # k3d image import ai-scan-repos-review-api:latest ai-scan-repos-gateway:latest ai-scan-repos-frontend:latest ai-scan-repos-scanner-worker:latest -c <cluster>
 kubectl apply -k deploy/overlays/local
@@ -70,6 +71,45 @@ make local-k8s-down           # deletes cluster + registry (asks; ARGS=--yes for
 ```
 
 `infra/local/k3d.sh --dry-run up` prints every command without touching anything.
+
+
+### GitHub Container Registry (`deploy/overlays/local-registry`)
+
+Same lightweight stack as above, but pods pull pre-built images from
+`ghcr.io/almog975/ai-scan-repos-<svc>` instead of locally built `:latest` tags.
+No `docker build` / `k3d image import` on the laptop.
+
+`.github/workflows/images.yml` builds all four images on every push to `main` (and on
+`workflow_dispatch`) and pushes:
+
+- `ghcr.io/almog975/ai-scan-repos-<svc>:sha-<short>`
+- `ghcr.io/almog975/ai-scan-repos-<svc>:latest` (main only)
+
+Pull requests run the same build matrix with **push disabled**. Image contexts are the
+service directories (`./review-api`, `./gateway`, `./frontend`, `./scanner-worker`), matching
+the Makefiles and Jenkins kaniko.
+
+**Make the packages public** (only possible after the first successful push to main):
+
+1. Open https://github.com/almog975?tab=packages
+2. For each of `ai-scan-repos-review-api`, `ai-scan-repos-gateway`,
+   `ai-scan-repos-frontend`, `ai-scan-repos-scanner-worker`:
+   **Package settings → Change visibility → Public**
+
+Anonymous pulls then work with no `imagePullSecrets`. Until then, either keep the
+packages private and add a pull credential, or use `deploy/overlays/local` with local builds.
+
+```powershell
+kubectl apply -k deploy/overlays/local-registry
+kubectl get pods -n ai-scan-repos
+kubectl -n ai-scan-repos port-forward svc/frontend 8080:8080
+# teardown: kubectl delete -k deploy/overlays/local-registry
+```
+
+To pin a known build, edit `deploy/overlays/local-registry/kustomization.yaml` and set
+`newTag` / `SCANNER_IMAGE` to `sha-<short>` (and switch `imagePullPolicy` back to
+`IfNotPresent` in `patches/pull-always.yaml` if you prefer). The k3s/eks overlays still
+use the in-cluster registry pushed by Jenkins; pointing them at ghcr is a follow-up.
 
 ### Auto-heal on the local stack (end to end)
 
