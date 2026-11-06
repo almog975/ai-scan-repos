@@ -113,10 +113,27 @@ Secrets that already exist in the cluster are **kept** (the installer's rule); t
 
 ## GitHub OAuth callback
 
+The gateway sends `redirect_uri = PUBLIC_URL + /auth/github/callback` (override: `GITHUB_CALLBACK_URL`). It must be
+registered in the GitHub OAuth App exactly:
+
+| How you run it | PUBLIC_URL | Callback URL to register |
+|---|---|---|
+| `docker compose` / `kubectl apply -k deploy/overlays/local` + port-forward svc/frontend 8080 | `http://localhost:8080` | `http://localhost:8080/auth/github/callback` |
+| `make local-k8s` (k3d + Traefik) | `https://ai-scan.localhost` | `https://ai-scan.localhost/auth/github/callback` |
+| k3s overlay | `https://ai-scan.127.0.0.1.nip.io` | `https://ai-scan.127.0.0.1.nip.io/auth/github/callback` |
+| eks overlay | `https://ai-scan.example.com` (your host) | `https://<your host>/auth/github/callback` |
+
+Scope: login asks only `read:user` (`GITHUB_OAUTH_SCOPES`). The user token is used once for `GET /user` and
+discarded; review-api clones with its own `GITHUB_TOKEN`. The old `repo` scope triggered org "access restricted" notices.
+GitHub errors on the callback (`?error=redirect_uri_mismatch|access_denied|...`) are shown as a 400 with the reason.
+
+### k3d (`make local-k8s`) OAuth App
+
 Create a separate GitHub OAuth App for this cluster (the compose one uses `http://localhost:8080`):
 
 - Homepage URL: `https://ai-scan.localhost`
-- Authorization callback URL: **`https://ai-scan.localhost/auth/github/callback`**
+- Authorization callback URL: **`https://ai-scan.localhost/auth/github/callback`** (add it to the same OAuth App
+  next to `http://localhost:8080/auth/github/callback`, or GitHub says "The redirect_uri is not associated with this application")
 
 `*.localhost` resolves to 127.0.0.1 in Chrome, Edge and Firefox without editing the hosts file. If your browser or
 `curl` does not resolve it, add `127.0.0.1 ai-scan.localhost` to `/etc/hosts` (Windows:

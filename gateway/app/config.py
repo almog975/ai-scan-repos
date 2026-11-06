@@ -16,6 +16,14 @@ class Settings(BaseSettings):
     github_api_base: str = "https://api.github.com"
     # Public URL of the app (frontend origin), used for redirect_uri and post-login redirect
     public_url: str = "http://localhost:8080"
+    # OAuth redirect_uri. Empty = derived: PUBLIC_URL + /auth/github/callback (the single source of truth). Set only
+    # when the GitHub OAuth App must use a different URL than the browser origin.
+    github_callback_url: str = ""
+    # Space/comma-separated scopes asked at login. Login only reads GET /user (login, id, avatar, public email) and the
+    # token is discarded after login, so read:user is enough. Full "repo" grants write access to every private repo
+    # and triggers org "access restricted" (OAuth App access restrictions) notices; review-api clones with its own
+    # GITHUB_TOKEN, not the user's token.
+    github_oauth_scopes: str = "read:user"
     # Comma-separated GitHub logins allowed to log in; empty = any GitHub user
     allowed_github_logins: str = ""
     admin_github_logins: str = ""
@@ -44,6 +52,14 @@ class Settings(BaseSettings):
     # claim that another delivery may reclaim. A cut-off delivery gets 502 and is released; a retry is deduplicated by
     # review-api through the Idempotency-Key (event+body hash).
     review_api_timeout_seconds: float = 20.0
+
+    @property
+    def oauth_callback_url(self) -> str:
+        return self.github_callback_url.strip() or f"{self.public_url.rstrip('/')}/auth/github/callback"
+
+    @property
+    def oauth_scope(self) -> str:
+        return " ".join(x for x in self.github_oauth_scopes.replace(",", " ").split() if x)
 
     @property
     def webhook_deadline_seconds(self) -> float:
