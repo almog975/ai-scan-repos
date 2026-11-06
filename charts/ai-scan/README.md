@@ -31,11 +31,43 @@ start http://localhost                    # or open it in the browser
 curl.exe http://localhost/nginx-health
 ```
 
-Port 80 must be free on Windows (stop IIS/Skype/other web servers if `localhost` doesn't answer).
+### Access options
+
+**A. LoadBalancer on port 80 (default, recommended): http://localhost**
+
+ingress-nginx's Service is `type: LoadBalancer`; Docker Desktop binds it to `localhost:80/443`.
+Check it with:
+```powershell
+kubectl -n ingress-nginx get svc ingress-nginx-controller   # EXTERNAL-IP should be "localhost"
+```
+Port 80 (and 443) must be free on Windows. If EXTERNAL-IP stays `<pending>`, something else holds the port:
+```powershell
+netstat -ano | findstr ":80 "          # find the PID
+tasklist /fi "pid eq <PID>"            # IIS -> net stop w3svc ; PID 4 (http.sys) -> net stop http
+docker ps                              # stop old k3d/Traefik containers publishing :80
+```
+Then recreate the Service (`kubectl -n ingress-nginx delete svc ingress-nginx-controller` and re-run the
+ingress-nginx `helm upgrade --install`) or restart Docker Desktop.
+
+**B. NodePort 30080 (fallback when port 80 can't be freed): http://localhost:30080**
+
+Docker Desktop exposes NodePorts on `localhost`, and the Ingress host `localhost` still matches.
+```powershell
+helm upgrade --install ingress-nginx ingress-nginx --repo https://kubernetes.github.io/ingress-nginx -n ingress-nginx --create-namespace `
+  --set controller.service.type=NodePort --set controller.service.nodePorts.http=30080 --wait
+helm upgrade --install ai-scan ./charts/ai-scan -n ai-scan-repos --create-namespace `
+  --set gateway.publicUrl=http://localhost:30080
+curl.exe http://localhost:30080/nginx-health
+```
+`gateway.publicUrl` makes the GitHub callback `http://localhost:30080/auth/github/callback`;
+add that URL to the OAuth App. To go back to A, re-run the ingress-nginx install with
+`--set controller.service.type=LoadBalancer` and drop `gateway.publicUrl`.
+
+**C. No ingress at all:** see "Without ingress (port-forward)" below (http://localhost:8080).
 
 ### GitHub login
 Add this **Authorization callback URL** to your GitHub OAuth App:
-`http://localhost/auth/github/callback` (without ingress: `http://localhost:8080/auth/github/callback`).
+`http://localhost/auth/github/callback` (NodePort: `http://localhost:30080/auth/github/callback`; without ingress: `http://localhost:8080/auth/github/callback`).
 
 Real credentials are never committed. Either:
 - copy `values.local.yaml.example` to `values.local.yaml` (gitignored), fill it, and add
