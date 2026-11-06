@@ -51,8 +51,35 @@ def test_manifest_contract(template, tmp_path):
 @pytest.mark.parametrize("img", ["reg/scanner", "reg/scanner:latest"])
 def test_image_must_be_pinned(img):
     with pytest.raises(ValueError):
-        build_job_manifest(Settings(scanner_image=img), SPEC)
-    build_job_manifest(Settings(scanner_image="reg/scanner@sha256:" + "a" * 64), SPEC)
+        build_job_manifest(Settings(app_env="production", scanner_image=img), SPEC)
+    build_job_manifest(Settings(app_env="production", scanner_image="reg/scanner@sha256:" + "a" * 64), SPEC)
+
+
+@pytest.mark.parametrize("env", [{"app_env": "local"}, {"app_env": "development"}, {"app_env": "dev"},
+                                 {"app_env": "production", "environment": "dev"},
+                                 {"app_env": "production", "skip_scanner_validation": True}])
+@pytest.mark.parametrize("img", ["reg/scanner", "reg/scanner:latest"])
+def test_unpinned_image_allowed_in_dev_or_skip(env, img):
+    m = build_job_manifest(Settings(scanner_image=img, **env), SPEC)
+    assert m["spec"]["template"]["spec"]["containers"][0]["image"] == img
+
+
+@pytest.mark.parametrize("env", ["local", "production"])
+def test_unset_image_is_a_clear_launch_error(env):
+    with pytest.raises(ValueError, match="SCANNER_IMAGE is not set"):
+        build_job_manifest(Settings(app_env=env, scanner_image=""), SPEC)
+
+
+def test_k8s_launcher_without_serviceaccount_does_not_crash(monkeypatch):
+    from kubernetes import config
+    def boom():
+        raise config.ConfigException("Service host/port is not set.")
+    monkeypatch.setattr(config, "load_incluster_config", boom)
+    k = KubernetesJobLauncher(Settings(app_env="local", scanner_image="reg/s:latest"))
+    with pytest.raises(RuntimeError, match="in-cluster config unavailable"):
+        k.ready()
+    with pytest.raises(RuntimeError, match="in-cluster config unavailable"):
+        k.launch(SPEC)
 
 
 def test_template_rejects_unsafe_values():
@@ -95,7 +122,7 @@ class FakeCore:
 
 def test_k8s_launcher_secret_owned_and_conflict_retry():
     b, c = FakeBatch(conflicts=1), FakeCore()
-    k = KubernetesJobLauncher(Settings(), batch_api=b, core_api=c, sleep=lambda s: None)
+    k = KubernetesJobLauncher(Settings(scanner_image="reg/scanner:1.0"), batch_api=b, core_api=c, sleep=lambda s: None)
     name = k.launch(SPEC, secret_env={"AI_API_KEY": "sk"})
     assert b.deleted == [(name, "Background")]  # stale same-name Job from an older budget
     assert b.created[0]["metadata"]["name"] == name

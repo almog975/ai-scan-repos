@@ -17,20 +17,44 @@ def _val(name, **labels):
 
 def test_healthz_readyz_metrics(client):
     assert client.get("/healthz").json() == {"status": "ok"}
-    assert client.get("/readyz").json() == {"status": "ready"}
+    r = client.get("/readyz").json()
+    assert r["status"] in ("ready", "degraded") and r["checks"]["db"] == "ok" and r["checks"]["kube"] == "ok"
     body = client.get("/metrics").text
     for m in ("reviews_total", "scan_attempts_total", "job_launch_errors_total", "http_request_duration_seconds"):
         assert m in body
     assert 'route="/healthz"' in body
 
 
-def test_readyz_fails_when_k8s_api_down(client):
-    class Down:
-        def ready(self):
-            raise RuntimeError("no api")
-    client.app.state.deps["launcher"].inner.ready = Down().ready
+def _kube_down(client):
+    def ready():
+        raise RuntimeError("Connection refused: 10.43.0.1:443")
+    client.app.state.deps["launcher"].inner.ready = ready
+
+
+def test_readyz_stays_ready_when_k8s_api_down(client):
+    _kube_down(client)
+    r = client.get("/readyz")
+    assert r.status_code == 200
+    assert r.json()["status"] == "degraded" and r.json()["checks"]["kube"] == "unavailable"
+
+
+def test_readyz_can_require_kube(client):
+    _kube_down(client)
+    client.app.state.settings.readyz_require_kube = True
     r = client.get("/readyz")
     assert r.status_code == 503 and r.json()["error"]["code"] == "INTERNAL"
+
+
+def test_readyz_fails_when_db_down(client):
+    from app import db as dbmod
+    class Bad:
+        def execute(self, *a, **k):
+            raise RuntimeError("db down")
+    client.app.dependency_overrides[dbmod.get_db] = lambda: Bad()
+    try:
+        assert client.get("/readyz").status_code == 503
+    finally:
+        client.app.dependency_overrides.pop(dbmod.get_db)
 
 
 def test_kubernetes_launcher_ready_gets_a_job():

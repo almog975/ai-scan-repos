@@ -93,6 +93,16 @@ Full notes (placeholders are NOT FOR PRODUCTION): [docs/local-k3d.md](docs/local
 
 Auto-heal end to end on this stack (WSL / Git Bash): `ci/heal/e2e-local.sh`. One heal run: `kubectl -n ai-scan-repos create job --from=cronjob/ai-scan-autoheal heal-now` then `kubectl -n ai-scan-repos logs job/heal-now` (same commands in PowerShell). See [docs/local-k3d.md](docs/local-k3d.md#auto-heal-on-the-local-stack-end-to-end).
 
+### 3a. Docker Desktop Kubernetes (no local builds)
+
+```powershell
+kubectl apply -k deploy/overlays/local-registry
+kubectl -n ai-scan-repos port-forward svc/frontend 8080:8080   # open http://localhost:8080
+```
+Don't apply `deploy/*/overlays/k3s` on Docker Desktop (production mode, in-cluster registry, k3s-only API IP 10.43.0.1).
+Troubleshooting for `SCANNER_IMAGE must be pinned`, `/readyz` Connection refused, and ImagePull errors:
+[docs/local-k3d.md#docker-desktop-quickstart](docs/local-k3d.md#docker-desktop-quickstart-recommended-deploylocal-registry).
+
 ### 3b. Local Kubernetes via `make local-k8s` (k3d + registry + Argo CD)
 
 ```bash

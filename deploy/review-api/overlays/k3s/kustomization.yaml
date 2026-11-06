@@ -5,3 +5,14 @@ images:
   - name: ai-scan/review-api
     newName: registry.registry:5000/ai-scan/review-api
     newTag: GIT_SHA_PLACEHOLDER
+# Pull policy is explicit so a pre-loaded image (k3s/k3d `image import`, Docker Desktop kubeadm) is used as-is;
+# images are immutable sha tags, so IfNotPresent never serves a stale build. Scanner Jobs follow the same policy.
+patches:
+  - target: {kind: Deployment, name: review-api}
+    patch: |
+      - {op: add, path: /spec/template/spec/containers/0/imagePullPolicy, value: IfNotPresent}
+      - {op: add, path: /spec/template/spec/containers/0/env/-, value: {name: SCANNER_IMAGE_PULL_POLICY, value: IfNotPresent}}
+  - target: {kind: Job, name: review-api-migrate}
+    patch: |
+      - {op: add, path: /spec/template/spec/initContainers/0/imagePullPolicy, value: IfNotPresent}
+      - {op: add, path: /spec/template/spec/containers/0/imagePullPolicy, value: IfNotPresent}

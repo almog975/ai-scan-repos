@@ -5,3 +5,7 @@ images:
   - name: ai-scan/frontend
     newName: registry.registry:5000/ai-scan/frontend
     newTag: GIT_SHA_PLACEHOLDER
+patches:
+  - target: {kind: Deployment, name: frontend}
+    patch: |
+      - {op: add, path: /spec/template/spec/containers/0/imagePullPolicy, value: IfNotPresent}   # immutable sha tags

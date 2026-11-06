@@ -1,5 +1,32 @@
 # Local full stack on k3d (Docker Desktop)
 
+## Docker Desktop quickstart (recommended: `deploy/overlays/local-registry`)
+
+No local builds. The images are pulled from ghcr (public). PowerShell, from the repo root:
+
+```powershell
+kubectl config use-context docker-desktop
+kubectl apply -k deploy/overlays/local-registry
+kubectl -n ai-scan-repos get pods -w        # postgres, review-api, gateway, frontend Running; review-api-migrate Completed
+kubectl -n ai-scan-repos port-forward svc/frontend 8080:8080
+# open http://localhost:8080   (OAuth callback: http://localhost:8080/auth/github/callback)
+curl.exe http://localhost:8080/nginx-health
+# teardown: kubectl delete -k deploy/overlays/local-registry
+```
+
+Use **only** `deploy/overlays/local` or `deploy/overlays/local-registry` on Docker Desktop. The per-service
+`deploy/<svc>/overlays/k3s` (and `eks`) overlays are for the Jenkins + Argo CD k3s setup. They run with `APP_ENV=production`,
+pull from `registry.registry:5000/...:GIT_SHA_PLACEHOLDER`, and set NetworkPolicies that allow the Kubernetes API only at
+the k3s Service IP `10.43.0.1` (Docker Desktop's is usually `10.96.0.1`).
+
+### Troubleshooting
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| review-api crash-loops: `SCANNER_IMAGE must be pinned (no :latest)` | `APP_ENV=production` (k3s/eks overlays or a hand-edited base) with a `:latest`/untagged `SCANNER_IMAGE` | Use the local overlays (`APP_ENV=local` allows `:latest`). Otherwise set a `sha-<short>` tag or `SKIP_SCANNER_VALIDATION=true`. If `SCANNER_IMAGE` is unset in dev, review-api starts and `POST /reviews` returns 503 with the reason. |
+| `/readyz` logs `Connection refused` to `10.43.0.1:443` | The k3s overlays' `review-api-kube-api-egress` NetworkPolicy / k3s service IP on a non-k3s cluster | Use the local overlays (no NetworkPolicies). `/readyz` now stays 200 and reports `checks.kube: "unavailable"` (DB-only gating; `READYZ_REQUIRE_KUBE=true` restores strict gating). Check with `kubectl get svc kubernetes -n default`. |
+| `ErrImagePull` / `ImagePullBackOff` | The k3s overlays' in-cluster registry does not exist, or locally built images aren't visible to the cluster | Use `local-registry` (ghcr). With `deploy/overlays/local`, Docker Desktop **kubeadm** mode sees `docker build` images, but the newer **kind** mode (Settings → Kubernetes → cluster type) does not: use `local-registry` there, or `kind load docker-image ...`. |
+
 ## Lightweight overlay (`deploy/overlays/local`)
 
 One `kubectl apply -k` for Docker Desktop Kubernetes **or** k3d. No in-cluster registry, no

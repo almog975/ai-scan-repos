@@ -79,6 +79,9 @@ def create_review(body: ReviewCreate, request: Request, user: User = Depends(cur
     if idempotency_key is not None and db.scalars(select(Review.id).where(Review.idempotency_key == idempotency_key)).first():
         return _existing(db, idempotency_key, user)
     deps = request.app.state.deps
+    st = request.app.state.settings
+    if st.job_launcher == "kubernetes" and (bad := st.scanner_image_problem()):
+        raise ApiError(503, "INTERNAL", f"scans are disabled: {bad}")
     cfg = settings_store.load(db)
     provider = _provider(db, body.provider_id, body.ack_cloud, cfg)
     owner, name = split(body.repo_url)

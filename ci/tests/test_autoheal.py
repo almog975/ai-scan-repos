@@ -299,3 +299,38 @@ def test_e2e_script_lint():
     t = s.read_text()
     for x in ("--keep", "--timeout", "create job --from=cronjob/ai-scan-autoheal", "heal-baseline", "heal-fix", "PASS", "exit 1"):
         assert x in t, x
+
+
+# --- Docker Desktop: local-registry must run in dev mode with ghcr images; k3s pulls IfNotPresent ---
+def _docs(path):
+    import subprocess, yaml as _y
+    out = subprocess.run(["kubectl", "kustomize", str(ROOT / path)], check=True, capture_output=True, text=True).stdout
+    return [d for d in _y.safe_load_all(out) if d]
+
+
+def _containers(d):
+    ps = d["spec"]["template"]["spec"]
+    return ps.get("initContainers", []) + ps["containers"]
+
+
+def test_local_registry_is_dev_mode_with_ghcr_images():
+    docs = _docs("deploy/overlays/local-registry")
+    ra = next(d for d in docs if d["kind"] == "Deployment" and d["metadata"]["name"] == "review-api")
+    env = {e["name"]: e.get("value") for e in _containers(ra)[-1]["env"]}
+    assert env["APP_ENV"] == "local"
+    cm = next(d for d in docs if d["kind"] == "ConfigMap" and d["metadata"]["name"] == "scanner-image")
+    assert cm["data"]["SCANNER_IMAGE"].startswith("ghcr.io/almog975/ai-scan-repos-scanner-worker:")
+    for d in docs:
+        if d["kind"] in ("Deployment", "Job") and d["metadata"]["name"] in ("review-api", "gateway", "frontend", "review-api-migrate"):
+            assert all(c["image"].startswith("ghcr.io/almog975/") for c in _containers(d))
+    assert not [d for d in docs if d["kind"] == "NetworkPolicy"]
+
+
+@pytest.mark.parametrize("svc", ["review-api", "gateway", "frontend"])
+def test_k3s_overlays_pull_if_not_present(svc):
+    for d in _docs(f"deploy/{svc}/overlays/k3s"):
+        if d["kind"] in ("Deployment", "Job"):
+            assert all(c.get("imagePullPolicy") == "IfNotPresent" for c in _containers(d)), d["metadata"]["name"]
+    if svc == "review-api":
+        ra = next(d for d in _docs("deploy/review-api/overlays/k3s") if d["kind"] == "Deployment")
+        assert {"name": "SCANNER_IMAGE_PULL_POLICY", "value": "IfNotPresent"} in ra["spec"]["template"]["spec"]["containers"][0]["env"]
