@@ -121,3 +121,12 @@ def test_tool_containers_work_in_the_agent_workspace():
     for c in tmpl["containers"]:
         if c["name"] != "jnlp":
             assert c.get("workingDir") == "/home/jenkins/agent", c["name"]
+
+
+def test_one_stage_per_service_per_step_and_split_gitops():
+    for step in ("Test", "Build", "Scan", "Push"):
+        for svc in ("frontend", "gateway", "review-api"):
+            assert f"stage('{step}: {svc}')" in JF
+            assert f"{{ expression {{ svcOn('{svc}') }} }};" in JF.split(f"stage('{step}: {svc}')")[1].split("\n")[0]
+    assert "stage('GitOps: commit')" in JF and "stage('GitOps: push')" in JF
+    assert "pipeline-graph-view:" in (ROOT / "deploy/jenkins/local/values-local.yaml").read_text()

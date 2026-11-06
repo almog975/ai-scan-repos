@@ -31,6 +31,8 @@ controller:
     - timestamper:1.30
     - credentials-binding:728.v902a_273b_8947
     - junit:1458.v38661c0638e2
+    - pipeline-graph-view:1053.v9df19e6ceed2   # stage graph: which stage/service failed
+    - pipeline-stage-view:2.41                 # stage table on the job page
   # Jenkins root URL (links in the UI/console). Defaults to http://<ingress.hostName>.
   # Behind the ingress-nginx NodePort fallback, override at install time:
   #   --set controller.jenkinsUrl=http://jenkins.localhost:30080
