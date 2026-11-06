@@ -110,7 +110,7 @@ check_postgres() {
 # 5) Argo CD Applications of the stack (project $ARGO_PROJECT) that are OutOfSync -> request a sync via .operation
 heal_argocd() {
   local json
-  json=$(k -n "$ARGO_NS" get applications.argoproj.io -o json 2>/dev/null) || { echo "skip: cannot list Argo CD applications in $ARGO_NS"; return; }
+  json=$(k -n "$ARGO_NS" get applications.argoproj.io -o json 2>/dev/null) || { echo "skipped: Argo CD (namespace $ARGO_NS or the applications CRD is missing or forbidden)"; return; }
   while IFS=$'\t' read -r app rev; do
     [ -n "$app" ] || continue
     found "application/$app OutOfSync"

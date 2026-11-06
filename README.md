@@ -87,6 +87,8 @@ kubectl -n ai-scan-repos port-forward svc/frontend 8080:8080
 
 Full notes (placeholders are NOT FOR PRODUCTION): [docs/local-k3d.md](docs/local-k3d.md#lightweight-overlay).
 
+Auto-heal end to end on this stack (WSL / Git Bash): `ci/heal/e2e-local.sh`. One heal run: `kubectl -n ai-scan-repos create job --from=cronjob/ai-scan-autoheal heal-now` then `kubectl -n ai-scan-repos logs job/heal-now` (same commands in PowerShell). See [docs/local-k3d.md](docs/local-k3d.md#auto-heal-on-the-local-stack-end-to-end).
+
 ### 3b. Local Kubernetes via `make local-k8s` (k3d + registry + Argo CD)
 
 ```bash

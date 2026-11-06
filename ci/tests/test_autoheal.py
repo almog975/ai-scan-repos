@@ -211,3 +211,91 @@ def test_jcasc_job_and_pod_template():
     assert main["serviceAccount"] == "jenkins-agent"
     jf = (ROOT / "ci/heal/Jenkinsfile").read_text()
     assert "label 'autoheal'" in jf and "disableConcurrentBuilds()" in jf and "params.DRY_RUN" in jf and "ci/heal/heal.sh" in jf
+
+
+def test_argocd_missing_or_forbidden_is_skipped(env):
+    # no apps.json -> fake kubectl fails like NotFound/Forbidden on applications.argoproj.io
+    r, log = run(env)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "skipped: Argo CD" in r.stdout and "errors: 0" in r.stdout
+
+
+def test_runs_without_writable_home_or_cwd(env, tmp_path):
+    ro = tmp_path / "ro"; ro.mkdir(); ro.chmod(0o555)
+    (env["fix"] / "pods.json").write_text(json.dumps({"items": [pod("a", waiting="CrashLoopBackOff")]}))
+    (env["fix"] / "apps.json").write_text(json.dumps({"items": [app("x", "OutOfSync")]}))
+    e = dict(env["env"], HOME=str(ro), TMPDIR=str(tmp_path / "tmp"))
+    (tmp_path / "tmp").mkdir()
+    r = subprocess.run(["bash", str(HEAL)], capture_output=True, text=True, env=e, cwd=ro)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert not list(ro.iterdir())
+
+
+# --- local in-cluster CronJob (deploy/overlays/local) --------------------------------------------------------
+
+@pytest.fixture(scope="module")
+def local():
+    kc = shutil.which("kubectl")
+    if not kc:
+        pytest.skip("kubectl not on PATH")
+    # kubectl kustomize = default load restrictor (LoadRestrictionsRootOnly)
+    out = subprocess.run([kc, "kustomize", str(ROOT / "deploy/overlays/local")], capture_output=True, text=True, check=True).stdout
+    return [d for d in yaml.safe_load_all(out) if d]
+
+
+def one(ds, kind, name):
+    m = [d for d in ds if d["kind"] == kind and d["metadata"]["name"] == name]
+    assert len(m) == 1, (kind, name)
+    return m[0]
+
+
+def test_local_cronjob_psa_restricted(local):
+    cj = one(local, "CronJob", "ai-scan-autoheal")
+    assert cj["metadata"]["namespace"] == "ai-scan-repos"
+    assert cj["spec"]["schedule"] == "*/10 * * * *" and cj["spec"]["concurrencyPolicy"] == "Forbid"
+    ps = cj["spec"]["jobTemplate"]["spec"]["template"]["spec"]
+    assert ps["serviceAccountName"] == "ai-scan-autoheal"
+    assert ps["securityContext"]["runAsNonRoot"] is True and ps["securityContext"]["runAsUser"] == 65534
+    assert ps["securityContext"]["seccompProfile"]["type"] == "RuntimeDefault"
+    c = ps["containers"][0]
+    assert c["image"] == "alpine/k8s:1.31.4" and c["imagePullPolicy"] == "IfNotPresent"
+    sc = c["securityContext"]
+    assert sc["allowPrivilegeEscalation"] is False and sc["readOnlyRootFilesystem"] is True and sc["capabilities"]["drop"] == ["ALL"]
+    env = {e["name"]: e["value"] for e in c["env"]}
+    assert env["HOME"] == "/tmp" and env["NAMESPACE"] == "ai-scan-repos"
+    mounts = {m["mountPath"]: m["name"] for m in c["volumeMounts"]}
+    vols = {v["name"]: v for v in ps["volumes"]}
+    assert "emptyDir" in vols[mounts["/tmp"]]
+    assert vols[mounts["/opt/heal"]]["configMap"]["name"] == "ai-scan-autoheal-script"
+    assert c["command"] == ["bash", "/opt/heal/heal.sh"]
+
+
+def test_local_configmap_is_heal_sh(local):
+    cm = one(local, "ConfigMap", "ai-scan-autoheal-script")
+    assert cm["metadata"]["namespace"] == "ai-scan-repos"
+    assert cm["data"]["heal.sh"] == HEAL.read_text()
+
+
+def test_local_rbac_reuses_role(local):
+    one(local, "ServiceAccount", "ai-scan-autoheal")
+    rb = one(local, "RoleBinding", "ai-scan-autoheal-local")
+    assert rb["roleRef"] == {"apiGroup": "rbac.authorization.k8s.io", "kind": "Role", "name": "ai-scan-autoheal"}
+    assert rb["subjects"] == [{"kind": "ServiceAccount", "name": "ai-scan-autoheal", "namespace": "ai-scan-repos"}]
+    role = one(local, "Role", "ai-scan-autoheal")
+    assert role["metadata"]["namespace"] == "ai-scan-repos"
+    assert not [d for d in local if d["kind"] in ("ClusterRole", "ClusterRoleBinding")]
+
+
+def test_local_has_no_networkpolicies(local):
+    assert not [d["metadata"]["name"] for d in local if d["kind"] == "NetworkPolicy"]
+
+
+def test_e2e_script_lint():
+    s = ROOT / "ci/heal/e2e-local.sh"
+    assert subprocess.run(["bash", "-n", str(s)]).returncode == 0
+    if shutil.which("shellcheck"):
+        r = subprocess.run(["shellcheck", str(s), str(HEAL)], capture_output=True, text=True)
+        assert r.returncode == 0, r.stdout
+    t = s.read_text()
+    for x in ("--keep", "--timeout", "create job --from=cronjob/ai-scan-autoheal", "heal-baseline", "heal-fix", "PASS", "exit 1"):
+        assert x in t, x
