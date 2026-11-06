@@ -48,6 +48,11 @@ helm upgrade --install jenkins jenkins --repo https://charts.jenkins.io --versio
   --wait --timeout 10m
 ```
 After that, http://jenkins.localhost:30080 shows **AI Scan CI/CD (GitOps)** next to the auto-heal job.
+The config-reload sidecar applies new JCasC within about a minute of the pod becoming ready. If the job still
+isn't there, go to Manage Jenkins > Configuration as Code > **Reload existing configuration**.
+
+The first build, and any build with no earlier green build, builds all three services. After that, each build
+diffs against the last green build's commit. A push that changes no service folder ends as NOT_BUILT.
 
 ## 3. Argo CD
 

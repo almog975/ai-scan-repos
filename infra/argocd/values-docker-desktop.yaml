@@ -23,7 +23,7 @@ dex:
 notifications:
   enabled: false
 applicationSet:
-  enabled: false
+  replicas: 0                        # not used here (chart 10.x has no applicationSet.enabled)
 redis:
   resources:
     requests: {cpu: 20m, memory: 32Mi}

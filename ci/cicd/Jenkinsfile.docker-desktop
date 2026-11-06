@@ -43,13 +43,21 @@ pipeline {
       env.GIT_SHA = sh(script: 'git rev-parse --short=12 HEAD', returnStdout: true).trim()
       // The branch this build came from; the tag bump is pushed back to the same branch.
       env.TARGET_BRANCH = (env.GIT_BRANCH ?: 'origin/main').replaceFirst(/^origin\//, '')
-      def base = env.GIT_PREVIOUS_SUCCESSFUL_COMMIT ?: 'HEAD~1'
-      def haveBase = sh(script: "git cat-file -e '${base}^{commit}' 2>/dev/null && echo yes || echo no", returnStdout: true).trim() == 'yes'
+      // Diff against the last GREEN build's commit. No such commit (first build, or none green yet) or it is
+      // gone (force-push) -> build everything. Never HEAD~1: that would skip services changed in earlier commits.
+      def base = env.GIT_PREVIOUS_SUCCESSFUL_COMMIT ?: ''
+      def haveBase = base && sh(script: "git cat-file -e '${base}^{commit}' 2>/dev/null && echo yes || echo no", returnStdout: true).trim() == 'yes'
+      if (!haveBase) { echo "No usable last-successful commit (${base ?: 'first build'}); building all services." }
       def files = haveBase ? sh(script: "git diff --name-only ${base} HEAD", returnStdout: true).trim().split('\n').findAll { it } : []
       changed = (params.BUILD_ALL || !haveBase) ? (SERVICES.keySet() as List)
               : (SERVICES.keySet().findAll { s -> files.any { it.startsWith("${SERVICES[s][0]}/") } } as List)
       echo "Branch ${env.TARGET_BRANCH}, sha ${env.GIT_SHA}, changed services: ${changed ?: 'none'}"
-      if (!changed) { currentBuild.description = 'no service changed'; skipBuild = true; return }
+      if (!changed) {
+        skipBuild = true
+        currentBuild.result = 'NOT_BUILT'
+        currentBuild.description = 'no service changed'
+        return
+      }
       currentBuild.description = "${changed.join(', ')} @ ${env.GIT_SHA}"
       sh 'mkdir -p .images reports'
     } } }

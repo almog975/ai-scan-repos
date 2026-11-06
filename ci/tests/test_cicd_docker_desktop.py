@@ -103,3 +103,13 @@ def test_argocd_render_has_no_secrets_and_uses_per_image_tags():
 @needs_helm
 def test_default_install_still_renders_secrets():
     assert _render().count("kind: Secret\n") == 4
+
+
+def test_first_build_builds_all_and_no_change_is_not_built():
+    guard = JF.split("stage('Loop guard')")[1].split("stage('Test')")[0]
+    code = "\n".join(l for l in guard.splitlines() if not l.lstrip().startswith("//"))
+    assert "HEAD~1" not in code
+    assert "env.GIT_PREVIOUS_SUCCESSFUL_COMMIT ?: ''" in guard
+    assert "(params.BUILD_ALL || !haveBase)" in guard
+    no_change = guard.split("if (!changed)")[1].split("}")[0]
+    assert "NOT_BUILT" in no_change
