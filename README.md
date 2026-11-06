@@ -69,11 +69,11 @@ Services: postgres → `migrate` (alembic) → review-api (local launcher, :8001
 No registry, no manual secrets, no NetworkPolicies. PowerShell-friendly (no WSL required for this path).
 
 ```powershell
-# from the repo root — build local tags
-docker build -t ai-scan-repos-review-api:latest -f review-api/Dockerfile .
+# from the repo root — build local tags (contexts = service dirs, same as Makefiles)
+docker build -t ai-scan-repos-review-api:latest review-api
 docker build -t ai-scan-repos-gateway:latest gateway
 docker build -t ai-scan-repos-frontend:latest frontend
-docker build -t ai-scan-repos-scanner-worker:latest -f scanner-worker/Dockerfile .
+docker build -t ai-scan-repos-scanner-worker:latest scanner-worker
 # k3d only (skip on Docker Desktop Kubernetes):
 #   k3d image import ai-scan-repos-review-api:latest ai-scan-repos-gateway:latest ai-scan-repos-frontend:latest ai-scan-repos-scanner-worker:latest -c <cluster>
 kubectl apply -k deploy/overlays/local
@@ -84,6 +84,10 @@ kubectl -n ai-scan-repos port-forward svc/frontend 8080:8080
 # migrate logs: kubectl -n ai-scan-repos logs job/review-api-migrate
 # teardown:     kubectl delete -k deploy/overlays/local
 ```
+
+Or skip the local builds and pull from GHCR (after the Images workflow has pushed and the
+packages are Public): `kubectl apply -k deploy/overlays/local-registry`. Details:
+[docs/local-k3d.md](docs/local-k3d.md#github-container-registry).
 
 Full notes (placeholders are NOT FOR PRODUCTION): [docs/local-k3d.md](docs/local-k3d.md#lightweight-overlay).
 
@@ -120,7 +124,7 @@ cd frontend/e2e && python -m pytest -q   # Playwright e2e (mock stack); AISCAN_F
 
 ## CI/CD
 
-Jenkins (k8s agent, kaniko, no Docker daemon): **Test** (contracts, unit, schemathesis, DB parity) → **Build** → **Trivy** (fail on HIGH/CRITICAL) → **Push** `<registry>/ai-scan/<svc>:<sha>` (main) → **tag bump** in `deploy/<component>/overlays/k3s` (`[skip ci]`). Argo CD (app-of-apps `ai-scan-root`, apps `ai-scan-<component>-k3s`, ns `ai-scan-repos`) syncs `main` with prune + selfHeal. Rollback = `git revert` of the tag bump via PR.
+GitHub Actions (`.github/workflows/images.yml`) builds and pushes `ghcr.io/almog975/ai-scan-repos-<svc>:sha-<short>` (+ `:latest` on main) for the local-registry overlay. Jenkins (k8s agent, kaniko, no Docker daemon): **Test** (contracts, unit, schemathesis, DB parity) → **Build** → **Trivy** (fail on HIGH/CRITICAL) → **Push** `<registry>/ai-scan/<svc>:<sha>` (main) → **tag bump** in `deploy/<component>/overlays/k3s` (`[skip ci]`). Argo CD (app-of-apps `ai-scan-root`, apps `ai-scan-<component>-k3s`, ns `ai-scan-repos`) syncs `main` with prune + selfHeal. Rollback = `git revert` of the tag bump via PR.
 
 **Auto-heal:** Jenkins job `ai-scan-autoheal` (every 10 min + Build Now, `DRY_RUN` parameter) deletes crashed/evicted pods, re-runs a failed migrate Job, restarts deployments failing `/readyz`, checks postgres and syncs OutOfSync Argo CD apps, with namespaced RBAC only ([docs/autoheal.md](docs/autoheal.md)).
 

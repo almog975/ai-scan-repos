@@ -1,0 +1,89 @@
+# Build the four service images; push to GHCR on main (and workflow_dispatch).
+# PRs build only (no push). Contexts match each service Makefile / Jenkins kaniko
+# (--context=<svc>/), not the repo root. k3s/eks still use the in-cluster registry
+# pushed by Jenkins; switching those overlays to ghcr is a follow-up.
+name: Images
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "frontend/**"
+      - "gateway/**"
+      - "review-api/**"
+      - "scanner-worker/**"
+      - ".github/workflows/images.yml"
+  pull_request:
+    paths:
+      - "frontend/**"
+      - "gateway/**"
+      - "review-api/**"
+      - "scanner-worker/**"
+      - ".github/workflows/images.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: images-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: ${{ matrix.service }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: review-api
+            context: ./review-api
+          - service: gateway
+            context: ./gateway
+          - service: frontend
+            context: ./frontend
+          - service: scanner-worker
+            context: ./scanner-worker
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/almog975/ai-scan-repos-${{ matrix.service }}
+          tags: |
+            type=sha,prefix=sha-,format=short
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/almog975/ai-scan-repos
+            org.opencontainers.image.title=ai-scan-repos-${{ matrix.service }}
+            org.opencontainers.image.description=AI Scan Repos ${{ matrix.service }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.context }}/Dockerfile
+          platforms: linux/amd64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VITE_APP_VERSION=${{ github.sha }}
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}

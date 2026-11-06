@@ -1,0 +1,49 @@
+# :latest from GHCR — always re-pull so a laptop picks up the newest main build.
+# When pinning sha-<short>, switch these back to IfNotPresent.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: review-api, namespace: ai-scan-repos}
+spec:
+  template:
+    spec:
+      initContainers:
+        - name: migrate
+          imagePullPolicy: Always
+      containers:
+        - name: review-api
+          imagePullPolicy: Always
+          env:
+            - {name: SCANNER_IMAGE_PULL_POLICY, value: Always}
+---
+apiVersion: batch/v1
+kind: Job
+metadata: {name: review-api-migrate, namespace: ai-scan-repos}
+spec:
+  template:
+    spec:
+      initContainers:
+        - name: wait-postgres
+          imagePullPolicy: Always
+      containers:
+        - name: migrate
+          imagePullPolicy: Always
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: gateway, namespace: ai-scan-repos}
+spec:
+  template:
+    spec:
+      containers:
+        - name: gateway
+          imagePullPolicy: Always
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: frontend, namespace: ai-scan-repos}
+spec:
+  template:
+    spec:
+      containers:
+        - name: frontend
+          imagePullPolicy: Always
