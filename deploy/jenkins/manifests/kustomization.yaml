@@ -5,3 +5,5 @@ resources:
   - deployment.yaml
   - agent-rbac.yaml
   - networkpolicies.yaml
+  - autoheal-sa.yaml
+  - autoheal-networkpolicy.yaml

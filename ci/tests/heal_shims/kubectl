@@ -1,0 +1,15 @@
+#!/bin/bash
+# fake kubectl for ci/heal/heal.sh: canned JSON from $HEAL_FIX/<file>, every call logged to $SHIM_LOG
+echo "kubectl $*" >> "${SHIM_LOG:?}"
+F="${HEAL_FIX:?}"; args=()
+while [ $# -gt 0 ]; do case "$1" in -n) shift 2;; *) args+=("$1"); shift;; esac; done
+set -- "${args[@]}"
+case "$1 $2" in
+  "get pods") if [[ "$*" == *"app=postgres"* ]]; then cat "$F/pgpod" 2>/dev/null; else cat "$F/pods.json"; fi ;;
+  "get job") [ -f "$F/job.json" ] && cat "$F/job.json" || { echo "NotFound" >&2; exit 1; } ;;
+  "get deployment") [[ " ${HEAL_DEPLOYS:-review-api gateway frontend} " == *" $3 "* ]] || exit 1 ;;
+  "get applications.argoproj.io") [ -f "$F/apps.json" ] && cat "$F/apps.json" || exit 1 ;;
+  "create -f") cat > "$F/created.json" ;;
+  exec*) [ -z "$HEAL_PG_DOWN" ] ;;
+  *) : ;;
+esac

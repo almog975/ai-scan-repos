@@ -1,0 +1,39 @@
+# ai-scan-autoheal (Jenkins job, SA jenkins/ai-scan-autoheal): what ci/heal/heal.sh may do in ai-scan-repos.
+# Namespaced Role only; restart / delete / re-run, never update or edit specs. docs/autoheal.md
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: ai-scan-autoheal, namespace: ai-scan-repos}
+rules:
+  - apiGroups: [""]
+    resources: [pods]
+    verbs: [get, list, delete]
+  - apiGroups: [""]
+    resources: [pods/exec]          # pg_isready inside the postgres pod
+    verbs: [create]
+  - apiGroups: [batch]
+    resources: [jobs]
+    verbs: [get, list, create, delete]
+  - apiGroups: [apps]
+    resources: [deployments]
+    verbs: [get, list, patch]       # kubectl rollout restart = patch of a template annotation
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: ai-scan-autoheal, namespace: ai-scan-repos}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: ai-scan-autoheal}
+subjects:
+  - {kind: ServiceAccount, name: ai-scan-autoheal, namespace: jenkins}
+---
+# /readyz checks from the autoheal agent pod (jenkins/label=autoheal in ns jenkins). Additive to the existing
+# *-ingress policies; matching egress: deploy/jenkins/manifests/autoheal-networkpolicy.yaml.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: autoheal-readyz-ingress, namespace: ai-scan-repos}
+spec:
+  podSelector: {matchExpressions: [{key: app, operator: In, values: [review-api, gateway, frontend]}]}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: jenkins}}
+          podSelector: {matchLabels: {jenkins/label: autoheal}}
+      ports: [{protocol: TCP, port: 8001}, {protocol: TCP, port: 8000}, {protocol: TCP, port: 8080}]
