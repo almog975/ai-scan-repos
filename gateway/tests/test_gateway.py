@@ -76,7 +76,7 @@ def test_login_redirect_and_state_check():
     r = c.get("/auth/github/login", follow_redirects=False)
     assert r.status_code == 302 and r.headers["location"].startswith(f"{GH}/login/oauth/authorize?")
     assert "redirect_uri=http%3A%2F%2Fapp.test%2Fauth%2Fgithub%2Fcallback" in r.headers["location"]
-    assert "scope=read%3Auser+repo" in r.headers["location"]
+    assert "scope=read%3Auser&" in r.headers["location"]
     err(c.get("/auth/github/callback?code=x&state=WRONG"), 400, "VALIDATION_ERROR")
     err(c.get("/auth/github/callback?state=x"), 400, "VALIDATION_ERROR")
 

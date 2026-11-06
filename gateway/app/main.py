@@ -40,7 +40,7 @@ UPSTREAM = Histogram("gateway_upstream_duration_seconds", "review-api response t
                      ["status"], buckets=(.005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10, 30))
 PROXIED = Counter("ai_scan_gateway_proxied_total", "Proxied API requests", ["status"])
 # pre-initialise the bounded result labels to 0 so increase() sees the first event after a restart
-for _r in ("ok", "bad_state", "token_error", "github_error", "denied"):
+for _r in ("ok", "bad_state", "token_error", "github_error", "denied", "github_denied"):
     LOGINS.labels(_r)
 for _r in ("bad_signature", "duplicate", "accepted", "ignored", "ping", "unknown_sender", "review_api_unavailable",
            "review_created"):
@@ -50,6 +50,11 @@ UNSAFE = {"POST", "PUT", "PATCH", "DELETE"}
 FORWARD_REQ = {"accept", "content-type", "x-request-id", "last-event-id", "user-agent"}
 FORWARD_RESP = {"content-type", "retry-after", "cache-control", "x-request-id"}
 STATE_COOKIE = "aiscan_oauth_state"
+OAUTH_ERROR_HINTS = {
+    "access_denied": "Authorization was cancelled on GitHub.",
+    "redirect_uri_mismatch": "The GitHub OAuth App's Authorization callback URL must equal the gateway callback.",
+    "application_suspended": "The GitHub OAuth App is suspended.",
+}
 
 
 def _aware(dt):
@@ -255,14 +260,26 @@ def create_app(settings: Settings | None = None, transport: httpx.AsyncBaseTrans
         if not s.github_client_id:
             raise ApiError(503, "INTERNAL", "GitHub OAuth not configured")
         state = new_token()
-        q = urlencode({"client_id": s.github_client_id, "redirect_uri": f"{s.public_url}/auth/github/callback",
-                       "scope": "read:user repo", "state": state, "allow_signup": "false"})
+        q = urlencode({"client_id": s.github_client_id, "redirect_uri": s.oauth_callback_url,
+                       "scope": s.oauth_scope, "state": state, "allow_signup": "false"})
         resp = RedirectResponse(f"{s.github_oauth_base}/login/oauth/authorize?{q}", status_code=302)
         cookie(resp, STATE_COOKIE, state, 600)
         return resp
 
     @app.get("/auth/github/callback")
-    async def callback(request: Request, code: str = Query(..., min_length=1), state: str = Query(..., min_length=1)):
+    async def callback(request: Request, code: str | None = Query(None), state: str | None = Query(None),
+                       error: str | None = Query(None), error_description: str | None = Query(None)):
+        if error:  # GitHub sends ?error=...&error_description=... instead of ?code= (never a 422 for the missing code)
+            LOGINS.labels("github_denied").inc()
+            hint = OAUTH_ERROR_HINTS.get(error, "")
+            desc = (error_description or "").strip()[:300]
+            msg = f"GitHub login failed: {error}" + (f" ({desc})" if desc else "") + (f". {hint}" if hint else "")
+            if error == "redirect_uri_mismatch":
+                msg += f" Expected callback: {s.oauth_callback_url}"
+            raise ApiError(400, "VALIDATION_ERROR", msg)
+        if not code or not state:
+            LOGINS.labels("bad_state").inc()
+            raise ApiError(400, "VALIDATION_ERROR", "GitHub callback without code/state; start again at /auth/github/login")
         expected = request.cookies.get(STATE_COOKIE)
         if not expected or not hmac.compare_digest(state.encode(), expected.encode()):
             LOGINS.labels("bad_state").inc()
@@ -272,7 +289,7 @@ def create_app(settings: Settings | None = None, transport: httpx.AsyncBaseTrans
                 tr = await c.post(f"{s.github_oauth_base}/login/oauth/access_token",
                                   headers={"Accept": "application/json"},
                                   data={"client_id": s.github_client_id, "client_secret": s.github_client_secret,
-                                        "code": code, "redirect_uri": f"{s.public_url}/auth/github/callback"})
+                                        "code": code, "redirect_uri": s.oauth_callback_url})
                 gh_token = tr.json().get("access_token") if tr.status_code == 200 else None
                 if not gh_token:
                     LOGINS.labels("token_error").inc()
@@ -287,7 +304,7 @@ def create_app(settings: Settings | None = None, transport: httpx.AsyncBaseTrans
         login_name = gh["login"]
         if allowed and login_name.lower() not in allowed:
             LOGINS.labels("denied").inc()
-            raise ApiError(403, "FORBIDDEN", "GitHub user not in allow-list")
+            raise ApiError(403, "FORBIDDEN", f"GitHub user {login_name!r} not in allow-list (ALLOWED_GITHUB_LOGINS)")
         tok = new_token()
         with SessionLocal() as db:
             u = db.scalars(select(User).where(User.github_id == gh["id"])).first()

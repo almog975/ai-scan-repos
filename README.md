@@ -80,6 +80,7 @@ kubectl apply -k deploy/overlays/local
 kubectl get pods -n ai-scan-repos
 kubectl -n ai-scan-repos port-forward svc/frontend 8080:8080
 # open http://localhost:8080
+# GitHub OAuth App: Authorization callback URL = http://localhost:8080/auth/github/callback (exactly)
 # migrate logs: kubectl -n ai-scan-repos logs job/review-api-migrate
 # teardown:     kubectl delete -k deploy/overlays/local
 ```

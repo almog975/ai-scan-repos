@@ -42,8 +42,18 @@ Re-apply note: Jobs are immutable. Either wait for `ttlSecondsAfterFinished` (12
 overlay) or `kubectl -n ai-scan-repos delete job review-api-migrate --ignore-not-found` before
 a second apply. The Deployment initContainer keeps the schema current either way.
 
-OAuth: edit `deploy/overlays/local/secrets/gateway-secrets.env` (or patch the Secret) with a real
-GitHub OAuth App callback `http://localhost:8080/auth/github/callback`, then re-apply.
+OAuth (real GitHub login): never edit the tracked `secrets/gateway-secrets.env` (placeholders only). Register the
+GitHub OAuth App callback `http://localhost:8080/auth/github/callback`, then (PowerShell or bash, from the repo root):
+
+```powershell
+Copy-Item deploy/overlays/local/secrets/gateway-oauth.local.env.example deploy/overlays/local/secrets/gateway-oauth.local.env
+notepad deploy/overlays/local/secrets/gateway-oauth.local.env   # set GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET
+kubectl -n ai-scan-repos create secret generic gateway-oauth --from-env-file=deploy/overlays/local/secrets/gateway-oauth.local.env --dry-run=client -o yaml | kubectl apply -f -
+kubectl -n ai-scan-repos rollout restart deploy/gateway
+```
+
+`gateway-oauth.local.env` is gitignored; the gateway reads Secret `gateway-oauth` as an optional `envFrom` after
+`gateway-secrets`, so `kubectl apply -k deploy/overlays/local` works without it (login then just fails at GitHub).
 
 ---
 
@@ -113,10 +123,27 @@ Secrets that already exist in the cluster are **kept** (the installer's rule); t
 
 ## GitHub OAuth callback
 
+The gateway sends `redirect_uri = PUBLIC_URL + /auth/github/callback` (override: `GITHUB_CALLBACK_URL`). It must be
+registered in the GitHub OAuth App exactly:
+
+| How you run it | PUBLIC_URL | Callback URL to register |
+|---|---|---|
+| `docker compose` / `kubectl apply -k deploy/overlays/local` + port-forward svc/frontend 8080 | `http://localhost:8080` | `http://localhost:8080/auth/github/callback` |
+| `make local-k8s` (k3d + Traefik) | `https://ai-scan.localhost` | `https://ai-scan.localhost/auth/github/callback` |
+| k3s overlay | `https://ai-scan.127.0.0.1.nip.io` | `https://ai-scan.127.0.0.1.nip.io/auth/github/callback` |
+| eks overlay | `https://ai-scan.example.com` (your host) | `https://<your host>/auth/github/callback` |
+
+Scope: login asks only `read:user` (`GITHUB_OAUTH_SCOPES`). The user token is used once for `GET /user` and
+discarded; review-api clones with its own `GITHUB_TOKEN`. The old `repo` scope triggered org "access restricted" notices.
+GitHub errors on the callback (`?error=redirect_uri_mismatch|access_denied|...`) are shown as a 400 with the reason.
+
+### k3d (`make local-k8s`) OAuth App
+
 Create a separate GitHub OAuth App for this cluster (the compose one uses `http://localhost:8080`):
 
 - Homepage URL: `https://ai-scan.localhost`
-- Authorization callback URL: **`https://ai-scan.localhost/auth/github/callback`**
+- Authorization callback URL: **`https://ai-scan.localhost/auth/github/callback`** (add it to the same OAuth App
+  next to `http://localhost:8080/auth/github/callback`, or GitHub says "The redirect_uri is not associated with this application")
 
 `*.localhost` resolves to 127.0.0.1 in Chrome, Edge and Firefox without editing the hosts file. If your browser or
 `curl` does not resolve it, add `127.0.0.1 ai-scan.localhost` to `/etc/hosts` (Windows:

@@ -53,6 +53,16 @@ spec:
             - {name: APP_ENV, value: local}
             - {name: PUBLIC_URL, value: "http://localhost:8080"}
             - {name: COOKIE_SECURE, value: "false"}
+            # OAuth: redirect_uri = PUBLIC_URL/auth/github/callback = http://localhost:8080/auth/github/callback
+            # (frontend nginx proxies /auth, /api, /me to the gateway, so one origin). Register exactly that URL.
+            # Dev-only: explicit env wins over gateway-secrets envFrom, so the owner is never locked out.
+            - {name: ALLOWED_GITHUB_LOGINS, value: "almog975"}
+            - {name: ADMIN_GITHUB_LOGINS, value: "almog975"}
+          # Real OAuth credentials: optional Secret gateway-oauth (created by hand from the gitignored
+          # secrets/gateway-oauth.local.env). Listed AFTER gateway-secrets so its keys override the placeholders.
+          envFrom:
+            - secretRef: {name: gateway-secrets}
+            - secretRef: {name: gateway-oauth, optional: true}
 ---
 apiVersion: apps/v1
 kind: Deployment

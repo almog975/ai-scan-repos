@@ -133,3 +133,65 @@ def test_repo_token_guarded_and_kubeconfig_private():
     i = s.index('if [ -n "${GITHUB_REPO_TOKEN:-}" ]; then')
     assert s.index("set +x", i) < s.index("$GITHUB_REPO_TOKEN", i + 40)
     assert 'chmod 600 "$KUBECONFIG"' in s
+
+
+def test_gateway_public_url_matches_ingress_host_per_overlay():
+    """OAuth redirect_uri = PUBLIC_URL/auth/github/callback must be on the host the IngressRoute serves."""
+    import re
+    import shutil
+    import subprocess
+    import pytest as _pt
+    kubectl = shutil.which("kubectl")
+    if not kubectl:
+        _pt.skip("kubectl not installed")
+    root = pathlib.Path(__file__).resolve().parents[2]
+    for ov in ("eks", "k3s", "local"):
+        gw = subprocess.run([kubectl, "kustomize", str(root / f"deploy/gateway/overlays/{ov}")],
+                            capture_output=True, text=True, check=True).stdout
+        pf = subprocess.run([kubectl, "kustomize", str(root / f"deploy/platform/overlays/{ov}")],
+                            capture_output=True, text=True, check=True).stdout
+        url = re.search(r"name: PUBLIC_URL\n\s+value: (\S+)", gw).group(1)
+        hosts = set(re.findall(r"Host\(`([^`]+)`\)", pf))
+        assert hosts == {url.removeprefix("https://")}, (ov, url, hosts)
+
+
+def _env(rendered, name):
+    import re
+    m = re.search(rf"name: {name}\n\s+value: \"?([^\"\n]+)", rendered)
+    return m.group(1) if m else None
+
+
+def test_oauth_env_local_vs_strict_overlays():
+    kubectl = shutil.which("kubectl")
+    if not kubectl:
+        pytest.skip("kubectl not installed")
+    root = pathlib.Path(__file__).resolve().parents[2]
+    r = lambda p: subprocess.run([kubectl, "kustomize", str(root / p)], capture_output=True, text=True, check=True).stdout
+    loc = r("deploy/overlays/local")
+    assert _env(loc, "PUBLIC_URL") == "http://localhost:8080"
+    assert _env(loc, "COOKIE_SECURE") == "false" and _env(loc, "APP_ENV") == "local"
+    assert _env(loc, "ALLOWED_GITHUB_LOGINS") == "almog975" and _env(loc, "ADMIN_GITHUB_LOGINS") == "almog975"
+    for ov in ("eks", "k3s", "local"):
+        g = r(f"deploy/gateway/overlays/{ov}")
+        assert _env(g, "APP_ENV") == "production" and _env(g, "COOKIE_SECURE") == "true"
+        assert _env(g, "PUBLIC_URL").startswith("https://")
+
+
+def test_local_gateway_oauth_optional_envfrom_and_gitignored():
+    kubectl = shutil.which("kubectl")
+    if not kubectl:
+        pytest.skip("kubectl not installed")
+    root = pathlib.Path(__file__).resolve().parents[2]
+    out = subprocess.run([kubectl, "kustomize", str(root / "deploy/overlays/local")],
+                         capture_output=True, text=True, check=True).stdout
+    gw = next(d for d in yaml.safe_load_all(out) if d and d["kind"] == "Deployment" and d["metadata"]["name"] == "gateway")
+    ef = gw["spec"]["template"]["spec"]["containers"][0]["envFrom"]
+    names = [e["secretRef"]["name"] for e in ef]
+    assert names.index("gateway-secrets") < names.index("gateway-oauth")
+    assert ef[names.index("gateway-oauth")]["secretRef"].get("optional") is True
+    assert not any(d and d["kind"] == "Secret" and d["metadata"]["name"] == "gateway-oauth" for d in yaml.safe_load_all(out))
+    for p in ("deploy/overlays/local/secrets/gateway-oauth.local.env", "deploy/overlays/local/secrets/x.local.env"):
+        assert subprocess.run(["git", "check-ignore", "-q", p], cwd=root).returncode == 0, p
+    assert subprocess.run(["git", "check-ignore", "-q", "deploy/overlays/local/secrets/gateway-oauth.local.env.example"],
+                          cwd=root).returncode == 1
+    assert (root / "deploy/overlays/local/secrets/gateway-oauth.local.env.example").exists()

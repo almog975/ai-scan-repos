@@ -13,3 +13,6 @@ patches:
       # k3d: Traefik on https://ai-scan.localhost (*.localhost resolves to 127.0.0.1 in browsers).
       # GitHub OAuth App callback: https://ai-scan.localhost/auth/github/callback
       - {op: replace, path: /spec/template/spec/containers/0/env/2, value: {name: PUBLIC_URL, value: "https://ai-scan.localhost"}}
+      # Dev-only: explicit env wins over envFrom gateway-secrets, so the owner is never locked out by an allow-list.
+      - {op: add, path: /spec/template/spec/containers/0/env/-, value: {name: ALLOWED_GITHUB_LOGINS, value: "almog975"}}
+      - {op: add, path: /spec/template/spec/containers/0/env/-, value: {name: ADMIN_GITHUB_LOGINS, value: "almog975"}}

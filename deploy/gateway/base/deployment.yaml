@@ -16,7 +16,7 @@ spec:
           env:
             - {name: APP_ENV, value: production}   # refuses dev defaults at startup (app/config.py problems())
             - {name: REVIEW_API_URL, value: "http://review-api:8001"}
-            - {name: PUBLIC_URL, value: "https://ai-scan.local"}   # eks overlay patches the host
+            - {name: PUBLIC_URL, value: "https://ai-scan.local"}   # = ingress host; every overlay patches it. OAuth callback = PUBLIC_URL/auth/github/callback
             - {name: COOKIE_SECURE, value: "true"}
             # uvicorn --proxy-headers trusts only 127.0.0.1 by default; behind Traefik/nginx the client IP (rate limits,
             # session ip) would be the proxy pod. The Service is ClusterIP-only, reached through the ingress.
