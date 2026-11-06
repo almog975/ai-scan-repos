@@ -7,11 +7,12 @@ Argo CD (GitOps). See the [top-level README](../README.md) and [ADR-0001](../doc
 ```
 deploy/<component>/base/                    # Infra-owned
 deploy/<component>/overlays/{local,k3s,eks} # Infra-owned; Jenkins only rewrites image tags here
+deploy/overlays/local/                      # Lightweight compose overlay (Docker Desktop / k3d; no registry)
 deploy/argocd/root-app.yaml                 # Pipelines-owned: app-of-apps root
 deploy/argocd/apps/<component>.yaml         # Pipelines-owned: one child Application per component
 ```
-Components: `frontend`, `gateway`, `review-api`, `postgres`, `scanner-worker`, `platform` (6 × 3 = 18 overlays).
-Everything deploys to the single namespace `ai-scan-repos`.
+Components: `frontend`, `gateway`, `review-api`, `postgres`, `scanner-worker`, `platform` (6 × 3 = 18 overlays),
+plus top-level `deploy/overlays/local` for a one-shot local apply. Everything deploys to the single namespace `ai-scan-repos`.
 
 | Target | Registry host |
 |---|---|
@@ -52,7 +53,7 @@ For another target, swap `k3s` in the name and path.
 `kustomize build deploy/<component>/overlays/<target>` (or `kubectl kustomize ...`).
 
 ## Config
-No Secret YAML in git; create secrets from the CLI.
+No Secret YAML in git for k3s/eks (create from the CLI). `deploy/overlays/local` is the exception: committed **NOT FOR PRODUCTION** placeholders via secretGenerator.
 
 ## Owners
 Infra: `base/` and `overlays/` content. Pipelines: image tags, `argocd/`, `Jenkinsfile`. See `.github/CODEOWNERS`.

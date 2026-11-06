@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ai-scan-repos
+  labels:
+    app.kubernetes.io/part-of: ai-scan-repos
+    # local: warn only — Docker Desktop / k3d hostpath volumes and Traefik vary
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/warn: restricted
+    ai-scan.local/overlay: "true"

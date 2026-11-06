@@ -1,0 +1,7 @@
+# Keep shell/YAML/Make LF so installer grep anchors and bash scripts work on Windows checkouts.
+*.sh text eol=lf
+*.bash text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+Makefile text eol=lf
+**/Makefile text eol=lf

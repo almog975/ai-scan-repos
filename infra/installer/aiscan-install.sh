@@ -398,8 +398,8 @@ images() {
     local kf="$ROOT/deploy/$c/overlays/$OVERLAY/kustomization.yaml"
     echo "+ set image ai-scan/$c=$IMAGE_PREFIX/$c:$IMAGE_TAG in deploy/$c/overlays/$OVERLAY/kustomization.yaml"
     dry && continue
-    grep -q "^  - name: ai-scan/$c\$" "$kf" || die "$kf has no images: entry for ai-scan/$c"
-    sed -i "/^  - name: ai-scan\/$c\$/,/newTag:/{s|newName: .*|newName: $IMAGE_PREFIX/$c|;s|newTag: .*|newTag: $IMAGE_TAG|}" "$kf"
+    grep -qE "^  - name: ai-scan/$c\r?$" "$kf" || die "$kf has no images: entry for ai-scan/$c"
+    sed -i "/^  - name: ai-scan\/$c\r\?$/,/newTag:/{s|newName: .*|newName: $IMAGE_PREFIX/$c|;s|newTag: .*|newTag: $IMAGE_TAG|}" "$kf"
   done
   local f="$ROOT/deploy/scanner-worker/overlays/$OVERLAY/kustomization.yaml"
   echo "+ sed -i 's|SCANNER_IMAGE=.*|SCANNER_IMAGE=$IMAGE_PREFIX/scanner-worker:$IMAGE_TAG|' deploy/scanner-worker/overlays/$OVERLAY/kustomization.yaml"
@@ -451,7 +451,7 @@ delete_kept() {
   dry && return 0
   kustomize build "$1" | awk 'function out() { if (doc != "" && !pv) printf "---\n%s", doc; doc=""; pv=0 }
     /^---$/ {out(); next} /^kind: PersistentVolume(Claim)?$/ {pv=1} {doc=doc $0 "\n"} END {out()}' > "$f"
-  if grep -q '^kind: PersistentVolume' "$f"; then die "internal: PVC left in delete set $f"; fi
+  if grep -qE '^kind: PersistentVolume\r?$' "$f"; then die "internal: PVC left in delete set $f"; fi
   [ -s "$f" ] || return 0
   "$KUBECTL" delete -f "$f" --ignore-not-found
 }
