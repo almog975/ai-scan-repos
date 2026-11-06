@@ -163,7 +163,7 @@ Extra pieces, all optional. Give Docker Desktop at least **6 GB RAM** (Settings 
 | ServiceMonitors, alert rules, "AI Scan Repos" dashboard | `charts/ai-scan` `monitoring.enabled=true` | - |
 
 Chrome and Edge resolve `*.localhost` to 127.0.0.1. If yours doesn't: `curl.exe -H "Host: jenkins.localhost" http://localhost/`.
-With the NodePort option (B above), use `http://jenkins.localhost:30080` and `http://grafana.localhost:30080`.
+With the NodePort option (B above), use `http://jenkins.localhost:30080` and `http://grafana.localhost:30080`. For Jenkins, also add `--set controller.jenkinsUrl=http://jenkins.localhost:30080` to its `helm upgrade --install`.
 
 ### Install (PowerShell, from the repo root, in this order)
 

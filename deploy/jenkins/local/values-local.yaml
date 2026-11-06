@@ -27,6 +27,9 @@ controller:
     - job-dsl:3732.v9a_c49a_61a_313
     - pipeline-model-definition:2.2293.v6e7193cec599
     - timestamper:1.30
+  # Jenkins root URL (links in the UI/console). Defaults to http://<ingress.hostName>.
+  # Behind the ingress-nginx NodePort fallback, override at install time:
+  #   --set controller.jenkinsUrl=http://jenkins.localhost:30080
   ingress:
     enabled: true
     ingressClassName: nginx
@@ -37,9 +40,9 @@ controller:
       ai-scan: |
         jenkins:
           systemMessage: "AI Scan Repos auto-heal (Docker Desktop, deploy/jenkins/local/values-local.yaml)"
-        unclassified:
-          location:
-            url: "http://jenkins.localhost/"
+        # Don't set unclassified.location here: the chart's default JCasC already sets it
+        # (from controller.jenkinsUrl, or the ingress hostName), and a duplicate key makes
+        # JCasC fail with ConfiguratorConflictException on boot.
       ai-scan-autoheal: |
         jobs:
           - script: >
