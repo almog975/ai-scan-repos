@@ -1,0 +1,16 @@
+# ai-scan-autoheal (SA jenkins/ai-scan-autoheal): request a sync of OutOfSync Applications by patching .operation.
+# Namespaced Role in argocd only (no ClusterRole). Applied by infra/installer/aiscan-install.sh with the AppProjects.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: ai-scan-autoheal, namespace: argocd}
+rules:
+  - apiGroups: [argoproj.io]
+    resources: [applications]
+    verbs: [get, list, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: ai-scan-autoheal, namespace: argocd}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: ai-scan-autoheal}
+subjects:
+  - {kind: ServiceAccount, name: ai-scan-autoheal, namespace: jenkins}

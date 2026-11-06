@@ -1,0 +1,5 @@
+#!/bin/bash
+# fake curl: URLs containing any word in $HEAL_CURL_FAIL fail
+echo "curl $*" >> "${SHIM_LOG:?}"
+for w in ${HEAL_CURL_FAIL:-}; do [[ "$*" == *"$w"* ]] && exit 22; done
+exit 0

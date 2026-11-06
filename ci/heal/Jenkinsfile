@@ -1,0 +1,23 @@
+// ai-scan-autoheal (JCasC pipelineJob in deploy/jenkins/values.yaml): every 10 min + Build Now. docs/autoheal.md
+// Runs on the "autoheal" pod template (ServiceAccount ai-scan-autoheal, namespaced Roles only).
+pipeline {
+  agent { label 'autoheal' }
+  options {
+    disableConcurrentBuilds()
+    timeout(time: 8, unit: 'MINUTES')
+    buildDiscarder(logRotator(numToKeepStr: '100'))
+    timestamps()
+  }
+  parameters {
+    booleanParam(name: 'DRY_RUN', defaultValue: false, description: 'Only report what would be healed; change nothing')
+  }
+  stages {
+    stage('Heal') {
+      steps {
+        container('kubectl') {
+          sh "DRY_RUN=${params.DRY_RUN ? '1' : '0'} bash ci/heal/heal.sh"
+        }
+      }
+    }
+  }
+}

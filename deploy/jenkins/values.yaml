@@ -81,6 +81,29 @@ controller:
                 orphanedItemStrategy { discardOldItems { numToKeep(10) } }
                 triggers { periodicFolderTrigger { interval('5m') } }   // branch indexing fallback if smee is down
               }
+          - script: >
+              pipelineJob('ai-scan-autoheal') {
+                displayName('AI Scan auto-heal')
+                description('ci/heal/heal.sh every 10 min: delete crashed/evicted pods, re-run a failed migrate Job, restart deployments failing /readyz, check postgres, sync OutOfSync Argo CD apps. docs/autoheal.md')
+                parameters { booleanParam('DRY_RUN', false, 'Only report what would be healed; change nothing') }
+                properties {
+                  disableConcurrentBuilds()
+                  pipelineTriggers { triggers { cron { spec('H/10 * * * *') } } }
+                }
+                logRotator { numToKeep(100) }
+                definition {
+                  cpsScm {
+                    scm {
+                      git {
+                        remote { url('https://github.com/almog975/ai-scan-repos.git'); credentials('github-bot') }
+                        branch('*/main')
+                      }
+                    }
+                    scriptPath('ci/heal/Jenkinsfile')
+                    lightweight(true)
+                  }
+                }
+              }
 
 persistence:
   enabled: true
@@ -153,3 +176,29 @@ agent:
             resourceRequestMemory: 1Gi
             resourceLimitCpu: "2"
             resourceLimitMemory: 4Gi
+    autoheal: |
+      # ai-scan-autoheal job (ci/heal/Jenkinsfile). Separate SA with namespaced Roles only
+      # (deploy/platform/base/autoheal-rbac.yaml, infra/argocd/autoheal-rbac.yaml); jenkins-agent keeps no API access.
+      # Pods get label jenkins/label=autoheal, which the autoheal NetworkPolicies select.
+      - name: autoheal
+        label: autoheal
+        serviceAccount: ai-scan-autoheal
+        nodeUsageMode: EXCLUSIVE
+        idleMinutes: 0
+        containers:
+          - name: jnlp
+            image: jenkins/inbound-agent:3395.v6e5377b_0fb_3c-1-jdk21
+            resourceRequestCpu: 100m
+            resourceRequestMemory: 256Mi
+            resourceLimitCpu: 500m
+            resourceLimitMemory: 512Mi
+          - name: kubectl
+            # kubectl 1.31 + bash, curl, jq (pinned tag)
+            image: alpine/k8s:1.31.4
+            command: sleep
+            args: infinity
+            ttyEnabled: true
+            resourceRequestCpu: 50m
+            resourceRequestMemory: 64Mi
+            resourceLimitCpu: 500m
+            resourceLimitMemory: 256Mi
