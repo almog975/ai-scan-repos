@@ -21,3 +21,6 @@ deploy/overlays/local/secrets/*.local.env
 
 # Helm chart local values (real OAuth creds)
 charts/ai-scan/values.local.yaml
+
+# local kubectl binary downloaded into repo root
+/kubectl
