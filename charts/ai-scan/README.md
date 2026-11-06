@@ -14,8 +14,10 @@ Prereqs: Docker Desktop with Kubernetes enabled, `kubectl`, `helm`.
 kubectl config use-context docker-desktop
 
 # 1. Ingress controller (once). Docker Desktop exposes its LoadBalancer on localhost:80
-helm upgrade --install ingress-nginx ingress-nginx --repo https://kubernetes.github.io/ingress-nginx -n ingress-nginx --create-namespace
-kubectl -n ingress-nginx get pods -w      # wait for controller Running
+helm upgrade --install ingress-nginx ingress-nginx --repo https://kubernetes.github.io/ingress-nginx -n ingress-nginx --create-namespace --wait
+# The admission webhook must be serving before any Ingress is created,
+# otherwise helm install ai-scan fails with "failed calling webhook validate.nginx.ingress.kubernetes.io".
+kubectl -n ingress-nginx wait --for=condition=Ready pod -l app.kubernetes.io/component=controller --timeout=180s
 
 # 2. If the old Kustomize stack is installed, remove it first (names would clash)
 kubectl delete ns ai-scan-repos --ignore-not-found
@@ -98,3 +100,20 @@ NetworkPolicies, Traefik IngressRoutes/Middlewares, ServiceMonitors, PrometheusR
 postgres backup / reports-cleanup / auto-heal CronJobs. Use `deploy/` (Kustomize/Argo CD) for those today.
 
 **Status:** validated with `helm lint`, `helm template` and `kubeconform`; not yet run on a real cluster.
+
+## Troubleshooting: ingress-nginx webhook error
+
+`Internal error occurred: failed calling webhook "validate.nginx.ingress.kubernetes.io"` means the
+controller's admission webhook wasn't reachable when the Ingress was created (controller still starting,
+or a stale webhook left from an older ingress-nginx install). The failed release has no Ingress.
+
+```
+kubectl -n ingress-nginx get pods,svc,endpoints          # controller Running? admission endpoint present?
+kubectl get validatingwebhookconfigurations              # stale entries from old installs?
+kubectl -n ingress-nginx wait --for=condition=Ready pod -l app.kubernetes.io/component=controller --timeout=180s
+helm upgrade --install ai-scan ./charts/ai-scan -n ai-scan-repos --create-namespace
+kubectl -n ai-scan-repos get ingress
+```
+If the controller is healthy but the error persists (stale webhook from a removed install):
+`kubectl delete validatingwebhookconfiguration ingress-nginx-admission`, then
+`helm upgrade --install ingress-nginx ...` again (it recreates it) and re-run the ai-scan upgrade.
