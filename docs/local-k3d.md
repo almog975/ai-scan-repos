@@ -71,6 +71,32 @@ make local-k8s-down           # deletes cluster + registry (asks; ARGS=--yes for
 
 `infra/local/k3d.sh --dry-run up` prints every command without touching anything.
 
+### Auto-heal on the local stack (end to end)
+
+The overlay includes the CronJob `ai-scan-autoheal` (every 10 min, script `ci/heal/heal.sh` from a ConfigMap).
+Run it now and read its report:
+
+```bash
+# WSL / Git Bash
+kubectl -n ai-scan-repos create job --from=cronjob/ai-scan-autoheal heal-now
+kubectl -n ai-scan-repos wait --for=condition=complete job/heal-now --timeout=300s
+kubectl -n ai-scan-repos logs job/heal-now
+kubectl -n ai-scan-repos delete job heal-now
+# full fault-injection test (faults -> heal -> asserts -> restore), exits 0 on PASS:
+ci/heal/e2e-local.sh                 # options: --keep  --timeout 600  --no-apply
+```
+
+```powershell
+# PowerShell (single run; the e2e script itself needs bash: WSL or Git Bash)
+kubectl -n ai-scan-repos create job --from=cronjob/ai-scan-autoheal heal-now
+kubectl -n ai-scan-repos wait --for=condition=complete job/heal-now --timeout=300s
+kubectl -n ai-scan-repos logs job/heal-now
+kubectl -n ai-scan-repos delete job heal-now
+& "C:\Program Files\Git\bin\bash.exe" ci/heal/e2e-local.sh
+```
+
+Details: [docs/autoheal.md](autoheal.md#local-cronjob).
+
 ## Prerequisites
 
 | Tool | Linux / macOS | Windows |

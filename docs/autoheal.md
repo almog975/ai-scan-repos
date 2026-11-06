@@ -62,3 +62,44 @@ the three services' ports. The K8s API and DNS were already allowed for Jenkins 
 
 `DRY_RUN` build parameter (or `DRY_RUN=1` env): every action is printed as `DRY-RUN: would ...` and listed in the
 report; no delete, patch, create or restart is sent.
+
+## Local CronJob
+
+`deploy/overlays/local` runs the same script in-cluster, without Jenkins:
+
+- CronJob `ai-scan-repos/ai-scan-autoheal`: `*/10 * * * *`, `concurrencyPolicy: Forbid`, `alpine/k8s:1.31.4`
+  (`IfNotPresent`), PSA-restricted (uid 65534, runAsNonRoot, drop ALL, seccomp RuntimeDefault, no privilege
+  escalation, read-only root filesystem; emptyDir on `/tmp`, `HOME=/tmp` for kubectl's cache).
+- Script: ConfigMap `ai-scan-autoheal-script` generated from `ci/heal/heal.sh` by `ci/heal/kustomization.yaml`
+  (one copy of the script; the overlay includes that directory, which the default load restrictor allows).
+- RBAC: SA `ai-scan-repos/ai-scan-autoheal` bound (`ai-scan-autoheal-local`) to the same Role
+  `ai-scan-autoheal` the Jenkins job uses. The Jenkins RoleBinding also renders locally; its subject
+  `jenkins/ai-scan-autoheal` does not exist there, which is harmless.
+- NetworkPolicies: the overlay deletes all of them, including `autoheal-readyz-ingress` (left in place it would
+  ingress-isolate review-api/gateway/frontend).
+- No Argo CD locally: the Argo CD step prints `skipped: Argo CD (...)`, not an error.
+
+Run once: `kubectl -n ai-scan-repos create job --from=cronjob/ai-scan-autoheal heal-now`, then
+`kubectl -n ai-scan-repos logs job/heal-now`.
+
+## End-to-end test (local)
+
+`ci/heal/e2e-local.sh [--keep] [--timeout SECONDS] [--no-apply]` (bash: WSL or Git Bash; current kubectl context):
+
+1. `kubectl apply -k deploy/overlays/local`; waits for job `review-api-migrate` Complete, postgres rolled out,
+   review-api/gateway/frontend Available.
+2. `heal-baseline` job from the CronJob: asserts `fixed: 0` and `errors: 0`.
+3. Faults:
+   - frontend image → `ai-scan-repos-frontend:e2e-does-not-exist` (ImagePullBackOff);
+   - review-api container command → `exit 1` (CrashLoopBackOff, and `/readyz` fails);
+   - `review-api-migrate` replaced by a copy whose container exits 1 (`backoffLimit: 0`) → Failed.
+4. `heal-fix` job: asserts the report deleted the frontend and review-api pods, restarted review-api, re-ran the
+   migrate Job, skipped Argo CD and had `errors: 0`; and that the migrate Job has a **new uid**. heal.sh re-runs a
+   failed Job from its own live spec, so the re-run of the faulty copy fails again by design. The test checks the
+   heal action (delete + re-create), not that the migration then succeeds.
+5. Restore: `rollout undo --to-revision` for frontend and review-api, delete the faulty Job, re-apply the overlay
+   (re-creates the real migrate Job), wait healthy, check that no pod is in a bad state. Deletes the heal jobs
+   (`--keep` leaves them and the logs). Prints PASS/FAIL, exits 1 on any failure.
+
+Not covered by the e2e test: Evicted pods (hard to force on a laptop cluster; covered by unit tests) and the
+Argo CD sync (no Argo CD in this overlay; covered by unit tests).

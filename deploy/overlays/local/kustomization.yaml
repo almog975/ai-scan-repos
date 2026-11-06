@@ -14,6 +14,7 @@ resources:
   - ../../review-api/base
   - ../../gateway/base
   - ../../frontend/base
+  - autoheal   # in-cluster auto-heal CronJob (ci/heal/heal.sh), docs/autoheal.md#local-cronjob
 
 # Local image names (docker build / k3d image import). No registry host, no GIT_SHA_PLACEHOLDER.
 images:
@@ -200,6 +201,12 @@ patches:
       version: v1
       kind: NetworkPolicy
       name: postgres-backup
+  - path: patches/delete-np.yaml   # #23's readyz ingress for the Jenkins autoheal pod: would ingress-isolate the apps locally
+    target:
+      group: networking.k8s.io
+      version: v1
+      kind: NetworkPolicy
+      name: autoheal-readyz-ingress
 
   - path: patches/workloads.yaml
   - path: patches/sa-no-regcred.yaml
