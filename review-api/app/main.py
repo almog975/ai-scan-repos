@@ -64,11 +64,21 @@ def create_app(settings: Settings | None = None, **deps) -> FastAPI:
             parse_key(settings.ai_keys_encryption_key)
         except ValueError as e:
             raise ApiError(503, "INTERNAL", f"not ready: {e}")
+        # Readiness gates on what serving requests needs (DB + key). The k8s API only matters for launching
+        # scans; the watchdog retries launches, so an API blip (or Docker Desktop without API egress) must not
+        # pull every review-api pod out of the Service. Its state is reported in checks.kube instead.
+        checks = {"db": "ok", "kube": "ok", "scanner_image": "ok"}
         try:
             deps["launcher"].ready()
-        except Exception:  # noqa: BLE001
-            raise ApiError(503, "INTERNAL", "job launcher (kubernetes API) not ready")
-        return {"status": "ready"}
+        except Exception as e:  # noqa: BLE001
+            logging.getLogger("review-api").warning("readyz: kubernetes API unavailable: %s", e)
+            checks["kube"] = "unavailable"
+            if settings.readyz_require_kube:
+                raise ApiError(503, "INTERNAL", "job launcher (kubernetes API) not ready")
+        if settings.job_launcher == "kubernetes" and settings.scanner_image_problem():
+            checks["scanner_image"] = "unset" if not settings.scanner_image.strip() else "invalid"
+        degraded = any(v != "ok" for v in checks.values())
+        return {"status": "degraded" if degraded else "ready", "checks": checks}
 
     @app.get("/metrics")
     def metrics():

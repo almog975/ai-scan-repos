@@ -7,9 +7,9 @@
 #   ghcr.io/almog975/ai-scan-repos-<svc>:latest
 #   ghcr.io/almog975/ai-scan-repos-<svc>:sha-<short>
 #
-# Packages start private. After the first Actions push, make each one Public
-# (GitHub → Packages → package → Package settings → Change visibility → Public)
-# so anonymous pulls work. See docs/local-k3d.md#github-container-registry.
+# The packages are public (anonymous pulls). Recommended path for Docker Desktop
+# (kubeadm or kind mode): nothing is built locally. APP_ENV=local comes from ../local,
+# so the :latest SCANNER_IMAGE below passes review-api's validation.
 #
 # To pin a specific build, edit newTag / SCANNER_IMAGE below to sha-<short>
 # (and keep imagePullPolicy IfNotPresent if you prefer).

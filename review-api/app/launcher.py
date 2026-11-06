@@ -67,12 +67,12 @@ def job_name_for(review_id: str, attempt: int, budget_no: int = 1) -> str:
     return f"scan-{review_id}-a{job_attempt(attempt, budget_no)}"[:63].rstrip("-")
 
 
-def check_image(image: str) -> None:
-    tag = image.rsplit("/", 1)[-1]
-    if "@sha256:" in image:
-        return
-    if ":" not in tag or tag.endswith(":latest"):
-        raise ValueError("SCANNER_IMAGE must be pinned to a tag other than :latest")
+def check_image(image: str, settings: Settings | None = None) -> None:
+    """Production: pinned tag or digest. Dev/local or SKIP_SCANNER_VALIDATION: any non-empty image."""
+    s = settings or Settings(app_env="production", scanner_image=image)
+    bad = s.model_copy(update={"scanner_image": image}).scanner_image_problem()
+    if bad:
+        raise ValueError(bad)
 
 
 def contract_env(spec: JobSpec) -> list[dict]:
@@ -96,7 +96,7 @@ def render_template(text: str, s: Settings, spec: JobSpec) -> dict:
 
 
 def build_job_manifest(s: Settings, spec: JobSpec, ai_secret: str | None = None) -> dict:
-    check_image(s.scanner_image)
+    check_image(s.scanner_image, s)
     name = job_name_for(spec.review_id, spec.attempt, spec.budget_no)
     if s.scanner_job_template:
         with open(s.scanner_job_template) as f:
@@ -201,15 +201,27 @@ class LocalLauncher:
 class KubernetesJobLauncher:
     def __init__(self, settings: Settings, batch_api=None, core_api=None, sleep=time.sleep):
         self.s, self.sleep = settings, sleep
+        self.init_error: str | None = None
         if batch_api is None or core_api is None:
             from kubernetes import client, config
-            config.load_incluster_config()
+            try:
+                config.load_incluster_config()
+            except Exception as e:  # noqa: BLE001  no ServiceAccount token / not in a pod (e.g. automount off)
+                # Don't crash-loop the API: reads keep working, readyz reports kube unavailable,
+                # and launching a scan raises this message.
+                self.init_error = f"kubernetes in-cluster config unavailable: {e}"
+                log.warning("%s", self.init_error)
             batch_api = batch_api or client.BatchV1Api()
             core_api = core_api or client.CoreV1Api()
         self.api, self.core = batch_api, core_api
 
+    def _need(self) -> None:
+        if self.init_error:
+            raise RuntimeError(self.init_error)
+
     def _create(self, body: dict):
         """Create; if a same-named Job from an earlier budget lingers, delete it and retry (<= ~30s)."""
+        self._need()
         for i in range(16):
             try:
                 return self.api.create_namespaced_job(namespace=self.s.k8s_namespace, body=body)
@@ -263,6 +275,7 @@ class KubernetesJobLauncher:
 
     def ready(self) -> None:
         """readyz: the k8s API answers and RBAC allows `get jobs` (a 404 for a probe name is fine)."""
+        self._need()
         try:
             self.api.read_namespaced_job(name="readyz-probe", namespace=self.s.k8s_namespace)
         except Exception as e:

@@ -11,3 +11,4 @@ patches:
       # Must match the k3s IngressRoute host (deploy/platform/overlays/k3s). Base ai-scan.local is not served on k3s.
       # GitHub OAuth App callback: https://ai-scan.127.0.0.1.nip.io/auth/github/callback
       - {op: replace, path: /spec/template/spec/containers/0/env/2, value: {name: PUBLIC_URL, value: "https://ai-scan.127.0.0.1.nip.io"}}
+      - {op: add, path: /spec/template/spec/containers/0/imagePullPolicy, value: IfNotPresent}   # immutable sha tags
