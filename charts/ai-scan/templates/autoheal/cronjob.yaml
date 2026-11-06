@@ -1,4 +1,5 @@
-{{- if and .Values.autoheal.enabled .Values.autoheal.cronjob.enabled }}
+{{- $ah := include "ai-scan.autoheal" . | fromYaml }}
+{{- if and $ah.enabled $ah.cronjob.enabled }}
 # In-cluster alternative to the Jenkins job: same script (files/heal.sh = ci/heal/heal.sh), same Role.
 apiVersion: v1
 kind: ServiceAccount
@@ -33,7 +34,7 @@ metadata:
     app: ai-scan-autoheal
     {{- include "ai-scan.labels" . | nindent 4 }}
 spec:
-  schedule: {{ .Values.autoheal.cronjob.schedule | quote }}
+  schedule: {{ $ah.cronjob.schedule | quote }}
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 3
@@ -57,12 +58,12 @@ spec:
             seccompProfile: {type: RuntimeDefault}
           containers:
             - name: heal
-              image: {{ .Values.autoheal.image }}   # kubectl + bash + curl + jq
+              image: {{ $ah.image }}   # kubectl + bash + curl + jq
               imagePullPolicy: IfNotPresent
               command: [bash, /opt/heal/heal.sh]
               env:
                 - {name: NAMESPACE, value: {{ .Release.Namespace }}}
-                - {name: DRY_RUN, value: {{ ternary "1" "0" .Values.autoheal.dryRun | quote }}}
+                - {name: DRY_RUN, value: {{ ternary "1" "0" $ah.dryRun | quote }}}
                 - {name: HOME, value: /tmp}      # kubectl discovery cache
                 - {name: TMPDIR, value: /tmp}    # bash here-strings
               securityContext:

@@ -190,6 +190,8 @@ kubectl -n jenkins get secret jenkins -o jsonpath="{.data.jenkins-admin-password
 
 # 3. The app with monitoring objects (auto-heal RBAC is on by default)
 helm upgrade --install ai-scan ./charts/ai-scan -n ai-scan-repos --create-namespace --set monitoring.enabled=true
+#    NodePort option (B): keep the GitHub callback on :30080
+#    add: --set gateway.publicUrl=http://localhost:30080
 
 # 4. Check
 kubectl -n ai-scan-repos get role,rolebinding ai-scan-autoheal
@@ -197,6 +199,14 @@ kubectl auth can-i delete pods -n ai-scan-repos --as system:serviceaccount:jenki
 kubectl auth can-i delete pods -n jenkins       --as system:serviceaccount:jenkins:ai-scan-autoheal   # no
 kubectl get ingress -A
 ```
+
+- **`--set` again on every upgrade.** Pass the same `--set` flags (or a `-f` file) each time. `--reuse-values`
+  also works, including from a release installed before `autoheal`/`monitoring` existed: the chart fills in
+  missing keys with its defaults.
+- **Interrupted `--wait`:** if an install or upgrade is killed or times out, the release can stay in
+  `pending-install` / `pending-upgrade` and the next `helm upgrade` fails with "another operation is in progress".
+  Check with `helm history <release> -n <ns>`. Roll back with `helm rollback <release> <last-good-rev> -n <ns>`.
+  For a first install that never finished, run `helm uninstall <release> -n <ns>` and install again.
 
 - **Jenkins:** http://jenkins.localhost, log in as `admin`. The job **AI Scan auto-heal** runs every 10 minutes (`H/10`) and on **Build with Parameters**. It checks out `ci/heal/Jenkinsfile` from `main` of the public repo (no credentials).
 - **Grafana:** http://grafana.localhost, `admin` / `admin-local-dev-only` (local demo only). Open Dashboards > folder **AI Scan Repos** > **AI Scan Repos**. Prometheus targets: `kubectl -n monitoring port-forward svc/kube-prometheus-stack-prometheus 9090` and http://localhost:9090/targets (review-api and gateway should be UP).
