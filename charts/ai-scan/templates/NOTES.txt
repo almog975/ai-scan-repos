@@ -1,0 +1,15 @@
+AI Scan Repos is installed in namespace {{ .Release.Namespace }}.
+
+  kubectl -n {{ .Release.Namespace }} get pods -w
+{{- if .Values.ingress.enabled }}
+
+Open: http://{{ .Values.ingress.host }}   (needs ingress-nginx, class "{{ .Values.ingress.className }}")
+Health: curl http://{{ .Values.ingress.host }}/nginx-health
+{{- else }}
+
+  kubectl -n {{ .Release.Namespace }} port-forward svc/frontend {{ .Values.frontend.port }}:{{ .Values.frontend.port }}
+Open: http://localhost:{{ .Values.frontend.port }}
+{{- end }}
+
+GitHub OAuth App callback URL: {{ include "ai-scan.publicUrl" . }}/auth/github/callback
+Placeholder secrets are NOT FOR PRODUCTION.

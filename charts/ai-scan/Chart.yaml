@@ -1,0 +1,6 @@
+apiVersion: v2
+name: ai-scan
+description: AI Scan Repos (frontend, gateway, review-api, postgres, scanner Jobs) - basic Helm chart for local Docker Desktop
+type: application
+version: 0.1.0
+appVersion: "latest"
