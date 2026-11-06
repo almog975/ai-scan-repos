@@ -1,0 +1,110 @@
+# jenkins/jenkins Helm chart (5.10.3) for Docker Desktop: ONLY the auto-heal job, no CI pipeline.
+#   helm upgrade --install jenkins jenkins --repo https://charts.jenkins.io --version 5.10.3 \
+#     -n jenkins --create-namespace -f deploy/jenkins/local/values-local.yaml --wait
+# Full CI setup (multibranch, kaniko, registry, smee) stays in deploy/jenkins/values.yaml (k3s / Argo CD).
+fullnameOverride: jenkins
+
+controller:
+  image:
+    tag: "2.580.2-lts-jdk21"
+  servicePort: 8080
+  serviceType: ClusterIP
+  # Admin user "admin"; the chart generates the password into Secret jenkins/jenkins (key jenkins-admin-password).
+  admin:
+    username: admin
+  numExecutors: 0                    # builds run on Kubernetes agent pods
+  resources:
+    requests: {cpu: 250m, memory: 768Mi}
+    limits: {cpu: "2", memory: 2Gi}
+  testEnabled: false
+  installLatestPlugins: false
+  installLatestSpecifiedPlugins: false
+  installPlugins:
+    - kubernetes:4560.vc25b_83890c34
+    - workflow-aggregator:608.v67378e9d3db_1
+    - git:5.11.0
+    - configuration-as-code:2141.v3c81c53ddb_f3
+    - job-dsl:3732.v9a_c49a_61a_313
+    - pipeline-model-definition:2.2293.v6e7193cec599
+    - timestamper:1.30
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    hostName: jenkins.localhost
+  JCasC:
+    defaultConfig: true
+    configScripts:
+      ai-scan: |
+        jenkins:
+          systemMessage: "AI Scan Repos auto-heal (Docker Desktop, deploy/jenkins/local/values-local.yaml)"
+        unclassified:
+          location:
+            url: "http://jenkins.localhost/"
+      ai-scan-autoheal: |
+        jobs:
+          - script: >
+              pipelineJob('ai-scan-autoheal') {
+                displayName('AI Scan auto-heal')
+                description('ci/heal/heal.sh every 10 min + Build Now: delete crashed/evicted pods, re-run a failed migrate Job, restart deployments failing /readyz, check postgres. docs/autoheal.md')
+                parameters { booleanParam('DRY_RUN', false, 'Only report what would be healed; change nothing') }
+                properties {
+                  disableConcurrentBuilds()
+                  pipelineTriggers { triggers { cron { spec('H/10 * * * *') } } }
+                }
+                logRotator { numToKeep(100) }
+                definition {
+                  cpsScm {
+                    scm {
+                      git {
+                        remote { url('https://github.com/almog975/ai-scan-repos.git') }   // public repo: no credentials
+                        branch('*/main')
+                      }
+                    }
+                    scriptPath('ci/heal/Jenkinsfile')
+                    lightweight(true)
+                  }
+                }
+              }
+
+persistence:
+  enabled: true
+  size: 2Gi                          # chart-created PVC (Docker Desktop default StorageClass "hostpath")
+
+serviceAccount:
+  create: true
+  name: jenkins
+rbac:
+  create: true                       # Role in ns jenkins only: controller creates/deletes agent pods
+  readSecrets: false
+
+agent:
+  enabled: true
+  namespace: jenkins
+  disableDefaultAgent: true
+  podTemplates:
+    autoheal: |
+      # ci/heal/Jenkinsfile runs heal.sh in container "kubectl". SA ai-scan-autoheal (deploy/jenkins/local/autoheal-sa.yaml)
+      # is bound only to the Role ai-scan-autoheal in ai-scan-repos (charts/ai-scan, autoheal.jenkins.enabled).
+      - name: autoheal
+        label: autoheal
+        serviceAccount: ai-scan-autoheal
+        nodeUsageMode: EXCLUSIVE
+        idleMinutes: 0
+        containers:
+          - name: jnlp
+            image: jenkins/inbound-agent:3395.v6e5377b_0fb_3c-1-jdk21
+            resourceRequestCpu: 100m
+            resourceRequestMemory: 256Mi
+            resourceLimitCpu: 500m
+            resourceLimitMemory: 512Mi
+          - name: kubectl
+            image: alpine/k8s:1.31.4     # kubectl 1.31 + bash, curl, jq
+            command: sleep
+            args: infinity
+            ttyEnabled: true
+            resourceRequestCpu: 20m
+            resourceRequestMemory: 64Mi
+            resourceLimitCpu: 200m
+            resourceLimitMemory: 256Mi
+            envVars:
+              - envVar: {key: NAMESPACE, value: ai-scan-repos}

@@ -1,0 +1,16 @@
+{{- if .Values.monitoring.enabled }}
+# Grafana dashboard "AI Scan Repos". The kube-prometheus-stack Grafana sidecar loads ConfigMaps
+# labelled grafana_dashboard=1 (infra/helm/kube-prometheus-stack/values-local.yaml).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-ai-scan-repos
+  labels:
+    grafana_dashboard: "1"
+    {{- include "ai-scan.labels" . | nindent 4 }}
+  annotations:
+    grafana_folder: AI Scan Repos
+data:
+  ai-scan-repos.json: |-
+{{ .Files.Get "files/ai-scan-repos-dashboard.json" | indent 4 }}
+{{- end }}

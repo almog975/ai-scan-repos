@@ -1,0 +1,83 @@
+{{- if and .Values.autoheal.enabled .Values.autoheal.cronjob.enabled }}
+# In-cluster alternative to the Jenkins job: same script (files/heal.sh = ci/heal/heal.sh), same Role.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ai-scan-autoheal
+  labels: {{- include "ai-scan.labels" . | nindent 4 }}
+automountServiceAccountToken: true   # kubectl in the CronJob pod uses this token
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: ai-scan-autoheal-local
+  labels: {{- include "ai-scan.labels" . | nindent 4 }}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: ai-scan-autoheal}
+subjects:
+  - {kind: ServiceAccount, name: ai-scan-autoheal, namespace: {{ .Release.Namespace }}}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ai-scan-autoheal-script
+  labels: {{- include "ai-scan.labels" . | nindent 4 }}
+data:
+  heal.sh: |-
+{{ .Files.Get "files/heal.sh" | indent 4 }}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: ai-scan-autoheal
+  labels:
+    app: ai-scan-autoheal
+    {{- include "ai-scan.labels" . | nindent 4 }}
+spec:
+  schedule: {{ .Values.autoheal.cronjob.schedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: 480
+      ttlSecondsAfterFinished: 3600
+      template:
+        metadata:
+          labels: {app: ai-scan-autoheal}
+          annotations:
+            checksum/script: {{ .Files.Get "files/heal.sh" | sha256sum }}
+        spec:
+          serviceAccountName: ai-scan-autoheal
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65534
+            runAsGroup: 65534
+            seccompProfile: {type: RuntimeDefault}
+          containers:
+            - name: heal
+              image: {{ .Values.autoheal.image }}   # kubectl + bash + curl + jq
+              imagePullPolicy: IfNotPresent
+              command: [bash, /opt/heal/heal.sh]
+              env:
+                - {name: NAMESPACE, value: {{ .Release.Namespace }}}
+                - {name: DRY_RUN, value: {{ ternary "1" "0" .Values.autoheal.dryRun | quote }}}
+                - {name: HOME, value: /tmp}      # kubectl discovery cache
+                - {name: TMPDIR, value: /tmp}    # bash here-strings
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: [ALL]}
+              resources:
+                requests: {cpu: 20m, memory: 32Mi}
+                limits: {cpu: 200m, memory: 128Mi}
+              volumeMounts:
+                - {name: script, mountPath: /opt/heal, readOnly: true}
+                - {name: tmp, mountPath: /tmp}
+          volumes:
+            - name: script
+              configMap: {name: ai-scan-autoheal-script, defaultMode: 0555}
+            - name: tmp
+              emptyDir: {sizeLimit: 16Mi}
+{{- end }}

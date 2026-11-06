@@ -1,0 +1,37 @@
+{{- if .Values.autoheal.enabled }}
+# What ci/heal/heal.sh may do in this namespace: delete / restart / re-run, never edit specs.
+# Same rules as deploy/platform/base/autoheal-rbac.yaml. Namespaced Role only, no ClusterRole. docs/autoheal.md
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: ai-scan-autoheal
+  labels: {{- include "ai-scan.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: [pods]
+    verbs: [get, list, delete]
+  - apiGroups: [""]
+    resources: [pods/exec]          # pg_isready inside the postgres pod
+    verbs: [create]
+  - apiGroups: [batch]
+    resources: [jobs]
+    verbs: [get, list, create, delete]
+  - apiGroups: [apps]
+    resources: [deployments]
+    verbs: [get, list, patch]       # kubectl rollout restart = patch of a template annotation
+{{- if .Values.autoheal.jenkins.enabled }}
+---
+# Jenkins job ai-scan-autoheal: its agent pods run as ServiceAccount <jenkins ns>/ai-scan-autoheal
+# (deploy/jenkins/local/autoheal-sa.yaml). The normal CI agent gets no access here.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: ai-scan-autoheal
+  labels: {{- include "ai-scan.labels" . | nindent 4 }}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: ai-scan-autoheal}
+subjects:
+  - kind: ServiceAccount
+    name: {{ .Values.autoheal.jenkins.serviceAccount }}
+    namespace: {{ .Values.autoheal.jenkins.namespace }}
+{{- end }}
+{{- end }}

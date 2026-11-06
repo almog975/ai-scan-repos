@@ -89,3 +89,24 @@ secrets:
   githubWebhookSecret: local-dev-webhook-secret-not-for-production
   internalApiToken: local-dev-only-internal-api-token-32b   # >= 32 chars
   aiApiKey: ""
+
+# Auto-heal (ci/heal/heal.sh, docs/autoheal.md): deletes crashed/evicted pods, re-runs a failed
+# review-api-migrate Job, restarts Deployments whose /readyz keeps failing, checks postgres.
+autoheal:
+  enabled: true                 # Role ai-scan-autoheal (namespaced, delete/restart/re-run only)
+  jenkins:
+    enabled: true               # RoleBinding for the Jenkins job's agent SA (deploy/jenkins/local/)
+    namespace: jenkins
+    serviceAccount: ai-scan-autoheal
+  cronjob:
+    enabled: false              # in-cluster alternative without Jenkins
+    schedule: "*/10 * * * *"
+  image: alpine/k8s:1.31.4
+  dryRun: false                 # CronJob only: true = report, change nothing
+
+# Prometheus/Grafana objects for kube-prometheus-stack (infra/helm/kube-prometheus-stack/values-local.yaml).
+# Needs its CRDs: install kube-prometheus-stack first, then enable.
+monitoring:
+  enabled: false
+  releaseLabel: kube-prometheus-stack
+  scrapeInterval: 30s
