@@ -1,0 +1,15 @@
+# Docker Desktop values used by Argo CD (deploy/argocd/docker-desktop/ai-scan.yaml), on top of values.yaml.
+# No secrets here: Argo CD renders the chart from git, so secrets.create=false and the Secrets are created
+# once from your gitignored values.local.yaml (docs/cicd-docker-desktop.md, step 3).
+secrets:
+  create: false
+gateway:
+  # ingress-nginx as NodePort 30080 (README option B). With the LoadBalancer on :80 (option A) use http://localhost.
+  publicUrl: http://localhost:30080
+global:
+  imagePullPolicy: IfNotPresent     # tags are immutable git SHAs
+monitoring:
+  enabled: true                     # needs kube-prometheus-stack (its CRDs) installed first
+autoheal:
+  cronjob:
+    enabled: false                  # the Jenkins ai-scan-autoheal job does this

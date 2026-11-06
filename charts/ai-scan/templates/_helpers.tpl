@@ -9,7 +9,9 @@ helm.sh/chart: {{ .Chart.Name }}-{{ .Chart.Version }}
 {{- define "ai-scan.image" -}}
 {{- $root := index . 0 -}}
 {{- $name := index $root.Values.images (index . 1) -}}
-{{- with $root.Values.global.imageRegistry -}}{{ trimSuffix "/" . }}/{{- end -}}{{ $name }}:{{ $root.Values.global.imageTag }}
+{{- /* per-image tag (imageTags.<key>, written by the CI bot into values-images.yaml), else global.imageTag */ -}}
+{{- $tag := index ($root.Values.imageTags | default dict) (index . 1) | default $root.Values.global.imageTag -}}
+{{- with $root.Values.global.imageRegistry -}}{{ trimSuffix "/" . }}/{{- end -}}{{ $name }}:{{ $tag }}
 {{- end }}
 
 {{- define "ai-scan.publicUrl" -}}

@@ -242,6 +242,12 @@ kubectl -n ai-scan-repos logs job/heal-now -f
 The script is a copy in `files/heal.sh` (Helm can't read files outside the chart); `ci/tests/test_helm_chart_sync.py`
 fails if it drifts from `ci/heal/heal.sh`. Same for the dashboard JSON and the alert rules.
 
+### CI/CD + GitOps (Jenkins builds, Argo CD deploys)
+
+Push to GitHub, and Jenkins tests, builds, scans and pushes `ghcr.io/almog975/ai-scan-repos-*:<git sha>`, then
+commits the tag into `values-images.yaml`; Argo CD deploys it. Setup, demo and rollback are in
+[docs/cicd-docker-desktop.md](../../docs/cicd-docker-desktop.md).
+
 ### Teardown
 ```powershell
 helm uninstall jenkins -n jenkins; kubectl delete ns jenkins

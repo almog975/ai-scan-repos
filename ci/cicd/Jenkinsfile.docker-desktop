@@ -1,0 +1,187 @@
+// CI/CD + GitOps on Docker Desktop (docs/cicd-docker-desktop.md). Jenkins job "ai-scan-cicd"
+// (deploy/jenkins/local/values-local.yaml) polls GitHub every 2 min (no webhook reaches a laptop).
+//   push to GitHub -> test changed services -> kaniko build (no Docker socket) -> trivy scan
+//   -> push ghcr.io/almog975/ai-scan-repos-<svc>:<git sha> -> bot commits the tag into
+//   charts/ai-scan/values-images.yaml [skip ci] -> Argo CD syncs the "ai-scan" release.
+// Jenkins never runs helm/kubectl against the app: the agent pod's ServiceAccount has no RBAC.
+// Credentials (create in Jenkins, never in git): ghcr-push, github-push (username + token).
+
+def SERVICES = [ // svc : [source dir, values key in imageTags, image name]
+  'frontend'  : ['frontend',   'frontend',  'ai-scan-repos-frontend'],
+  'gateway'   : ['gateway',    'gateway',   'ai-scan-repos-gateway'],
+  'review-api': ['review-api', 'reviewApi', 'ai-scan-repos-review-api'],
+]
+def REGISTRY  = 'ghcr.io/almog975'
+def REPO      = 'github.com/almog975/ai-scan-repos.git'
+def BOT_NAME  = 'ai-scan-ci-bot'
+def BOT_EMAIL = 'ci-bot@ai-scan.local'
+def VALUES    = 'charts/ai-scan/values-images.yaml'
+def changed   = []
+def skipBuild = false
+
+def img = { String svc -> "${REGISTRY}/${SERVICES[svc][2]}:${env.GIT_SHA}" }
+def tar = { String svc -> "${env.WORKSPACE}/.images/${svc}.tar" }
+def svcOn = { String svc -> !skipBuild && changed.contains(svc) }   // per-service `when`: unchanged -> greyed "skipped"
+def gitopsCommitted = false
+
+// One closure per step kind; each service gets its own named stage below so the stage graph shows exactly
+// which service failed where (Test: gateway, Scan: frontend, ...).
+def testSvc = { String s ->
+  if (s == 'frontend') {
+    container('node') { dir('frontend') {
+      sh 'npm ci --no-audit --no-fund'
+      sh 'CI=true npx vitest run --reporter=default --reporter=junit --outputFile.junit=$WORKSPACE/reports/frontend-junit.xml'
+      sh 'npm run build'
+    } }
+  } else {
+    container('python') { dir(SERVICES[s][0]) {
+      sh """python -m venv /tmp/venv-${s} && /tmp/venv-${s}/bin/pip install -q -r requirements.txt -r requirements-dev.txt
+            /tmp/venv-${s}/bin/python -m pytest -q -o addopts= -p no:cacheprovider --junitxml=\$WORKSPACE/reports/${s}-junit.xml tests"""
+    } }
+  }
+}
+// Sequential on purpose: all builds share one kaniko container and --cleanup wipes its filesystem after each.
+def buildSvc = { String s ->
+  container('kaniko') {
+    sh """/kaniko/executor --context=dir://${env.WORKSPACE}/${SERVICES[s][0]} \
+          --dockerfile=${env.WORKSPACE}/${SERVICES[s][0]}/Dockerfile \
+          --build-arg=VITE_APP_VERSION=${env.GIT_SHA} \
+          --destination=${img(s)} --no-push --tar-path=${tar(s)} \
+          --cleanup --snapshot-mode=redo"""
+  }
+}
+// Sequential: trivy locks its DB cache (/tmp/trivy), so parallel scans would block each other.
+def scanSvc = { String s ->
+  container('trivy') {
+    sh "trivy image --input ${tar(s)} --exit-code 1 --ignore-unfixed --severity ${params.TRIVY_SEVERITY} --no-progress --cache-dir /tmp/trivy"
+  }
+}
+def pushSvc = { String s ->
+  container('crane') {
+    withCredentials([usernamePassword(credentialsId: 'ghcr-push', usernameVariable: 'U', passwordVariable: 'P')]) {
+      sh 'echo "$P" | crane auth login ghcr.io -u "$U" --password-stdin'
+      sh "crane push ${tar(s)} ${img(s)}"
+    }
+  }
+}
+
+pipeline {
+  agent { kubernetes { inheritFrom 'ai-scan-ci'; defaultContainer 'jnlp' } }
+  parameters {
+    booleanParam(name: 'BUILD_ALL', defaultValue: false, description: 'Build every service, not only the changed ones')
+    string(name: 'TRIVY_SEVERITY', defaultValue: 'CRITICAL', description: 'Fail the build on these trivy severities (fixable only), e.g. CRITICAL,HIGH')
+  }
+  options { timestamps(); disableConcurrentBuilds(); buildDiscarder(logRotator(numToKeepStr: '30')) }
+  stages {
+    stage('Loop guard') { steps { script {
+      def msg    = sh(script: 'git log -1 --pretty=%B', returnStdout: true).trim()
+      def author = sh(script: 'git log -1 --pretty=%ae', returnStdout: true).trim()
+      if (author == BOT_EMAIL || msg.contains('[skip ci]')) {
+        skipBuild = true
+        currentBuild.result = 'NOT_BUILT'
+        currentBuild.description = 'CI bot / [skip ci] commit'
+        echo "Last commit is from ${BOT_NAME} or has [skip ci]; nothing to do."
+        return
+      }
+      env.GIT_SHA = sh(script: 'git rev-parse --short=12 HEAD', returnStdout: true).trim()
+      // The branch this build came from; the tag bump is pushed back to the same branch.
+      env.TARGET_BRANCH = (env.GIT_BRANCH ?: 'origin/main').replaceFirst(/^origin\//, '')
+      // Diff against the last GREEN build's commit. No such commit (first build, or none green yet) or it is
+      // gone (force-push) -> build everything. Never HEAD~1: that would skip services changed in earlier commits.
+      def base = env.GIT_PREVIOUS_SUCCESSFUL_COMMIT ?: ''
+      def haveBase = base && sh(script: "git cat-file -e '${base}^{commit}' 2>/dev/null && echo yes || echo no", returnStdout: true).trim() == 'yes'
+      if (!haveBase) { echo "No usable last-successful commit (${base ?: 'first build'}); building all services." }
+      def files = haveBase ? sh(script: "git diff --name-only ${base} HEAD", returnStdout: true).trim().split('\n').findAll { it } : []
+      changed = (params.BUILD_ALL || !haveBase) ? (SERVICES.keySet() as List)
+              : (SERVICES.keySet().findAll { s -> files.any { it.startsWith("${SERVICES[s][0]}/") } } as List)
+      echo "Branch ${env.TARGET_BRANCH}, sha ${env.GIT_SHA}, changed services: ${changed ?: 'none'}"
+      if (!changed) {
+        skipBuild = true
+        currentBuild.result = 'NOT_BUILT'
+        currentBuild.description = 'no service changed'
+        return
+      }
+      currentBuild.description = "${changed.join(', ')} @ ${env.GIT_SHA}"
+      sh 'mkdir -p .images reports'
+    } } }
+
+    // Tests are independent (own container/dir/venv), so they run in parallel.
+    stage('Test') {
+      when { expression { !skipBuild } }
+      parallel {
+        stage('Test: frontend')   { when { expression { svcOn('frontend') } };   steps { script { testSvc('frontend') } } }
+        stage('Test: gateway')    { when { expression { svcOn('gateway') } };    steps { script { testSvc('gateway') } } }
+        stage('Test: review-api') { when { expression { svcOn('review-api') } }; steps { script { testSvc('review-api') } } }
+      }
+    }
+
+    stage('Build (kaniko)') {
+      when { expression { !skipBuild } }
+      stages {
+        stage('Build: frontend')   { when { expression { svcOn('frontend') } };   steps { script { buildSvc('frontend') } } }
+        stage('Build: gateway')    { when { expression { svcOn('gateway') } };    steps { script { buildSvc('gateway') } } }
+        stage('Build: review-api') { when { expression { svcOn('review-api') } }; steps { script { buildSvc('review-api') } } }
+      }
+    }
+
+    stage('Scan (trivy)') {
+      when { expression { !skipBuild } }
+      stages {
+        stage('Scan: frontend')   { when { expression { svcOn('frontend') } };   steps { script { scanSvc('frontend') } } }
+        stage('Scan: gateway')    { when { expression { svcOn('gateway') } };    steps { script { scanSvc('gateway') } } }
+        stage('Scan: review-api') { when { expression { svcOn('review-api') } }; steps { script { scanSvc('review-api') } } }
+      }
+    }
+
+    // Nothing is pushed unless every changed service passed its scan.
+    stage('Push (ghcr.io)') {
+      when { expression { !skipBuild } }
+      stages {
+        stage('Push: frontend')   { when { expression { svcOn('frontend') } };   steps { script { pushSvc('frontend') } } }
+        stage('Push: gateway')    { when { expression { svcOn('gateway') } };    steps { script { pushSvc('gateway') } } }
+        stage('Push: review-api') { when { expression { svcOn('review-api') } }; steps { script { pushSvc('review-api') } } }
+      }
+    }
+
+    stage('GitOps: commit') {
+      when { expression { !skipBuild } }
+      steps { script {
+        // Start from the branch tip (not the detached build commit) so only the tag lines change.
+        sh "git fetch -q origin ${env.TARGET_BRANCH} && git checkout -q -B gitops-bump origin/${env.TARGET_BRANCH}"
+        changed.each { s ->
+          sh "sed -i -E 's|^(  ${SERVICES[s][1]}:).*|\\1 \"${env.GIT_SHA}\"|' ${VALUES}"
+        }
+        sh "git --no-pager diff -- ${VALUES}"
+        if (!sh(script: "git status --porcelain -- ${VALUES}", returnStdout: true).trim()) {
+          echo 'values-images.yaml already has these tags.'; return
+        }
+        sh "git add ${VALUES} && git -c user.name='${BOT_NAME}' -c user.email='${BOT_EMAIL}' commit -q -m 'ci(gitops): ${changed.join(',')} -> ${env.GIT_SHA} [skip ci]'"
+        gitopsCommitted = true
+      } }
+    }
+
+    stage('GitOps: push') {
+      when { expression { !skipBuild && gitopsCommitted } }
+      steps { script {
+        withCredentials([usernamePassword(credentialsId: 'github-push', usernameVariable: 'GU', passwordVariable: 'GT')]) {
+          withEnv(["PUSH_URL=https://${REPO}", "BR=${env.TARGET_BRANCH}"]) {
+            // The token only reaches git through a credential helper reading the masked env vars (never in a URL).
+            // A 403 here means the github-push token lacks "Contents: Read and write" on this repo.
+            sh '''set +x
+              helper='!f() { echo "username=$GU"; echo "password=$GT"; }; f'
+              for i in 1 2 3; do
+                if git -c credential.helper= -c credential.helper="$helper" push "$PUSH_URL" "HEAD:refs/heads/$BR"; then exit 0; fi
+                echo "push rejected (attempt $i); rebasing on $BR"
+                git -c credential.helper= -c credential.helper="$helper" pull -q --rebase "$PUSH_URL" "$BR"
+              done
+              exit 1'''
+          }
+        }
+        echo "Pushed. Argo CD (app ai-scan) picks it up within ~1 min."
+      } }
+    }
+  }
+  post {
+    always { script { if (!skipBuild) { junit allowEmptyResults: true, testResults: 'reports/*-junit.xml' } } }
+  }
+}
