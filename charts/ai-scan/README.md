@@ -149,3 +149,102 @@ kubectl -n ai-scan-repos get ingress
 If the controller is healthy but the error persists (stale webhook from a removed install):
 `kubectl delete validatingwebhookconfiguration ingress-nginx-admission`, then
 `helm upgrade --install ingress-nginx ...` again (it recreates it) and re-run the ai-scan upgrade.
+
+## Auto-heal, Jenkins and Grafana on Docker Desktop
+
+Extra pieces, all optional. Give Docker Desktop at least **6 GB RAM** (Settings > Resources) for the full set.
+
+| Piece | Where | URL |
+|---|---|---|
+| Auto-heal Role (+ Jenkins RoleBinding) | `charts/ai-scan` `autoheal.*` (on by default) | - |
+| Auto-heal CronJob (no Jenkins) | `charts/ai-scan` `autoheal.cronjob.enabled=true` | - |
+| Jenkins with only the `ai-scan-autoheal` job | `deploy/jenkins/local/values-local.yaml` | http://jenkins.localhost |
+| Prometheus + Grafana | `infra/helm/kube-prometheus-stack/values-local.yaml` | http://grafana.localhost |
+| ServiceMonitors, alert rules, "AI Scan Repos" dashboard | `charts/ai-scan` `monitoring.enabled=true` | - |
+
+Chrome and Edge resolve `*.localhost` to 127.0.0.1. If yours doesn't: `curl.exe -H "Host: jenkins.localhost" http://localhost/`.
+With the NodePort option (B above), use `http://jenkins.localhost:30080` and `http://grafana.localhost:30080`. For Jenkins, also add `--set controller.jenkinsUrl=http://jenkins.localhost:30080` to its `helm upgrade --install`.
+
+### Install (PowerShell, from the repo root, in this order)
+
+From **WSL (Ubuntu)** the same commands work with bash line continuations (`\` instead of the backtick), `curl`
+instead of `curl.exe`, and the password decoded with
+`kubectl -n jenkins get secret jenkins -o jsonpath='{.data.jenkins-admin-password}' | base64 -d; echo`.
+WSL's kubectl must use the `docker-desktop` context (Docker Desktop > Settings > Resources > WSL integration).
+
+```powershell
+kubectl config use-context docker-desktop
+
+# 1. Prometheus + Grafana (installs the CRDs ServiceMonitor / PrometheusRule)
+helm upgrade --install kube-prometheus-stack kube-prometheus-stack `
+  --repo https://prometheus-community.github.io/helm-charts --version 65.1.1 `
+  -n monitoring --create-namespace -f infra/helm/kube-prometheus-stack/values-local.yaml --wait
+
+# 2. Jenkins (auto-heal job only) + the ServiceAccount its agent pods use
+kubectl create namespace jenkins --dry-run=client -o yaml | kubectl apply -f -
+kubectl apply -f deploy/jenkins/local/autoheal-sa.yaml
+helm upgrade --install jenkins jenkins --repo https://charts.jenkins.io --version 5.10.3 `
+  -n jenkins -f deploy/jenkins/local/values-local.yaml --wait --timeout 10m
+# admin password (user: admin)
+kubectl -n jenkins get secret jenkins -o jsonpath="{.data.jenkins-admin-password}" | %{ [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($_)) }
+
+# 3. The app with monitoring objects (auto-heal RBAC is on by default)
+helm upgrade --install ai-scan ./charts/ai-scan -n ai-scan-repos --create-namespace --set monitoring.enabled=true
+#    NodePort option (B): keep the GitHub callback on :30080
+#    add: --set gateway.publicUrl=http://localhost:30080
+
+# 4. Check
+kubectl -n ai-scan-repos get role,rolebinding ai-scan-autoheal
+kubectl auth can-i delete pods -n ai-scan-repos --as system:serviceaccount:jenkins:ai-scan-autoheal   # yes
+kubectl auth can-i delete pods -n jenkins       --as system:serviceaccount:jenkins:ai-scan-autoheal   # no
+kubectl get ingress -A
+```
+
+- **`--set` again on every upgrade.** Pass the same `--set` flags (or a `-f` file) each time. `--reuse-values`
+  also works, including from a release installed before `autoheal`/`monitoring` existed: the chart fills in
+  missing keys with its defaults.
+- **Interrupted `--wait`:** if an install or upgrade is killed or times out, the release can stay in
+  `pending-install` / `pending-upgrade` and the next `helm upgrade` fails with "another operation is in progress".
+  Check with `helm history <release> -n <ns>`. Roll back with `helm rollback <release> <last-good-rev> -n <ns>`.
+  For a first install that never finished, run `helm uninstall <release> -n <ns>` and install again.
+
+- **Jenkins:** http://jenkins.localhost, log in as `admin`. The job **AI Scan auto-heal** runs every 10 minutes (`H/10`) and on **Build with Parameters**. It checks out `ci/heal/Jenkinsfile` from `main` of the public repo (no credentials).
+- **Grafana:** http://grafana.localhost, `admin` / `admin-local-dev-only` (local demo only). Open Dashboards > folder **AI Scan Repos** > **AI Scan Repos**. Prometheus targets: `kubectl -n monitoring port-forward svc/kube-prometheus-stack-prometheus 9090` and http://localhost:9090/targets (review-api and gateway should be UP).
+
+### Auto-heal demo
+
+What heal.sh does and doesn't do: it deletes broken pods, restarts Deployments whose `/readyz` keeps failing, and re-runs a failed `review-api-migrate` Job. It never edits a spec. In the full setup Argo CD (selfHeal) restores a wrong spec from git; locally there is no Argo CD, so after a *spec* fault you undo it yourself (`rollout undo`). The demo shows detection + action in the Jenkins console:
+
+```powershell
+# a) break the frontend image -> ImagePullBackOff
+kubectl -n ai-scan-repos set image deployment/frontend frontend=ghcr.io/almog975/ai-scan-repos-frontend:does-not-exist
+kubectl -n ai-scan-repos get pods -w        # wait for ImagePullBackOff, then Ctrl+C
+```
+- Jenkins > **AI Scan auto-heal** > **Build with Parameters** > tick `DRY_RUN` > Build. The console report shows `would delete pod/frontend-...`.
+- Build again without `DRY_RUN`. The report shows `fixed: 1  - delete pod/frontend-... (ImagePullBackOff)`.
+- Restore the spec (Argo CD's job in production) and confirm a clean run:
+```powershell
+kubectl -n ai-scan-repos rollout undo deployment/frontend
+kubectl -n ai-scan-repos rollout status deployment/frontend
+```
+- Build once more: `found: 0`, `errors: 0`.
+
+In Grafana the dashboard shows the app metrics (reviews, heartbeats); pod restarts are visible in the built-in
+dashboard **Kubernetes / Compute Resources / Namespace (Pods)** for namespace `ai-scan-repos`.
+
+### Without Jenkins: the CronJob
+
+```powershell
+helm upgrade --install ai-scan ./charts/ai-scan -n ai-scan-repos --reuse-values --set autoheal.cronjob.enabled=true
+kubectl -n ai-scan-repos create job --from=cronjob/ai-scan-autoheal heal-now
+kubectl -n ai-scan-repos logs job/heal-now -f
+```
+The script is a copy in `files/heal.sh` (Helm can't read files outside the chart); `ci/tests/test_helm_chart_sync.py`
+fails if it drifts from `ci/heal/heal.sh`. Same for the dashboard JSON and the alert rules.
+
+### Teardown
+```powershell
+helm uninstall jenkins -n jenkins; kubectl delete ns jenkins
+helm uninstall kube-prometheus-stack -n monitoring; kubectl delete ns monitoring
+# CRDs stay installed (kubectl get crd | findstr monitoring.coreos.com); remove them only if nothing else uses them.
+```

@@ -1,0 +1,19 @@
+{{- $mon := include "ai-scan.monitoring" . | fromYaml }}
+{{- if $mon.enabled }}
+# Prometheus scrapes /metrics on review-api (:8001) and gateway (:8000) through the Services' "http" port.
+{{- range $app := list "review-api" "gateway" }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ $app }}
+  labels:
+    release: {{ $mon.releaseLabel }}
+    {{- include "ai-scan.labels" $ | nindent 4 }}
+spec:
+  selector:
+    matchLabels: {app: {{ $app }}}
+  endpoints:
+    - {port: http, path: /metrics, interval: {{ $mon.scrapeInterval }}}
+{{- end }}
+{{- end }}

@@ -83,3 +83,43 @@ capabilities:
   volumeMounts:
     - {name: tmp, mountPath: /tmp}
 {{- end }}
+
+{{/*
+Auto-heal / monitoring values merged over built-in defaults (keep in sync with values.yaml;
+ci/tests/test_helm_chart_sync.py checks it). `helm upgrade --reuse-values` from a release made
+before these keys existed reuses the OLD chart's values, so .Values.autoheal / .Values.monitoring
+can be nil; without this the templates fail with "nil pointer evaluating interface {}.enabled".
+Usage: {{- $ah := include "ai-scan.autoheal" . | fromYaml }}
+*/}}
+{{- /* Fill keys missing from $v with $d, recursing into maps. Unlike sprig merge, an explicit false/0/"" is kept. */ -}}
+{{- define "ai-scan.withDefaults" -}}
+{{- $v := .v | default dict -}}
+{{- $out := dict -}}
+{{- range $k, $dv := .d -}}
+{{- if and (kindIs "map" $dv) (hasKey $v $k) (kindIs "map" (index $v $k)) -}}
+{{- $_ := set $out $k (include "ai-scan.withDefaults" (dict "v" (index $v $k) "d" $dv) | fromYaml) -}}
+{{- else if hasKey $v $k -}}
+{{- $_ := set $out $k (index $v $k) -}}
+{{- else -}}
+{{- $_ := set $out $k $dv -}}
+{{- end -}}
+{{- end -}}
+{{- range $k, $vv := $v -}}
+{{- if not (hasKey $out $k) -}}{{- $_ := set $out $k $vv -}}{{- end -}}
+{{- end -}}
+{{- toYaml $out -}}
+{{- end -}}
+
+{{- define "ai-scan.autoheal" -}}
+{{- $d := dict "enabled" true
+      "jenkins" (dict "enabled" true "namespace" "jenkins" "serviceAccount" "ai-scan-autoheal")
+      "cronjob" (dict "enabled" false "schedule" "*/10 * * * *")
+      "image" "alpine/k8s:1.31.4"
+      "dryRun" false -}}
+{{- include "ai-scan.withDefaults" (dict "v" .Values.autoheal "d" $d) -}}
+{{- end -}}
+
+{{- define "ai-scan.monitoring" -}}
+{{- $d := dict "enabled" false "releaseLabel" "kube-prometheus-stack" "scrapeInterval" "30s" -}}
+{{- include "ai-scan.withDefaults" (dict "v" .Values.monitoring "d" $d) -}}
+{{- end -}}
