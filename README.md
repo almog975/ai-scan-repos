@@ -97,6 +97,8 @@ cd frontend/e2e && python -m pytest -q   # Playwright e2e (mock stack); AISCAN_F
 
 Jenkins (k8s agent, kaniko, no Docker daemon): **Test** (contracts, unit, schemathesis, DB parity) → **Build** → **Trivy** (fail on HIGH/CRITICAL) → **Push** `<registry>/ai-scan/<svc>:<sha>` (main) → **tag bump** in `deploy/<component>/overlays/k3s` (`[skip ci]`). Argo CD (app-of-apps `ai-scan-root`, apps `ai-scan-<component>-k3s`, ns `ai-scan-repos`) syncs `main` with prune + selfHeal. Rollback = `git revert` of the tag bump via PR.
 
+**Auto-heal:** Jenkins job `ai-scan-autoheal` (every 10 min + Build Now, `DRY_RUN` parameter) deletes crashed/evicted pods, re-runs a failed migrate Job, restarts deployments failing `/readyz`, checks postgres and syncs OutOfSync Argo CD apps, with namespaced RBAC only ([docs/autoheal.md](docs/autoheal.md)).
+
 **Deploy:** Jenkins pushes the tag bump to `deploy/<svc>-<sha>` and opens a PR (`[skip ci]`); Almog merges; Argo CD syncs ([docs/ci-cd-flow.md](docs/ci-cd-flow.md)). Needs the `github-bot` PAT ([deploy/jenkins/README.md](deploy/jenkins/README.md#github-bot-pat-deploy-pr-flow)).
 
 [ci-cd-flow.md](docs/ci-cd-flow.md) (diagram) · [ci.md](docs/ci.md) · [ci-cd.md](docs/ci-cd.md) · [ADR-0004 GitOps](docs/adr/0004-gitops.md) · [rollback](docs/runbooks/rollback.md)

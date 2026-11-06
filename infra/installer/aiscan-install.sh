@@ -420,6 +420,7 @@ deploy() {
     k -n argocd patch cm argocd-cm --type merge --patch-file "$ROOT/infra/argocd/argocd-cm-health-patch.yaml"
     k apply -f "$ROOT/infra/argocd/appproject-ai-scan.yaml"
     k apply -f "$ROOT/infra/argocd/appproject-ai-scan-ci.yaml"
+    k apply -f "$ROOT/infra/argocd/autoheal-rbac.yaml"
     k apply -n argocd -f "$ROOT/deploy/argocd/root-app.yaml"
   else
     log "deploy: kubectl apply -k deploy/<component>/overlays/$OVERLAY (no Argo CD)"
