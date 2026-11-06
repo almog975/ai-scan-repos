@@ -1,0 +1,112 @@
+# CI/CD + GitOps on Docker Desktop
+
+```mermaid
+flowchart LR
+  dev[git push to GitHub] -->|Jenkins polls every 2 min| J[Jenkins job ai-scan-cicd]
+  J --> T[test changed services]
+  T --> B[kaniko build, no Docker socket]
+  B --> S[trivy scan, fail on findings]
+  S --> P[push ghcr.io/almog975/ai-scan-repos-svc:git-sha]
+  P --> G[bot commit: charts/ai-scan/values-images.yaml, skip ci]
+  G -->|Argo CD polls every ~1 min| A[Argo CD app ai-scan]
+  A --> K[Helm release ai-scan in namespace ai-scan-repos]
+```
+
+- **Trigger:** pollSCM `H/2` (a GitHub webhook can't reach a laptop).
+- **Build:** only the services whose folder changed (`frontend/`, `gateway/`, `review-api/`), or all of them with
+  `BUILD_ALL`. Unit tests, then kaniko builds a tarball, trivy scans it, and crane pushes it. A test failure or
+  a trivy finding (`TRIVY_SEVERITY`, default `CRITICAL`, fixable only) fails the build, so nothing is pushed.
+- **Tag:** the 12-character git SHA. Never `latest`.
+- **GitOps handoff:** the `ai-scan-ci-bot` commit sets the tag in `charts/ai-scan/values-images.yaml` with
+  `[skip ci]`. The next poll sees the bot commit and ends as NOT_BUILT, so there's no loop.
+- **Deploy:** only Argo CD deploys. The CI agent pod runs as ServiceAccount `jenkins/default`, which has no RBAC,
+  and the pipeline never runs `helm` or `kubectl` against the app.
+- **Files:** `ci/cicd/Jenkinsfile.docker-desktop`, `deploy/jenkins/local/values-local.yaml` (job + pod
+  template `ai-scan-ci`), `infra/argocd/values-docker-desktop.yaml`, `deploy/argocd/docker-desktop/ai-scan.yaml`,
+  `charts/ai-scan/values-docker-desktop.yaml` and `charts/ai-scan/values-images.yaml`.
+
+Prerequisites: everything from `charts/ai-scan/README.md`, i.e. ingress-nginx, kube-prometheus-stack, and Jenkins
+from `deploy/jenkins/local/values-local.yaml`. Commands are bash (WSL Ubuntu), run from the repo root. The
+URLs assume ingress-nginx on NodePort 30080; with the LoadBalancer on :80, drop `:30080`.
+
+## 1. Tokens (you create them; they never go in git or in a chat)
+
+| Jenkins credential ID | Kind | Token |
+|---|---|---|
+| `ghcr-push` | Username with password: `almog975` / token | GitHub **classic** PAT with `write:packages` (GHCR doesn't accept fine-grained tokens) |
+| `github-push` | Username with password: `almog975` / token | **Fine-grained** PAT, repository `almog975/ai-scan-repos` only, *Contents: Read and write* |
+
+Jenkins > Manage Jenkins > Credentials > System > Global credentials > **Add Credentials**. The IDs must match
+exactly. If `main` has branch protection that blocks direct pushes, the bot's push fails. In that case, allow
+the token's user to bypass protection, or keep `main` unprotected for the course.
+
+## 2. Jenkins: load the new job and pod template
+
+```bash
+helm upgrade --install jenkins jenkins --repo https://charts.jenkins.io --version 5.10.3 -n jenkins \
+  -f deploy/jenkins/local/values-local.yaml --set controller.jenkinsUrl=http://jenkins.localhost:30080 \
+  --wait --timeout 10m
+```
+After that, http://jenkins.localhost:30080 shows **AI Scan CI/CD (GitOps)** next to the auto-heal job.
+
+## 3. Argo CD
+
+```bash
+helm upgrade --install argocd argo-cd --repo https://argoproj.github.io/argo-helm --version 10.14.0 \
+  -n argocd --create-namespace -f infra/argocd/values-docker-desktop.yaml --wait
+kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d; echo
+```
+UI: http://argocd.localhost:30080, user `admin`.
+
+## 4. Hand the `ai-scan` release from Helm to Argo CD
+
+Argo CD renders the chart from git, so it can't see your gitignored `values.local.yaml` (the GitHub OAuth app).
+That's why `values-docker-desktop.yaml` sets `secrets.create: false`, and the four Secrets stay out-of-band:
+
+```bash
+# Secrets: already in the cluster from the Helm install, so keep them. On a fresh cluster, create them once:
+#   helm template ai-scan ./charts/ai-scan -n ai-scan-repos -f charts/ai-scan/values.local.yaml \
+#     --show-only templates/secrets.yaml | kubectl -n ai-scan-repos apply -f -
+kubectl -n ai-scan-repos get secret db-secrets ai-keys-master gateway-secrets scanner-secrets
+
+# Make Helm forget the release WITHOUT deleting its resources (removes only Helm's release records).
+# Don't use `helm uninstall`: it deletes the app.
+kubectl -n ai-scan-repos delete secret -l owner=helm,name=ai-scan
+
+# Argo CD adopts the same resources (same chart) and keeps them in sync with git.
+kubectl apply -f deploy/argocd/docker-desktop/ai-scan.yaml
+kubectl -n argocd get application ai-scan -w        # wait for Synced / Healthy
+```
+From here on, change the app through git, not `helm upgrade`. Argo CD's self-heal undoes manual changes.
+
+## 5. Demo: change, push, deployed
+
+```bash
+# a visible change, e.g. a heading in frontend/src, then:
+git commit -am "feat(frontend): demo change" && git push
+```
+1. Within 2 minutes Jenkins starts **ai-scan-cicd**, and the build description shows `frontend @ <sha>`. Stages:
+   Loop guard, Test, Build (kaniko), Scan (trivy), Push (ghcr.io), GitOps.
+2. GitHub shows the commit `ci(gitops): frontend -> <sha> [skip ci]` by `ai-scan-ci-bot`. The next Jenkins poll
+   ends as NOT_BUILT ("CI bot / [skip ci] commit").
+3. Within about a minute Argo CD syncs:
+   ```bash
+   kubectl -n ai-scan-repos get deploy frontend -o jsonpath='{.spec.template.spec.containers[0].image}'; echo
+   # ghcr.io/almog975/ai-scan-repos-frontend:<sha>
+   curl -s http://localhost:30080/ | head
+   ```
+
+## 6. Rollback
+
+- **Git (preferred):** revert the bot commit with `git revert <bot-commit> && git push`. Argo CD deploys the
+  previous tag. Your revert has no `[skip ci]`, but it changes no service folder, so Jenkins builds nothing.
+- **Argo CD:** pause auto-sync with `kubectl -n argocd patch application ai-scan --type merge -p
+  '{"spec":{"syncPolicy":{"automated":null}}}'`, then use History and Rollback in the UI. Re-apply
+  `deploy/argocd/docker-desktop/ai-scan.yaml` to turn auto-sync back on (git wins again).
+
+## Testing a branch before it's merged
+
+Both the job and the Application follow `main`. To try a branch end to end without touching `main`:
+- **Jenkins:** in ai-scan-cicd > Configure, set Branch Specifier to `*/<branch>`. The bot pushes the tag bump
+  back to the branch it built. A Jenkins restart resets the job to `main` (JCasC).
+- **Argo CD:** `kubectl -n argocd patch application ai-scan --type merge -p '{"spec":{"source":{"targetRevision":"<branch>"}}}'`.

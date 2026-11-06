@@ -8,7 +8,15 @@ global:
   imageTag: latest
   imagePullPolicy: IfNotPresent
 
-# Image base names (final image = <imageRegistry>/<name>:<imageTag>)
+# Per-image tags; "" = global.imageTag. The GitOps flow keeps these in values-images.yaml (CI bot writes
+# the git SHA there, Argo CD deploys it; docs/cicd-docker-desktop.md).
+imageTags:
+  frontend: ""
+  gateway: ""
+  reviewApi: ""
+  scanner: ""
+
+# Image base names (final image = <imageRegistry>/<name>:<imageTags.<key> or imageTag>)
 images:
   reviewApi: ai-scan-repos-review-api
   gateway: ai-scan-repos-gateway
@@ -83,6 +91,9 @@ ingress:
 # NOT FOR PRODUCTION placeholders (same values as deploy/overlays/local/secrets).
 # Never commit real values: use --set or a gitignored values.local.yaml.
 secrets:
+  # false = the chart doesn't render the Secrets (they're created once out-of-band, e.g. by Argo CD setup in
+  # docs/cicd-docker-desktop.md), so real OAuth values never have to be in git.
+  create: true
   aiKeysEncryptionKey: 000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f
   githubClientId: local-dev-github-client-id
   githubClientSecret: local-dev-github-client-secret-not-for-prod

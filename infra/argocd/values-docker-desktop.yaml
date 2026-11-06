@@ -1,0 +1,35 @@
+# argo-cd Helm chart (argo/argo-cd 10.14.0, Argo CD v3.6.1) on Docker Desktop. Local demo only.
+#   helm upgrade --install argocd argo-cd --repo https://argoproj.github.io/argo-helm --version 10.14.0 \
+#     -n argocd --create-namespace -f infra/argocd/values-docker-desktop.yaml --wait
+# UI: http://argocd.localhost (NodePort option: http://argocd.localhost:30080), user admin,
+# password: kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d
+configs:
+  params:
+    server.insecure: true            # TLS ends at ingress-nginx (plain HTTP locally)
+  cm:
+    # Track resources by annotation, not the app.kubernetes.io/instance label: the chart already sets that
+    # label to the release name, and label tracking could then claim (and prune) resources it doesn't own.
+    application.resourceTrackingMethod: annotation
+    # Poll git every 60 s (default 180 s): no GitHub webhook reaches a laptop.
+    timeout.reconciliation: 60s
+    timeout.reconciliation.jitter: 10s
+server:
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    hostname: argocd.localhost
+dex:
+  enabled: false
+notifications:
+  enabled: false
+applicationSet:
+  enabled: false
+redis:
+  resources:
+    requests: {cpu: 20m, memory: 32Mi}
+controller:
+  resources:
+    requests: {cpu: 100m, memory: 256Mi}
+repoServer:
+  resources:
+    requests: {cpu: 50m, memory: 128Mi}

@@ -1,4 +1,6 @@
-# jenkins/jenkins Helm chart (5.10.3) for Docker Desktop: ONLY the auto-heal job, no CI pipeline.
+# jenkins/jenkins Helm chart (5.10.3) for Docker Desktop: the auto-heal job + the CI/CD job "ai-scan-cicd"
+# (ci/cicd/Jenkinsfile.docker-desktop, docs/cicd-docker-desktop.md). Its credentials (ghcr-push, github-push)
+# are created by hand in the Jenkins UI, never in git.
 #   helm upgrade --install jenkins jenkins --repo https://charts.jenkins.io --version 5.10.3 \
 #     -n jenkins --create-namespace -f deploy/jenkins/local/values-local.yaml --wait
 # Full CI setup (multibranch, kaniko, registry, smee) stays in deploy/jenkins/values.yaml (k3s / Argo CD).
@@ -27,6 +29,8 @@ controller:
     - job-dsl:3732.v9a_c49a_61a_313
     - pipeline-model-definition:2.2293.v6e7193cec599
     - timestamper:1.30
+    - credentials-binding:728.v902a_273b_8947
+    - junit:1458.v38661c0638e2
   # Jenkins root URL (links in the UI/console). Defaults to http://<ingress.hostName>.
   # Behind the ingress-nginx NodePort fallback, override at install time:
   #   --set controller.jenkinsUrl=http://jenkins.localhost:30080
@@ -43,6 +47,30 @@ controller:
         # Don't set unclassified.location here: the chart's default JCasC already sets it
         # (from controller.jenkinsUrl, or the ingress hostName), and a duplicate key makes
         # JCasC fail with ConfiguratorConflictException on boot.
+      ai-scan-cicd: |
+        jobs:
+          - script: >
+              pipelineJob('ai-scan-cicd') {
+                displayName('AI Scan CI/CD (GitOps)')
+                description('Polls GitHub every 2 min: test -> kaniko build -> trivy -> push ghcr.io (git SHA tag) -> bump charts/ai-scan/values-images.yaml [skip ci] -> Argo CD deploys. docs/cicd-docker-desktop.md')
+                properties {
+                  disableConcurrentBuilds()
+                  pipelineTriggers { triggers { pollSCM { scmpoll_spec('H/2 * * * *') } } }
+                }
+                logRotator { numToKeep(30) }
+                definition {
+                  cpsScm {
+                    scm {
+                      git {
+                        remote { url('https://github.com/almog975/ai-scan-repos.git') }   // public: clone needs no credentials
+                        branch('*/main')
+                      }
+                    }
+                    scriptPath('ci/cicd/Jenkinsfile.docker-desktop')
+                    lightweight(false)
+                  }
+                }
+              }
       ai-scan-autoheal: |
         jobs:
           - script: >
@@ -85,6 +113,66 @@ agent:
   namespace: jenkins
   disableDefaultAgent: true
   podTemplates:
+    ai-scan-ci: |
+      # ci/cicd/Jenkinsfile.docker-desktop. No Docker socket, no privileged pod. ServiceAccount "default" in
+      # namespace jenkins has no RBAC: CI never touches the cluster; Argo CD deploys.
+      - name: ai-scan-ci
+        label: ai-scan-ci
+        serviceAccount: default
+        nodeUsageMode: EXCLUSIVE
+        idleMinutes: 0
+        containers:
+          - name: jnlp                  # git checkout + the values-images.yaml commit/push
+            image: jenkins/inbound-agent:3395.v6e5377b_0fb_3c-1-jdk21
+            resourceRequestCpu: 100m
+            resourceRequestMemory: 256Mi
+            resourceLimitCpu: 500m
+            resourceLimitMemory: 512Mi
+          - name: python
+            image: python:3.12-slim
+            command: sleep
+            args: "99999999"
+            ttyEnabled: true
+            resourceRequestCpu: 100m
+            resourceRequestMemory: 256Mi
+            resourceLimitCpu: "1"
+            resourceLimitMemory: 1Gi
+          - name: node
+            image: node:22-bookworm-slim
+            command: sleep
+            args: "99999999"
+            ttyEnabled: true
+            resourceRequestCpu: 100m
+            resourceRequestMemory: 512Mi
+            resourceLimitCpu: "1"
+            resourceLimitMemory: 2Gi
+          - name: kaniko                # image builds without a Docker daemon
+            image: gcr.io/kaniko-project/executor:v1.23.2-debug
+            command: sleep
+            args: "99999999"
+            ttyEnabled: true
+            resourceRequestCpu: 200m
+            resourceRequestMemory: 512Mi
+            resourceLimitCpu: "2"
+            resourceLimitMemory: 3Gi
+          - name: trivy
+            image: aquasec/trivy:0.58.1
+            command: sleep
+            args: "99999999"
+            ttyEnabled: true
+            resourceRequestCpu: 100m
+            resourceRequestMemory: 256Mi
+            resourceLimitCpu: "1"
+            resourceLimitMemory: 2Gi
+          - name: crane                 # pushes the scanned tarball to ghcr.io
+            image: gcr.io/go-containerregistry/crane:debug
+            command: sleep
+            args: "99999999"
+            ttyEnabled: true
+            resourceRequestCpu: 20m
+            resourceRequestMemory: 64Mi
+            resourceLimitCpu: 500m
+            resourceLimitMemory: 256Mi
     autoheal: |
       # ci/heal/Jenkinsfile runs heal.sh in container "kubectl". SA ai-scan-autoheal (deploy/jenkins/local/autoheal-sa.yaml)
       # is bound only to the Role ai-scan-autoheal in ai-scan-repos (charts/ai-scan, autoheal.jenkins.enabled).

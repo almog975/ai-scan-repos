@@ -1,0 +1,9 @@
+# Image tags deployed by Argo CD (deploy/argocd/docker-desktop/ai-scan.yaml).
+# WRITTEN BY THE CI BOT (ci/cicd/Jenkinsfile.docker-desktop): after a green build it sets the changed
+# service to the git SHA it pushed to ghcr.io and commits "ci(gitops): ... [skip ci]".
+# "" = global.imageTag (latest). Rollback = git revert of the bot commit.
+imageTags:
+  frontend: ""
+  gateway: ""
+  reviewApi: ""
+  scanner: ""
