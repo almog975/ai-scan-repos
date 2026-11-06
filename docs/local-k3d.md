@@ -42,8 +42,18 @@ Re-apply note: Jobs are immutable. Either wait for `ttlSecondsAfterFinished` (12
 overlay) or `kubectl -n ai-scan-repos delete job review-api-migrate --ignore-not-found` before
 a second apply. The Deployment initContainer keeps the schema current either way.
 
-OAuth: edit `deploy/overlays/local/secrets/gateway-secrets.env` (or patch the Secret) with a real
-GitHub OAuth App callback `http://localhost:8080/auth/github/callback`, then re-apply.
+OAuth (real GitHub login): never edit the tracked `secrets/gateway-secrets.env` (placeholders only). Register the
+GitHub OAuth App callback `http://localhost:8080/auth/github/callback`, then (PowerShell or bash, from the repo root):
+
+```powershell
+Copy-Item deploy/overlays/local/secrets/gateway-oauth.local.env.example deploy/overlays/local/secrets/gateway-oauth.local.env
+notepad deploy/overlays/local/secrets/gateway-oauth.local.env   # set GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET
+kubectl -n ai-scan-repos create secret generic gateway-oauth --from-env-file=deploy/overlays/local/secrets/gateway-oauth.local.env --dry-run=client -o yaml | kubectl apply -f -
+kubectl -n ai-scan-repos rollout restart deploy/gateway
+```
+
+`gateway-oauth.local.env` is gitignored; the gateway reads Secret `gateway-oauth` as an optional `envFrom` after
+`gateway-secrets`, so `kubectl apply -k deploy/overlays/local` works without it (login then just fails at GitHub).
 
 ---
 

@@ -14,3 +14,7 @@ node_modules/
 # installer config with real values (infra/installer/installer.env.example is the template)
 infra/installer/installer.env
 *.installer.env
+
+# local overlay real OAuth credentials (template: deploy/overlays/local/secrets/gateway-oauth.local.env.example)
+deploy/overlays/local/secrets/gateway-oauth.local.env
+deploy/overlays/local/secrets/*.local.env

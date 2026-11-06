@@ -58,6 +58,11 @@ spec:
             # Dev-only: explicit env wins over gateway-secrets envFrom, so the owner is never locked out.
             - {name: ALLOWED_GITHUB_LOGINS, value: "almog975"}
             - {name: ADMIN_GITHUB_LOGINS, value: "almog975"}
+          # Real OAuth credentials: optional Secret gateway-oauth (created by hand from the gitignored
+          # secrets/gateway-oauth.local.env). Listed AFTER gateway-secrets so its keys override the placeholders.
+          envFrom:
+            - secretRef: {name: gateway-secrets}
+            - secretRef: {name: gateway-oauth, optional: true}
 ---
 apiVersion: apps/v1
 kind: Deployment

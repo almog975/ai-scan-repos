@@ -175,3 +175,23 @@ def test_oauth_env_local_vs_strict_overlays():
         g = r(f"deploy/gateway/overlays/{ov}")
         assert _env(g, "APP_ENV") == "production" and _env(g, "COOKIE_SECURE") == "true"
         assert _env(g, "PUBLIC_URL").startswith("https://")
+
+
+def test_local_gateway_oauth_optional_envfrom_and_gitignored():
+    kubectl = shutil.which("kubectl")
+    if not kubectl:
+        pytest.skip("kubectl not installed")
+    root = pathlib.Path(__file__).resolve().parents[2]
+    out = subprocess.run([kubectl, "kustomize", str(root / "deploy/overlays/local")],
+                         capture_output=True, text=True, check=True).stdout
+    gw = next(d for d in yaml.safe_load_all(out) if d and d["kind"] == "Deployment" and d["metadata"]["name"] == "gateway")
+    ef = gw["spec"]["template"]["spec"]["containers"][0]["envFrom"]
+    names = [e["secretRef"]["name"] for e in ef]
+    assert names.index("gateway-secrets") < names.index("gateway-oauth")
+    assert ef[names.index("gateway-oauth")]["secretRef"].get("optional") is True
+    assert not any(d and d["kind"] == "Secret" and d["metadata"]["name"] == "gateway-oauth" for d in yaml.safe_load_all(out))
+    for p in ("deploy/overlays/local/secrets/gateway-oauth.local.env", "deploy/overlays/local/secrets/x.local.env"):
+        assert subprocess.run(["git", "check-ignore", "-q", p], cwd=root).returncode == 0, p
+    assert subprocess.run(["git", "check-ignore", "-q", "deploy/overlays/local/secrets/gateway-oauth.local.env.example"],
+                          cwd=root).returncode == 1
+    assert (root / "deploy/overlays/local/secrets/gateway-oauth.local.env.example").exists()
