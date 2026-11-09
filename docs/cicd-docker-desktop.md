@@ -12,15 +12,19 @@ flowchart LR
   A --> K[Helm release ai-scan in namespace ai-scan-repos]
 ```
 
-- **Trigger:** pollSCM `H/2` (a GitHub webhook can't reach a laptop).
-- **Build:** only the services whose folder changed (`frontend/`, `gateway/`, `review-api/`), or all of them with
-  `BUILD_ALL`. Unit tests, then kaniko builds a tarball, trivy scans it, and crane pushes it. A test failure or
+- **Trigger:** pollSCM `H/2` (a GitHub webhook can't reach a laptop; see [Webhook instead of polling](#production-option-github-webhook-instead-of-polling)).
+- **Build:** only the services whose folder changed (`frontend/`, `gateway/`, `review-api/`, `scanner-worker/`),
+  or all of them with `BUILD_ALL`. Unit tests, then kaniko builds a tarball, trivy scans it, and crane pushes it. A test failure or
   a trivy finding (`TRIVY_SEVERITY`, default `CRITICAL`, fixable only) fails the build, so nothing is pushed.
 - **Tag:** the 12-character git SHA. Never `latest`.
 - **GitOps handoff:** the `ai-scan-ci-bot` commit sets the tag in `charts/ai-scan/values-images.yaml` with
   `[skip ci]`. The next poll sees the bot commit and ends as NOT_BUILT, so there's no loop.
 - **Deploy:** only Argo CD deploys. The CI agent pod runs as ServiceAccount `jenkins/default`, which has no RBAC,
   and the pipeline never runs `helm` or `kubectl` against the app.
+- **Scanner:** `scanner-worker` isn't a Deployment. review-api starts one Job per review with `SCANNER_IMAGE`,
+  which the chart renders from `imageTags.scanner` into ConfigMap `scanner-image`. A bump changes that
+  ConfigMap, its checksum annotation rolls review-api, and the next scan Job uses the new tag (running Jobs keep
+  theirs).
 - **Files:** `ci/cicd/Jenkinsfile.docker-desktop`, `deploy/jenkins/local/values-local.yaml` (job + pod
   template `ai-scan-ci`), `infra/argocd/values-docker-desktop.yaml`, `deploy/argocd/docker-desktop/ai-scan.yaml`,
   `charts/ai-scan/values-docker-desktop.yaml` and `charts/ai-scan/values-images.yaml`.
@@ -34,7 +38,7 @@ URLs assume ingress-nginx on NodePort 30080; with the LoadBalancer on :80, drop 
 | Jenkins credential ID | Kind | Token |
 |---|---|---|
 | `ghcr-push` | Username with password: `almog975` / token | GitHub **classic** PAT with `write:packages` (GHCR doesn't accept fine-grained tokens) |
-| `github-push` | Username with password: `almog975` / token | **Fine-grained** PAT, repository `almog975/ai-scan-repos` only, *Contents: Read and write* |
+| `github-push` | Username with password: `almog975` / token | Classic PAT with `repo` (what Lior uses), or a fine-grained PAT on `almog975/ai-scan-repos` only with *Contents: Read and write*. A 403 in **GitOps: push** means the token can't write to the repo |
 
 Jenkins > Manage Jenkins > Credentials > System > Global credentials > **Add Credentials**. The IDs must match
 exactly. If `main` has branch protection that blocks direct pushes, the bot's push fails. In that case, allow
@@ -51,7 +55,7 @@ After that, http://jenkins.localhost:30080 shows **AI Scan CI/CD (GitOps)** next
 The config-reload sidecar applies new JCasC within about a minute of the pod becoming ready. If the job still
 isn't there, go to Manage Jenkins > Configuration as Code > **Reload existing configuration**.
 
-The first build, and any build with no earlier green build, builds all three services. After that, each build
+The first build, and any build with no earlier green build, builds all four services. After that, each build
 diffs against the last green build's commit. A push that changes no service folder ends as NOT_BUILT.
 
 ## 3. Argo CD
@@ -66,7 +70,9 @@ UI: http://argocd.localhost:30080, user `admin`.
 ## 4. Hand the `ai-scan` release from Helm to Argo CD
 
 Argo CD renders the chart from git, so it can't see your gitignored `values.local.yaml` (the GitHub OAuth app).
-That's why `values-docker-desktop.yaml` sets `secrets.create: false`, and the four Secrets stay out-of-band:
+That's why `values-docker-desktop.yaml` sets `secrets.create: false`, and the four Secrets stay out-of-band.
+Real GitHub OAuth and AI key values go in two optional override Secrets, `gateway-oauth` and `scanner-ai`:
+[local-secrets.md](local-secrets.md).
 
 ```bash
 # Secrets: already in the cluster from the Helm install, so keep them. On a fresh cluster, create them once:
@@ -91,7 +97,8 @@ From here on, change the app through git, not `helm upgrade`. Argo CD's self-hea
 git commit -am "feat(frontend): demo change" && git push
 ```
 1. Within 2 minutes Jenkins starts **ai-scan-cicd**, and the build description shows `frontend @ <sha>`. Stages:
-   Loop guard, Test, Build (kaniko), Scan (trivy), Push (ghcr.io), GitOps.
+   Loop guard, then `Test: <svc>` (parallel), `Build: <svc>`, `Scan: <svc>`, `Push: <svc>` (sequential), then
+   GitOps: commit and GitOps: push. Services that didn't change show as skipped.
 2. GitHub shows the commit `ci(gitops): frontend -> <sha> [skip ci]` by `ai-scan-ci-bot`. The next Jenkins poll
    ends as NOT_BUILT ("CI bot / [skip ci] commit").
 3. Within about a minute Argo CD syncs:
@@ -117,3 +124,37 @@ Both the job and the Application follow `main`. To try a branch end to end witho
   JCasC, so restarts and config reloads keep them; don't edit them in Configure (a reload overwrites that).
   The bot pushes the tag bump back to the branch it built.
 - **Argo CD:** `kubectl -n argocd patch application ai-scan --type merge -p '{"spec":{"source":{"targetRevision":"<branch>"}}}'`.
+
+### After the branch is merged: back to `main`
+
+While a PR branch is under test, Lior runs Jenkins with `CICD_BRANCH=<branch>` and the `ai-scan` Application with
+`targetRevision: <branch>` (both set on the cluster, not in git). Once the PR is merged, point both back to `main`,
+or the bot keeps committing to a dead branch and Argo CD keeps deploying it:
+```bash
+helm upgrade jenkins jenkins --repo https://charts.jenkins.io --version 5.10.3 -n jenkins \
+  -f deploy/jenkins/local/values-local.yaml --set controller.jenkinsUrl=http://jenkins.localhost:30080 \
+  --set controller.containerEnv[0].value=main --wait --timeout 10m
+kubectl -n argocd patch application ai-scan --type merge -p '{"spec":{"source":{"targetRevision":"main"}}}'
+```
+Git already says `main` in both places (`deploy/jenkins/local/values-local.yaml`,
+`deploy/argocd/docker-desktop/ai-scan.yaml`); this only undoes the on-cluster overrides. Then run **ai-scan-cicd**
+once with `BUILD_ALL=true`, so `main` gets its own SHA tags.
+
+## Production option: GitHub webhook instead of polling
+
+Polling every 2 minutes works on a laptop because Jenkins makes the outgoing call. A webhook needs GitHub to
+reach Jenkins, and `http://jenkins.localhost:30080` isn't reachable from the internet. On a server with a public
+(or tunnelled) URL a webhook is better: builds start within seconds and Jenkins stops polling GitHub.
+
+1. Jenkins: in the job DSL (`deploy/jenkins/local/values-local.yaml`, job `ai-scan-cicd`), replace
+   `scmpoll_spec('H/2 * * * *')` with the GitHub push trigger (`githubPush()`; add the `github` plugin to `installPlugins`). Keep a slow poll
+   (e.g. `H/15`) as a fallback if webhook deliveries can be lost.
+2. GitHub: repo > **Settings > Webhooks > Add webhook**: Payload URL `https://<jenkins-host>/github-webhook/`,
+   content type `application/json`, a secret, event **Just the push event**.
+3. Laptop only, for a demo: expose Jenkins through a tunnel, e.g. `smee` (`smee -u https://smee.io/<channel>
+   -t http://jenkins.localhost:30080/github-webhook/`) or `ngrok http 30080` (with the Host header set to
+   `jenkins.localhost`). The tunnel URL changes per session, so polling stays the default here.
+
+Argo CD has the same choice: it polls git every 3 minutes by default (every 60s here, `timeout.reconciliation` in
+`infra/argocd/values-docker-desktop.yaml`), and a GitHub webhook to `https://<argocd-host>/api/webhook` makes it
+sync immediately.

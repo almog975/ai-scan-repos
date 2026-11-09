@@ -140,6 +140,8 @@ GitHub Actions (`.github/workflows/images.yml`) builds and pushes `ghcr.io/almog
 
 **Deploy:** Jenkins pushes the tag bump to `deploy/<svc>-<sha>` and opens a PR (`[skip ci]`); Almog merges; Argo CD syncs ([docs/ci-cd-flow.md](docs/ci-cd-flow.md)). Needs the `github-bot` PAT ([deploy/jenkins/README.md](deploy/jenkins/README.md#github-bot-pat-deploy-pr-flow)).
 
+**Docker Desktop CI/CD + GitOps** (Jenkins polls, kaniko, trivy, GHCR, bot tag bump, Argo CD): [docs/cicd-docker-desktop.md](docs/cicd-docker-desktop.md); real OAuth / AI key Secrets: [docs/local-secrets.md](docs/local-secrets.md).
+
 [ci-cd-flow.md](docs/ci-cd-flow.md) (diagram) · [ci.md](docs/ci.md) · [ci-cd.md](docs/ci-cd.md) · [ADR-0004 GitOps](docs/adr/0004-gitops.md) · [rollback](docs/runbooks/rollback.md)
 
 ## Documentation
@@ -147,7 +149,7 @@ GitHub Actions (`.github/workflows/images.yml`) builds and pushes `ghcr.io/almog
 | For | Docs |
 |---|---|
 | Users | [User guide](docs/user-guide.md) |
-| Admins / operators | [Admin guide](docs/admin-guide.md) · [AI providers](docs/runbooks/admin-ai-providers.md) · [secrets](docs/secrets-runbook.md) · [monitoring](docs/monitoring.md) · [stuck review](docs/runbooks/stuck-review.md) · [rollback](docs/runbooks/rollback.md) · [storage](docs/storage-plan.md) |
+| Admins / operators | [Admin guide](docs/admin-guide.md) · [AI providers](docs/runbooks/admin-ai-providers.md) · [secrets](docs/secrets-runbook.md) · [local secrets (OAuth, AI key)](docs/local-secrets.md) · [monitoring](docs/monitoring.md) · [stuck review](docs/runbooks/stuck-review.md) · [rollback](docs/runbooks/rollback.md) · [storage](docs/storage-plan.md) |
 | Demo | [Live demo script](docs/runbooks/demo-script.md) · [Demo video script](docs/demo-video-script.md) |
 | Design | [ADRs](docs/adr/) · [report.md spec](docs/report-md-spec.md) · [severity mapping](docs/severity-mapping.md) · [contracts](contracts/README.md) |
 | Everything | [docs/README.md](docs/README.md) |
