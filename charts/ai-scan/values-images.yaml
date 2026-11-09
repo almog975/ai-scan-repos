@@ -3,7 +3,7 @@
 # service to the git SHA it pushed to ghcr.io and commits "ci(gitops): ... [skip ci]".
 # "" = global.imageTag (latest). Rollback = git revert of the bot commit.
 imageTags:
-  frontend: "78d37b6e094d"
+  frontend: "b67823756092"
   gateway: "78d37b6e094d"
   reviewApi: "78d37b6e094d"
   scanner: ""
