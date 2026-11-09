@@ -11,7 +11,7 @@ export const en = {
   loading: 'Loading…',
   // login
   login_title: 'Sign in',
-  login_lead: 'Scan a GitHub repository with Semgrep, Gitleaks, Trivy and an AI reviewer.',
+  login_lead: 'Scan a GitHub repository with Semgrep, Gitleaks, Trivy and an AI reviewer. Deployed by GitOps.',
   login_btn: 'Log in with GitHub',
   login_redirecting: 'Redirecting to GitHub…',
   login_err_state: 'The sign-in link expired or was opened twice. Try again.',
