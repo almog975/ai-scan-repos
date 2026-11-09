@@ -26,7 +26,7 @@ def _render(*args):
 
 
 def test_jenkinsfile_services_match_chart():
-    assert set(SERVICES) == {"frontend", "gateway", "review-api"}
+    assert set(SERVICES) == {"frontend", "gateway", "review-api", "scanner"}
     values = yaml.safe_load((CHART / "values.yaml").read_text())
     tags = yaml.safe_load((CHART / "values-images.yaml").read_text())["imageTags"]
     for svc, (src, key, image) in SERVICES.items():
@@ -97,7 +97,8 @@ def test_argocd_render_has_no_secrets_and_uses_per_image_tags():
                   "--set", "imageTags.frontend=0123456789ab")
     assert "kind: Secret\n" not in out
     assert "image: ghcr.io/almog975/ai-scan-repos-frontend:0123456789ab" in out
-    assert "image: ghcr.io/almog975/ai-scan-repos-gateway:latest" in out
+    gw = yaml.safe_load((CHART / "values-images.yaml").read_text())["imageTags"]["gateway"] or "latest"
+    assert f"image: ghcr.io/almog975/ai-scan-repos-gateway:{gw}" in out   # whatever the bot last wrote
 
 
 @needs_helm
@@ -125,7 +126,7 @@ def test_tool_containers_work_in_the_agent_workspace():
 
 def test_one_stage_per_service_per_step_and_split_gitops():
     for step in ("Test", "Build", "Scan", "Push"):
-        for svc in ("frontend", "gateway", "review-api"):
+        for svc in ("frontend", "gateway", "review-api", "scanner"):
             assert f"stage('{step}: {svc}')" in JF
             assert f"{{ expression {{ svcOn('{svc}') }} }};" in JF.split(f"stage('{step}: {svc}')")[1].split("\n")[0]
     assert "stage('GitOps: commit')" in JF and "stage('GitOps: push')" in JF
@@ -140,3 +141,70 @@ def test_job_params_and_branch_survive_jcasc_reload():
     assert {"name": "CICD_BRANCH", "value": "main"} in JENKINS["controller"]["containerEnv"]
     for p in ("BUILD_ALL", "TRIVY_SEVERITY"):
         assert f"name: '{p}'" in JF
+
+
+def test_scanner_is_built_like_the_other_services():
+    assert SERVICES["scanner"] == ("scanner-worker", "scanner", "ai-scan-repos-scanner-worker")
+    assert (ROOT / "scanner-worker/requirements-dev.txt").is_file() and (ROOT / "scanner-worker/tests").is_dir()
+    tests = JF.split("stage('Test')")[1].split("stage('Build (kaniko)')")[0]
+    assert "parallel {" in tests and "stage('Test: scanner')" in tests
+    for block, step in (("stage('Build (kaniko)')", "Build"), ("stage('Scan (trivy)')", "Scan"),
+                        ("stage('Push (ghcr.io)')", "Push")):
+        body = JF.split(block)[1].split("\n    stage(")[0]
+        assert "parallel" not in body and f"stage('{step}: scanner')" in body   # one kaniko / one trivy cache
+    # scanner-worker tests clone a throwaway git repo; python:3.12-slim has no git
+    assert "if (s == 'scanner')" in JF and "apt-get install -y -qq --no-install-recommends git" in JF
+
+
+def test_scanner_tag_flows_to_review_api_and_new_jobs():
+    cm = (CHART / "templates/scanner/configmap.yaml").read_text()
+    assert 'SCANNER_IMAGE: {{ include "ai-scan.image" (list . "scanner") | quote }}' in cm
+    dep = (CHART / "templates/review-api/deployment.yaml").read_text()
+    assert "configMapKeyRef: {name: scanner-image, key: SCANNER_IMAGE}" in dep
+    assert 'checksum/scanner: {{ include (print $.Template.BasePath "/scanner/configmap.yaml")' in dep
+
+
+def test_scanner_dockerfile_builds_gitleaks_from_source():
+    # Released gitleaks binaries carry a fixable CRITICAL Go stdlib CVE, which fails "Scan: scanner".
+    df = (ROOT / "scanner-worker/Dockerfile").read_text()
+    assert re.search(r"^FROM golang:1\.\d+\.\d+-bookworm AS gitleaks$", df, re.M)
+    assert "go install" in df and "COPY --from=gitleaks /out/gitleaks /usr/local/bin/gitleaks" in df
+    assert "releases/download/v${GITLEAKS_VERSION}" not in df
+
+
+def test_optional_override_secrets_are_wired_and_never_committed():
+    values = yaml.safe_load((CHART / "values.yaml").read_text())
+    assert values["gateway"]["oauthSecretName"] == "gateway-oauth"
+    assert values["scanner"]["aiSecretName"] == "scanner-ai"
+    assert values["secrets"]["aiApiKey"] == "" and values["scanner"]["aiBaseUrl"] == ""
+    gw = (CHART / "templates/gateway/deployment.yaml").read_text()
+    assert "secretRef: {name: {{ . }}, optional: true}" in gw
+    api = (CHART / "templates/review-api/deployment.yaml").read_text()
+    assert "{name: SCANNER_AI_SECRET_NAME, value: {{ . | quote }}}" in api
+    launcher = (ROOT / "review-api/app/launcher.py").read_text()
+    assert '{"secretRef": {"name": s.scanner_ai_secret_name, "optional": True}}' in launcher
+    for name in ("gateway-oauth", "scanner-ai"):          # created by hand, never rendered from git
+        for f in CHART.rglob("*.yaml"):
+            assert f"name: {name}\n" not in f.read_text(), f
+    assert "charts/ai-scan/values.local.yaml" in (ROOT / ".gitignore").read_text()
+
+
+def test_local_secrets_doc_uses_placeholders_only():
+    doc = (ROOT / "docs/local-secrets.md").read_text()
+    for cmd in ("create secret generic gateway-oauth", "create secret generic scanner-ai",
+                "/auth/github/callback", "rollout restart deploy/gateway", "Sealed Secrets", "External Secrets"):
+        assert cmd in doc, cmd
+    assert not re.search(r"(sk-[A-Za-z0-9]{16,}|ghp_[A-Za-z0-9]{20,}|gho_|github_pat_|AKIA[A-Z0-9]{12})", doc)
+    assert "docs/local-secrets.md" in (ROOT / "README.md").read_text()
+    cicd = (ROOT / "docs/cicd-docker-desktop.md").read_text()
+    assert "local-secrets.md" in cicd and "webhook" in cicd.lower()
+    assert '"targetRevision":"main"' in cicd and "controller.containerEnv[0].value=main" in cicd
+
+
+@needs_helm
+def test_scanner_tag_and_ai_secret_render():
+    out = _render("-f", str(CHART / "values-docker-desktop.yaml"), "-f", str(CHART / "values-images.yaml"),
+                  "--set", "imageTags.scanner=0123456789ab")
+    assert 'SCANNER_IMAGE: "ghcr.io/almog975/ai-scan-repos-scanner-worker:0123456789ab"' in out
+    assert '- {name: SCANNER_AI_SECRET_NAME, value: "scanner-ai"}' in out
+    assert "SCANNER_AI_SECRET_NAME" not in _render("--set", "scanner.aiSecretName=")

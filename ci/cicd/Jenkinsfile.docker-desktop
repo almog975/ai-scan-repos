@@ -10,6 +10,9 @@ def SERVICES = [ // svc : [source dir, values key in imageTags, image name]
   'frontend'  : ['frontend',   'frontend',  'ai-scan-repos-frontend'],
   'gateway'   : ['gateway',    'gateway',   'ai-scan-repos-gateway'],
   'review-api': ['review-api', 'reviewApi', 'ai-scan-repos-review-api'],
+  // Not a Deployment: review-api launches one scanner Job per review with SCANNER_IMAGE, which the chart
+  // renders from imageTags.scanner (ConfigMap scanner-image; its checksum rolls review-api on a bump).
+  'scanner'   : ['scanner-worker', 'scanner', 'ai-scan-repos-scanner-worker'],
 ]
 def REGISTRY  = 'ghcr.io/almog975'
 def REPO      = 'github.com/almog975/ai-scan-repos.git'
@@ -35,6 +38,8 @@ def testSvc = { String s ->
     } }
   } else {
     container('python') { dir(SERVICES[s][0]) {
+      // scanner-worker tests clone a local git repo; python:3.12-slim has no git (the container runs as root).
+      if (s == 'scanner') { sh 'command -v git >/dev/null || (apt-get update -qq && apt-get install -y -qq --no-install-recommends git >/dev/null)' }
       sh """python -m venv /tmp/venv-${s} && /tmp/venv-${s}/bin/pip install -q -r requirements.txt -r requirements-dev.txt
             /tmp/venv-${s}/bin/python -m pytest -q -o addopts= -p no:cacheprovider --junitxml=\$WORKSPACE/reports/${s}-junit.xml tests"""
     } }
@@ -112,6 +117,7 @@ pipeline {
         stage('Test: frontend')   { when { expression { svcOn('frontend') } };   steps { script { testSvc('frontend') } } }
         stage('Test: gateway')    { when { expression { svcOn('gateway') } };    steps { script { testSvc('gateway') } } }
         stage('Test: review-api') { when { expression { svcOn('review-api') } }; steps { script { testSvc('review-api') } } }
+        stage('Test: scanner')    { when { expression { svcOn('scanner') } };    steps { script { testSvc('scanner') } } }
       }
     }
 
@@ -121,6 +127,7 @@ pipeline {
         stage('Build: frontend')   { when { expression { svcOn('frontend') } };   steps { script { buildSvc('frontend') } } }
         stage('Build: gateway')    { when { expression { svcOn('gateway') } };    steps { script { buildSvc('gateway') } } }
         stage('Build: review-api') { when { expression { svcOn('review-api') } }; steps { script { buildSvc('review-api') } } }
+        stage('Build: scanner')    { when { expression { svcOn('scanner') } };    steps { script { buildSvc('scanner') } } }
       }
     }
 
@@ -130,6 +137,7 @@ pipeline {
         stage('Scan: frontend')   { when { expression { svcOn('frontend') } };   steps { script { scanSvc('frontend') } } }
         stage('Scan: gateway')    { when { expression { svcOn('gateway') } };    steps { script { scanSvc('gateway') } } }
         stage('Scan: review-api') { when { expression { svcOn('review-api') } }; steps { script { scanSvc('review-api') } } }
+        stage('Scan: scanner')    { when { expression { svcOn('scanner') } };    steps { script { scanSvc('scanner') } } }
       }
     }
 
@@ -140,6 +148,7 @@ pipeline {
         stage('Push: frontend')   { when { expression { svcOn('frontend') } };   steps { script { pushSvc('frontend') } } }
         stage('Push: gateway')    { when { expression { svcOn('gateway') } };    steps { script { pushSvc('gateway') } } }
         stage('Push: review-api') { when { expression { svcOn('review-api') } }; steps { script { pushSvc('review-api') } } }
+        stage('Push: scanner')    { when { expression { svcOn('scanner') } };    steps { script { pushSvc('scanner') } } }
       }
     }
 
