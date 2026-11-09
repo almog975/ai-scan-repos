@@ -82,6 +82,9 @@ scanner:
   aiProvider: none
   aiModel: local-model
   aiBaseUrl: ""
+  # Optional pre-created Secret with real AI_PROVIDER / AI_MODEL / AI_BASE_URL / AI_API_KEY defaults for scanner
+  # Jobs (docs/local-secrets.md). Loaded after scanner-secrets (overrides its empty values). Missing = ignored.
+  aiSecretName: scanner-ai
 
 ingress:
   enabled: true

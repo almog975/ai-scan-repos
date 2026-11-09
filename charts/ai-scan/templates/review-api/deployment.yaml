@@ -40,6 +40,11 @@ spec:
             - {name: REPORTS_PVC, value: reports}
             - {name: SCANNER_SERVICE_ACCOUNT, value: scanner}
             - {name: SCANNER_SECRET_NAME, value: scanner-secrets}
+            {{- with .Values.scanner.aiSecretName }}
+            # Optional out-of-chart Secret with real AI_* defaults (created by you, never committed); scanner Jobs
+            # load it after scanner-secrets with optional: true, so it overrides the empty placeholders.
+            - {name: SCANNER_AI_SECRET_NAME, value: {{ . | quote }}}
+            {{- end }}
             - {name: SCANNER_IMAGE_PULL_POLICY, value: {{ .Values.scanner.imagePullPolicy | quote }}}
             - name: SCANNER_IMAGE
               valueFrom:

@@ -48,6 +48,16 @@ def test_manifest_contract(template, tmp_path):
         assert out.returncode == 0, out.stdout + out.stderr
 
 
+def test_optional_operator_ai_secret_sits_between_defaults_and_per_review_secret():
+    s = Settings(scanner_image="reg/s:abc", scanner_ai_secret_name="scanner-ai")
+    c = build_job_manifest(s, SPEC, ai_secret="scan-x-ai")["spec"]["template"]["spec"]["containers"][0]
+    assert c["envFrom"] == [{"secretRef": {"name": "scanner-secrets"}},
+                            {"secretRef": {"name": "scanner-ai", "optional": True}},
+                            {"secretRef": {"name": "scan-x-ai"}}]
+    c = build_job_manifest(s, SPEC)["spec"]["template"]["spec"]["containers"][0]
+    assert [x["secretRef"]["name"] for x in c["envFrom"]] == ["scanner-secrets", "scanner-ai"]
+
+
 @pytest.mark.parametrize("img", ["reg/scanner", "reg/scanner:latest"])
 def test_image_must_be_pinned(img):
     with pytest.raises(ValueError):

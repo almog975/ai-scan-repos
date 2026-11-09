@@ -130,8 +130,11 @@ def build_job_manifest(s: Settings, spec: JobSpec, ai_secret: str | None = None)
                                  {"name": "REVIEW_API_URL", "value": s.review_api_internal_url}]
     names = {e["name"] for e in ours}
     c["env"] = [e for e in c.get("env", []) if e["name"] not in names] + ours
-    c["envFrom"] = [{"secretRef": {"name": s.scanner_secret_name}}] + (
-        [{"secretRef": {"name": ai_secret}}] if ai_secret else [])
+    # Later sources win on duplicate keys: chart defaults < optional operator AI Secret < per-review provider Secret.
+    c["envFrom"] = ([{"secretRef": {"name": s.scanner_secret_name}}]
+                    + ([{"secretRef": {"name": s.scanner_ai_secret_name, "optional": True}}]
+                       if s.scanner_ai_secret_name else [])
+                    + ([{"secretRef": {"name": ai_secret}}] if ai_secret else []))
     mounts = [v for v in c.get("volumeMounts", []) if v["name"] != "reports"]
     c["volumeMounts"] = mounts + [{"name": "reports", "mountPath": "/reports"}]
     vols = [v for v in ps.get("volumes", []) if v["name"] != "reports"]

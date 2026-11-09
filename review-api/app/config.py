@@ -41,6 +41,10 @@ class Settings(BaseSettings):
     reports_pvc: str = "reports"
     scanner_service_account: str = "scanner"
     scanner_secret_name: str = "scanner-secrets"
+    # Optional extra Secret loaded into every scanner Job after scanner-secrets (optional: true, so a missing Secret
+    # is fine). Lets an operator set default AI_* values without touching the chart-managed scanner-secrets;
+    # a per-review provider Secret (admin-configured provider) still wins. Empty = off.
+    scanner_ai_secret_name: str = ""
     # Path of the mounted scanner-job-template ConfigMap (Job YAML). Empty -> built-in template.
     scanner_job_template: str = ""
     scanner_active_deadline_seconds: int = 21600
