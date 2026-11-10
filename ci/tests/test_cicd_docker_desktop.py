@@ -126,10 +126,11 @@ def test_tool_containers_work_in_the_agent_workspace():
 
 def test_one_stage_per_service_per_step_and_split_gitops():
     for step in ("Test", "Build", "Scan", "Push"):
-        for svc in ("frontend", "gateway", "review-api", "scanner"):
-            assert f"stage('{step}: {svc}')" in JF
-            assert f"{{ expression {{ svcOn('{svc}') }} }};" in JF.split(f"stage('{step}: {svc}')")[1].split("\n")[0]
-    assert "stage('GitOps: commit')" in JF and "stage('GitOps: push')" in JF
+        for svc, name in (("frontend", "frontend"), ("gateway", "gateway"), ("review-api", "review-api"),
+                          ("scanner", "scanner-worker")):
+            assert f"stage('{step}: {name}')" in JF
+            assert f"{{ expression {{ svcOn('{svc}') }} }};" in JF.split(f"stage('{step}: {name}')")[1].split("\n")[0]
+    assert "stage('GitOps')" in JF and "GitOps:" not in JF
     assert "pipeline-graph-view:" in (ROOT / "deploy/jenkins/local/values-local.yaml").read_text()
 
 
@@ -146,12 +147,11 @@ def test_job_params_and_branch_survive_jcasc_reload():
 def test_scanner_is_built_like_the_other_services():
     assert SERVICES["scanner"] == ("scanner-worker", "scanner", "ai-scan-repos-scanner-worker")
     assert (ROOT / "scanner-worker/requirements-dev.txt").is_file() and (ROOT / "scanner-worker/tests").is_dir()
-    tests = JF.split("stage('Test')")[1].split("stage('Build (kaniko)')")[0]
-    assert "parallel {" in tests and "stage('Test: scanner')" in tests
-    for block, step in (("stage('Build (kaniko)')", "Build"), ("stage('Scan (trivy)')", "Scan"),
-                        ("stage('Push (ghcr.io)')", "Push")):
-        body = JF.split(block)[1].split("\n    stage(")[0]
-        assert "parallel" not in body and f"stage('{step}: scanner')" in body   # one kaniko / one trivy cache
+    tests = JF.split("stage('Test')")[1].split("stage('Build')")[0]
+    assert "parallel {" in tests and "stage('Test: scanner-worker')" in tests
+    for step in ("Build", "Scan", "Push"):
+        body = JF.split(f"stage('{step}')")[1].split("\n    stage(")[0]
+        assert "parallel" not in body and f"stage('{step}: scanner-worker')" in body   # one kaniko / one trivy cache
     # scanner-worker tests clone a throwaway git repo; python:3.12-slim has no git
     assert "if (s == 'scanner')" in JF and "apt-get install -y -qq --no-install-recommends git" in JF
 
@@ -208,3 +208,19 @@ def test_scanner_tag_and_ai_secret_render():
     assert 'SCANNER_IMAGE: "ghcr.io/almog975/ai-scan-repos-scanner-worker:0123456789ab"' in out
     assert '- {name: SCANNER_AI_SECRET_NAME, value: "scanner-ai"}' in out
     assert "SCANNER_AI_SECRET_NAME" not in _render("--set", "scanner.aiSecretName=")
+
+
+def test_stage_view_top_level_is_seven_columns():
+    # Top-level stages of the pipeline, in order (Checkout SCM is the implicit declarative checkout).
+    body = JF.split("  stages {", 1)[1]
+    top = re.findall(r"^    stage\('([^']+)'\)", body, re.M)
+    assert top == ["Loop guard", "Test", "Build", "Scan", "Push", "GitOps"]
+    assert "skipDefaultCheckout" not in JF
+
+
+def test_gitops_commits_then_pushes_in_one_stage():
+    g = JF.split("stage('GitOps')")[1].split("  post {")[0]
+    assert g.index("commit -q -m 'ci(gitops): ${changed.join(',')} -> ${env.GIT_SHA} [skip ci]'") < g.index("credentialsId: 'github-push'")
+    nothing = g.split("already has these tags.'")[1].split("\n")[0]
+    assert "return" in nothing                                   # no commit -> no push
+    assert "when { expression { !skipBuild } }" in g

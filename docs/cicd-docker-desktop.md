@@ -38,7 +38,7 @@ URLs assume ingress-nginx on NodePort 30080; with the LoadBalancer on :80, drop 
 | Jenkins credential ID | Kind | Token |
 |---|---|---|
 | `ghcr-push` | Username with password: `almog975` / token | GitHub **classic** PAT with `write:packages` (GHCR doesn't accept fine-grained tokens) |
-| `github-push` | Username with password: `almog975` / token | Classic PAT with `repo` (what Lior uses), or a fine-grained PAT on `almog975/ai-scan-repos` only with *Contents: Read and write*. A 403 in **GitOps: push** means the token can't write to the repo |
+| `github-push` | Username with password: `almog975` / token | Classic PAT with `repo` (what Lior uses), or a fine-grained PAT on `almog975/ai-scan-repos` only with *Contents: Read and write*. A 403 in the **GitOps** stage's push means the token can't write to the repo |
 
 Jenkins > Manage Jenkins > Credentials > System > Global credentials > **Add Credentials**. The IDs must match
 exactly. If `main` has branch protection that blocks direct pushes, the bot's push fails. In that case, allow
@@ -97,8 +97,10 @@ From here on, change the app through git, not `helm upgrade`. Argo CD's self-hea
 git commit -am "feat(frontend): demo change" && git push
 ```
 1. Within 2 minutes Jenkins starts **ai-scan-cicd**, and the build description shows `frontend @ <sha>`. Stages:
-   Loop guard, then `Test: <svc>` (parallel), `Build: <svc>`, `Scan: <svc>`, `Push: <svc>` (sequential), then
-   GitOps: commit and GitOps: push. Services that didn't change show as skipped.
+   Checkout SCM, Loop guard, Test, Build, Scan, Push, GitOps. Inside them, `Test: <svc>` runs in parallel and
+   `Build: <svc>`, `Scan: <svc>`, `Push: <svc>` run one at a time; services that didn't change show as skipped.
+   The build's **Pipeline Graph** view (pipeline-graph-view plugin) shows those 7 top-level stages with the services nested;
+   the classic Stage View table flattens every nested stage into its own column.
 2. GitHub shows the commit `ci(gitops): frontend -> <sha> [skip ci]` by `ai-scan-ci-bot`. The next Jenkins poll
    ends as NOT_BUILT ("CI bot / [skip ci] commit").
 3. Within about a minute Argo CD syncs:
