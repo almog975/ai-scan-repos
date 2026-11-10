@@ -57,7 +57,7 @@ curl -kN https://ai-scan.local/api/reviews/<id>/progress -H 'Cookie: <session>' 
   `Path(\`/api/reviews/{id:[^/]+}/progress\`)` instead.
 - Never add the `buffering` middleware to `/api` routes; it would break SSE.
 
-## Jenkins and Argo CD (infra/ingress, applied by the installer)
+## Jenkins and Argo CD (infra/bootstrap/ingress, applied by the installer)
 TLS secrets live in each namespace: **`jenkins-tls`** (ns jenkins) and **`argocd-ingress-tls`** (ns argocd).
 Hosts: local `jenkins.ai-scan.local` / `argocd.ai-scan.local`; k3s `jenkins.ai-scan.127.0.0.1.nip.io` /
 `argocd.ai-scan.127.0.0.1.nip.io`; eks `jenkins.ai-scan.example.com` / `argocd.ai-scan.example.com` (placeholders).

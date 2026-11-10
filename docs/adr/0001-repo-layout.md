@@ -15,37 +15,37 @@ AI Scan Repos is a **standalone repository, `almog975/ai-scan-repos`**, with all
 
 | Folder | Contents | Owner (R) |
 |---|---|---|
-| `contracts/` | `gateway.openapi.yaml`, `review-api.openapi.yaml`, `finding/report/checkpoint.schema.json` — **source of truth** | Planner |
-| `frontend/` | React+Vite SPA, nginx image | Coder |
-| `gateway/` | GitHub OAuth, sessions, webhook HMAC, `/api` proxy | Coder |
-| `review-api/` | reviews REST, reconciler/watchdog, Job launcher | Coder |
-| `scanner-worker/` | scanner Job image (semgrep, gitleaks, trivy, AI) | Coder |
-| `deploy/` | `deploy/<component>/{base,overlays}` — Kustomize base + overlays (`local`, `k3s`, `eks`) per component | Infra (content), Pipelines (image tags, Argo CD apps) |
+| `services/contracts/` | `gateway.openapi.yaml`, `review-api.openapi.yaml`, `finding/report/checkpoint.schema.json` — **source of truth** | Planner |
+| `services/frontend/` | React+Vite SPA, nginx image | Coder |
+| `services/gateway/` | GitHub OAuth, sessions, webhook HMAC, `/api` proxy | Coder |
+| `services/review-api/` | reviews REST, reconciler/watchdog, Job launcher | Coder |
+| `services/scanner-worker/` | scanner Job image (semgrep, gitleaks, trivy, AI) | Coder |
+| `infra/k8s/` | `infra/k8s/<component>/{base,overlays}` — Kustomize base + overlays (`local`, `k3s`, `eks`) per component | Infra (content), Pipelines (image tags, Argo CD apps) |
 | `infra/` | K3s config, DB schema/migrations, kube-prometheus-stack values, installer/Terraform (TODO) | Infra |
 | `docs/` | `adr/`, `diagrams/`, `runbooks/` | Docs |
 
 Rules:
-- **Contracts are the source of truth.** Where code and `contracts/` disagree, the code changes to follow
+- **Contracts are the source of truth.** Where code and `services/contracts/` disagree, the code changes to follow
   the contracts (via PR that also updates contract tests). One exception has been adopted into the plan:
   **Brief depth sends the top 10 findings** (with code context) to the AI, not every file with findings.
-- **GitOps:** Argo CD Applications point at `deploy/<component>/overlays/<target>` paths in this
-  repo (targets: `local`, `k3s`, `eks`). Jenkins bumps image tags only under `deploy/` (`kustomize edit set image`).
-- Per-component CI: Jenkins path filters (`frontend/**`, `gateway/**`, …) trigger only the affected build;
+- **GitOps:** Argo CD Applications point at `infra/k8s/<component>/overlays/<target>` paths in this
+  repo (targets: `local`, `k3s`, `eks`). Jenkins bumps image tags only under `infra/k8s/` (`kustomize edit set image`).
+- Per-component CI: Jenkins path filters (`services/frontend/**`, `services/gateway/**`, …) trigger only the affected build;
   each folder has `make test` (root `Makefile` runs all, `make contracts` validates contracts).
 - No Secret YAML anywhere in git; secrets are created from the CLI (runbook). Gitleaks runs on every build.
-- CODEOWNERS per folder enforces the Infra/Pipelines split in `deploy/`.
+- CODEOWNERS per folder enforces the Infra/Pipelines split in `infra/k8s/`.
 
 - **Argo CD** has one Application per component and target, each watching
-  `deploy/<component>/overlays/<target>` where `<target>` ∈ `local`, `k3s`, `eks`.
+  `infra/k8s/<component>/overlays/<target>` where `<target>` ∈ `local`, `k3s`, `eks`.
 
 ## Consequences
 - + One PR can change a contract, its implementations and manifests atomically; no cross-repo versioning.
 - + Own webhooks, branch protection, CI and Argo CD source — nothing shared with other projects.
 - + Paths in docs, CI and Argo CD are relative to the repo root (no project prefix).
-- − Jenkins needs write access to this repo (limited by convention + CODEOWNERS to `deploy/` tag bumps);
-  Argo CD Applications are path-scoped so commits outside `deploy/` don't trigger syncs.
+- − Jenkins needs write access to this repo (limited by convention + CODEOWNERS to `infra/k8s/` tag bumps);
+  Argo CD Applications are path-scoped so commits outside `infra/k8s/` don't trigger syncs.
 - − Pipelines must use path filters to avoid rebuilding every component.
-- Done: manifests live in `deploy/<component>/{base,overlays/{local,k3s,eks}}`, matching `deploy/argocd/apps/`, the Jenkinsfile and [docs/ci.md](../ci.md).
+- Done: manifests live in `infra/k8s/<component>/{base,overlays/{local,k3s,eks}}`, matching `infra/argocd/apps/`, the Jenkinsfile and [docs/ci.md](../ci.md).
 
 ## Alternatives
 | Option | Pros | Cons | Why not chosen |

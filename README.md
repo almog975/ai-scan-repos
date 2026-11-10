@@ -2,7 +2,7 @@
 
 AI-assisted security review of GitHub repositories. A user logs in with GitHub, pastes a repo URL, and picks a depth and an AI provider. **review-api** then launches a short-lived **scanner-worker** Kubernetes Job (one per review). The Job clones the repo, runs **Semgrep, Gitleaks and Trivy**, optionally asks an AI model for explanations and fixes, and writes `report.json` / `report.md` to a shared reports volume. Reviews can be paused and resumed from a per-file checkpoint and recover automatically when a Job gets stuck.
 
-Technion DevOps final project. Standalone repo `almog975/ai-scan-repos`; all paths are relative to the repo root ([ADR-0001](docs/adr/0001-repo-layout.md)). `contracts/` is the source of truth for APIs and schemas.
+Technion DevOps final project. Standalone repo `almog975/ai-scan-repos`; all paths are relative to the repo root ([ADR-0001](docs/adr/0001-repo-layout.md)). `services/contracts/` is the source of truth for APIs and schemas.
 
 ## Architecture
 
@@ -12,12 +12,12 @@ Technion DevOps final project. Standalone repo `almog975/ai-scan-repos`; all pat
 
 | Component | Path | Tech | Port | Role |
 |---|---|---|---|---|
-| frontend | `frontend/` | React + Vite → nginx-unprivileged | 8080 | SPA (English/Hebrew): new review, live progress, report, admin AI providers |
-| gateway | `gateway/` | FastAPI | 8000 | GitHub OAuth, sessions + CSRF, `/me`, proxies `/api/*` to review-api with the internal token |
-| review-api | `review-api/` | FastAPI, SQLAlchemy 2, Alembic, Postgres (SQLite in dev) | 8001 | Reviews, state machine, Job launcher, reconciler, reports, encrypted AI keys, `/metrics` |
-| scanner-worker | `scanner-worker/` | Python (`python -m scanner.run --review-id X`) + semgrep, gitleaks, trivy | 8002 (probes) | Clone → scan → AI → report; checkpoint after each file |
-| postgres | `deploy/postgres/` | PostgreSQL 16 | 5432 | Database |
-| platform | `deploy/platform/` | Kustomize | – | Reports PVC, ingress, NetworkPolicies, ServiceMonitors, alerts, `reports-cleanup` CronJob |
+| frontend | `services/frontend/` | React + Vite → nginx-unprivileged | 8080 | SPA (English/Hebrew): new review, live progress, report, admin AI providers |
+| gateway | `services/gateway/` | FastAPI | 8000 | GitHub OAuth, sessions + CSRF, `/me`, proxies `/api/*` to review-api with the internal token |
+| review-api | `services/review-api/` | FastAPI, SQLAlchemy 2, Alembic, Postgres (SQLite in dev) | 8001 | Reviews, state machine, Job launcher, reconciler, reports, encrypted AI keys, `/metrics` |
+| scanner-worker | `services/scanner-worker/` | Python (`python -m scanner.run --review-id X`) + semgrep, gitleaks, trivy | 8002 (probes) | Clone → scan → AI → report; checkpoint after each file |
+| postgres | `infra/k8s/postgres/` | PostgreSQL 16 | 5432 | Database |
+| platform | `infra/k8s/platform/` | Kustomize | – | Reports PVC, ingress, NetworkPolicies, ServiceMonitors, alerts, `reports-cleanup` CronJob |
 
 **Depths:** `quick` = scanners + a short AI summary · `brief` = AI on the **top 10 findings** with code context · `deep` = AI on every code file (up to `DEEP_MAX_FILES`, 40).
 **AI providers** are managed by admins. The DB `kind` (`onprem` | `cloud`) decides cloud vs on-prem. Cloud providers need `ack_cloud`, and their reports carry a cloud banner. Grok runs as `openai_compatible` with `https://api.x.ai/v1`, `kind: cloud`.
@@ -30,7 +30,7 @@ Technion DevOps final project. Standalone repo `almog975/ai-scan-repos`; all pat
 ```bash
 git clone https://github.com/almog975/ai-scan-repos.git && cd ai-scan-repos
 python3 -m venv .venv && . .venv/bin/activate
-pip install -r review-api/requirements.txt -r scanner-worker/requirements.txt   # includes semgrep
+pip install -r services/review-api/requirements.txt -r services/scanner-worker/requirements.txt   # includes semgrep
 # gitleaks / trivy are used if on PATH, otherwise reported as "skipped"
 export INTERNAL_API_TOKEN=dev-token AI_PROVIDER=none \
        REPORTS_DIR=$PWD/.local/reports WORK_DIR=$PWD/.local/work LOCAL_WORKER_CWD=$PWD/scanner-worker \
@@ -76,17 +76,17 @@ docker build -t ai-scan-repos-frontend:latest frontend
 docker build -t ai-scan-repos-scanner-worker:latest scanner-worker
 # k3d only (skip on Docker Desktop Kubernetes):
 #   k3d image import ai-scan-repos-review-api:latest ai-scan-repos-gateway:latest ai-scan-repos-frontend:latest ai-scan-repos-scanner-worker:latest -c <cluster>
-kubectl apply -k deploy/overlays/local
+kubectl apply -k infra/k8s/overlays/local
 kubectl get pods -n ai-scan-repos
 kubectl -n ai-scan-repos port-forward svc/frontend 8080:8080
 # open http://localhost:8080
 # GitHub OAuth App: Authorization callback URL = http://localhost:8080/auth/github/callback (exactly)
 # migrate logs: kubectl -n ai-scan-repos logs job/review-api-migrate
-# teardown:     kubectl delete -k deploy/overlays/local
+# teardown:     kubectl delete -k infra/k8s/overlays/local
 ```
 
 Or skip the local builds and pull from GHCR (after the Images workflow has pushed and the
-packages are Public): `kubectl apply -k deploy/overlays/local-registry`. Details:
+packages are Public): `kubectl apply -k infra/k8s/overlays/local-registry`. Details:
 [docs/local-k3d.md](docs/local-k3d.md#github-container-registry).
 
 Full notes (placeholders are NOT FOR PRODUCTION): [docs/local-k3d.md](docs/local-k3d.md#lightweight-overlay).
@@ -96,10 +96,10 @@ Auto-heal end to end on this stack (WSL / Git Bash): `ci/heal/e2e-local.sh`. One
 ### 3a. Docker Desktop Kubernetes (no local builds)
 
 ```powershell
-kubectl apply -k deploy/overlays/local-registry
+kubectl apply -k infra/k8s/overlays/local-registry
 kubectl -n ai-scan-repos port-forward svc/frontend 8080:8080   # open http://localhost:8080
 ```
-Don't apply `deploy/*/overlays/k3s` on Docker Desktop (production mode, in-cluster registry, k3s-only API IP 10.43.0.1).
+Don't apply `infra/k8s/*/overlays/k3s` on Docker Desktop (production mode, in-cluster registry, k3s-only API IP 10.43.0.1).
 Troubleshooting for `SCANNER_IMAGE must be pinned`, `/readyz` Connection refused, and ImagePull errors:
 [docs/local-k3d.md#docker-desktop-quickstart](docs/local-k3d.md#docker-desktop-quickstart-recommended-deploylocal-registry).
 
@@ -112,14 +112,14 @@ make local-k8s           # k3d cluster + registry, images, secrets from .env, de
 make local-k8s-down
 ```
 
-Uses `deploy/*/overlays/local` (k3d registry `:dev`), not `deploy/overlays/local`. Windows: run inside WSL2. Details: [docs/local-k3d.md](docs/local-k3d.md).
+Uses `infra/k8s/*/overlays/local` (k3d registry `:dev`), not `infra/k8s/overlays/local`. Windows: run inside WSL2. Details: [docs/local-k3d.md](docs/local-k3d.md).
 
 ### 4. K3s (GitOps)
 
 ```bash
-cp infra/installer/installer.env.example infra/installer/installer.env   # fill REPLACE_ME (never committed)
-infra/installer/aiscan-install.sh --config infra/installer/installer.env --dry-run install
-infra/installer/aiscan-install.sh --config infra/installer/installer.env install
+cp infra/bootstrap/installer/installer.env.example infra/bootstrap/installer/installer.env   # fill REPLACE_ME (never committed)
+infra/bootstrap/installer/aiscan-install.sh --config infra/bootstrap/installer/installer.env --dry-run install
+infra/bootstrap/installer/aiscan-install.sh --config infra/bootstrap/installer/installer.env install
 ```
 
 `aiscan-install.sh` is a CLI (there is no web installer; the old web wizard was removed in Phase 9). It runs preflight → bootstrap → registry → secrets → images → deploy (Argo CD + app-of-apps) → verify. Details: [installer.md](docs/installer.md), [k3s.md](docs/k3s.md), [runbook](docs/runbooks/runbook.md).
@@ -127,18 +127,18 @@ infra/installer/aiscan-install.sh --config infra/installer/installer.env install
 ### Tests
 
 ```bash
-make contracts          # validate contracts/
+make contracts          # validate services/contracts/
 make test               # every component (pytest / vitest), JUnit in <component>/reports/
-cd frontend/e2e && python -m pytest -q   # Playwright e2e (mock stack); AISCAN_FULLSTACK=1 for the real stack
+cd services/frontend/e2e && python -m pytest -q   # Playwright e2e (mock stack); AISCAN_FULLSTACK=1 for the real stack
 ```
 
 ## CI/CD
 
-GitHub Actions (`.github/workflows/images.yml`) builds and pushes `ghcr.io/almog975/ai-scan-repos-<svc>:sha-<short>` (+ `:latest` on main) for the local-registry overlay. Jenkins (k8s agent, kaniko, no Docker daemon): **Test** (contracts, unit, schemathesis, DB parity) → **Build** → **Trivy** (fail on HIGH/CRITICAL) → **Push** `<registry>/ai-scan/<svc>:<sha>` (main) → **tag bump** in `deploy/<component>/overlays/k3s` (`[skip ci]`). Argo CD (app-of-apps `ai-scan-root`, apps `ai-scan-<component>-k3s`, ns `ai-scan-repos`) syncs `main` with prune + selfHeal. Rollback = `git revert` of the tag bump via PR.
+GitHub Actions (`.github/workflows/images.yml`) builds and pushes `ghcr.io/almog975/ai-scan-repos-<svc>:sha-<short>` (+ `:latest` on main) for the local-registry overlay. Jenkins (k8s agent, kaniko, no Docker daemon): **Test** (contracts, unit, schemathesis, DB parity) → **Build** → **Trivy** (fail on HIGH/CRITICAL) → **Push** `<registry>/ai-scan/<svc>:<sha>` (main) → **tag bump** in `infra/k8s/<component>/overlays/k3s` (`[skip ci]`). Argo CD (app-of-apps `ai-scan-root`, apps `ai-scan-<component>-k3s`, ns `ai-scan-repos`) syncs `main` with prune + selfHeal. Rollback = `git revert` of the tag bump via PR.
 
 **Auto-heal:** Jenkins job `ai-scan-autoheal` (every 10 min + Build Now, `DRY_RUN` parameter) deletes crashed/evicted pods, re-runs a failed migrate Job, restarts deployments failing `/readyz`, checks postgres and syncs OutOfSync Argo CD apps, with namespaced RBAC only ([docs/autoheal.md](docs/autoheal.md)).
 
-**Deploy:** Jenkins pushes the tag bump to `deploy/<svc>-<sha>` and opens a PR (`[skip ci]`); Almog merges; Argo CD syncs ([docs/ci-cd-flow.md](docs/ci-cd-flow.md)). Needs the `github-bot` PAT ([deploy/jenkins/README.md](deploy/jenkins/README.md#github-bot-pat-deploy-pr-flow)).
+**Deploy:** Jenkins pushes the tag bump to `deploy/<svc>-<sha>` and opens a PR (`[skip ci]`); Almog merges; Argo CD syncs ([docs/ci-cd-flow.md](docs/ci-cd-flow.md)). Needs the `github-bot` PAT ([infra/jenkins/README.md](infra/jenkins/README.md#github-bot-pat-deploy-pr-flow)).
 
 **Docker Desktop CI/CD + GitOps** (Jenkins polls, kaniko, trivy, GHCR, bot tag bump, Argo CD): [docs/cicd-docker-desktop.md](docs/cicd-docker-desktop.md); real OAuth / AI key Secrets: [docs/local-secrets.md](docs/local-secrets.md).
 
@@ -151,10 +151,10 @@ GitHub Actions (`.github/workflows/images.yml`) builds and pushes `ghcr.io/almog
 | Users | [User guide](docs/user-guide.md) |
 | Admins / operators | [Admin guide](docs/admin-guide.md) · [AI providers](docs/runbooks/admin-ai-providers.md) · [secrets](docs/secrets-runbook.md) · [local secrets (OAuth, AI key)](docs/local-secrets.md) · [monitoring](docs/monitoring.md) · [stuck review](docs/runbooks/stuck-review.md) · [rollback](docs/runbooks/rollback.md) · [storage](docs/storage-plan.md) |
 | Demo | [Live demo script](docs/runbooks/demo-script.md) · [Demo video script](docs/demo-video-script.md) |
-| Design | [ADRs](docs/adr/) · [report.md spec](docs/report-md-spec.md) · [severity mapping](docs/severity-mapping.md) · [contracts](contracts/README.md) |
+| Design | [ADRs](docs/adr/) · [report.md spec](docs/report-md-spec.md) · [severity mapping](docs/severity-mapping.md) · [contracts](services/contracts/README.md) |
 | Everything | [docs/README.md](docs/README.md) |
 
-Folder READMEs: [contracts](contracts/README.md) · [frontend](frontend/README.md) · [gateway](gateway/README.md) · [review-api](review-api/README.md) · [scanner-worker](scanner-worker/README.md) · [deploy](deploy/README.md) · [infra](infra/README.md)
+Folder READMEs: [contracts](services/contracts/README.md) · [frontend](services/frontend/README.md) · [gateway](services/gateway/README.md) · [review-api](services/review-api/README.md) · [scanner-worker](services/scanner-worker/README.md) · [deploy](infra/k8s/README.md) · [infra](infra/README.md)
 
 ## Status
 

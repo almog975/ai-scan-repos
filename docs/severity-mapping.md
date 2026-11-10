@@ -1,9 +1,9 @@
 # Severity mapping
 
-Every finding carries a normalized `severity` from `contracts/common.schema.json#/$defs/severity`:
-`critical | high | medium | low | info` (lowercase). Normalization: `scanner-worker/scanner/tools.py` →
+Every finding carries a normalized `severity` from `services/contracts/common.schema.json#/$defs/severity`:
+`critical | high | medium | low | info` (lowercase). Normalization: `services/scanner-worker/scanner/tools.py` →
 `SEVERITY_MAP` / `map_severity()`; reports sort by `SEV_ORDER` (`scanner/report.py`). Implemented on
-`feat/phase-2-scanner` (tests: `scanner-worker/tests/test_phase2_*.py`, `test_tools.py`).
+`feat/phase-2-scanner` (tests: `services/scanner-worker/tests/test_phase2_*.py`, `test_tools.py`).
 
 | Tool | Native level | Normalized |
 |---|---|---|

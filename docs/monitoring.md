@@ -1,7 +1,7 @@
 # Monitoring (Phase 7)
 
 Prometheus + Grafana come from **kube-prometheus-stack** (`infra/helm/kube-prometheus-stack/values.yaml`,
-namespace `monitoring`). Everything app-specific lives next to the app in `deploy/platform/base` and is synced by
+namespace `monitoring`). Everything app-specific lives next to the app in `infra/k8s/platform/base` and is synced by
 Argo CD with the rest of the platform:
 
 | File | What |
@@ -20,7 +20,7 @@ Prometheus pods in `monitoring` reach gateway:8000 and review-api:8001; nothing 
 Labels are bounded enums only: `state`, `outcome`, `result`, `action`, `kind` (`onprem|cloud|unknown`),
 `source` (`test|worker`), `stage`, `method`, `route` (the **route template**, e.g. `/reviews/{id}`, or
 `unmatched`), `status`. Never a review id, user, repo, URL or commit. `ci/tests/test_monitoring.py` and
-`review-api/tests/test_metrics.py` enforce this.
+`services/review-api/tests/test_metrics.py` enforce this.
 
 ## review-api metrics
 

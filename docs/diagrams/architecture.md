@@ -1,8 +1,8 @@
 # Architecture — AI Scan Repos (as implemented, Phase 1)
 
-> Snapshot of the Phase 1 backend (review-api + scanner-worker). Since then `frontend/`, `gateway/`,
-> `contracts/`, `deploy/` and `infra/` were added (deployment is via the CLI installer `infra/installer/aiscan-install.sh` + Argo CD; there is no web installer); the target picture is [architecture-v1.md](architecture-v1.md).
-> `contracts/` is the source of truth; where this page and the contracts differ, code follows the contracts
+> Snapshot of the Phase 1 backend (review-api + scanner-worker). Since then `services/frontend/`, `services/gateway/`,
+> `services/contracts/` and `infra/` (Kustomize in `infra/k8s/`) were added (deployment is via the CLI installer `infra/bootstrap/installer/aiscan-install.sh` + Argo CD; there is no web installer); the target picture is [architecture-v1.md](architecture-v1.md).
+> `services/contracts/` is the source of truth; where this page and the contracts differ, code follows the contracts
 > (exception: Brief = top 10 findings, as below).
 
 ## Component & data-flow diagram
@@ -75,7 +75,7 @@ with `--redact` and secret values are never stored.
 
 ## Observability
 `/metrics` on review-api (:8001) and gateway (:8000), scraped by kube-prometheus-stack through ServiceMonitors;
-PrometheusRules and a Grafana dashboard ship in `deploy/platform/base`. Metric names, labels, alerts and the
+PrometheusRules and a Grafana dashboard ship in `infra/k8s/platform/base`. Metric names, labels, alerts and the
 dashboard are documented in [docs/monitoring.md](../monitoring.md). Probes `/healthz` (liveness), `/readyz` (DB).
 
 ## Configuration

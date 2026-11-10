@@ -1,7 +1,7 @@
-# gateway/
+# services/gateway/
 
 Part of the AI Scan Repos repo (`almog975/ai-scan-repos`). See the
-[top-level README](../README.md) and [ADR-0001](../docs/adr/0001-repo-layout.md).
+[top-level README](../../README.md) and [ADR-0001](../../docs/adr/0001-repo-layout.md).
 
 ## Purpose
 Public API edge: GitHub OAuth login, sessions + CSRF cookies, webhook HMAC verification, proxy to review-api with `X-Internal-Token` + `X-User-Id`.
@@ -13,7 +13,7 @@ Public API edge: GitHub OAuth login, sessions + CSRF cookies, webhook HMAC verif
 `pip install -r requirements.txt -r requirements-dev.txt && make test`; run via `docker compose up`.
 
 ## CI/CD
-TODO: Jenkins stage with path filter `gateway/**` (Test → Build → Scan → Push); image tag bump in `deploy/gateway/overlays/<env>`; Argo CD syncs.
+TODO: Jenkins stage with path filter `services/gateway/**` (Test → Build → Scan → Push); image tag bump in `infra/k8s/gateway/overlays/<env>`; Argo CD syncs.
 
 ## Config
 Env: `DATABASE_URL`, `REVIEW_API_URL` (default `http://review-api:8001`), `INTERNAL_API_TOKEN`, `GITHUB_CLIENT_ID/SECRET`, `PUBLIC_URL` (OAuth callback = `PUBLIC_URL/auth/github/callback`), `GITHUB_CALLBACK_URL` (override), `GITHUB_OAUTH_SCOPES` (default `read:user`), `ALLOWED_GITHUB_LOGINS`, `ADMIN_GITHUB_LOGINS`, `GITHUB_WEBHOOK_SECRET`, `WEBHOOK_AUTO_REVIEW`, `WEBHOOK_REVIEW_DEPTH`, `SESSION_TTL_HOURS`, `COOKIE_SECURE`, `RATE_LIMIT_AUTH_PER_MINUTE`, `RATE_LIMIT_API_PER_MINUTE`, `WEBHOOK_REPLAY_WINDOW_SECONDS` (default 86400), `WEBHOOK_PENDING_RECLAIM_SECONDS` (default 300, >= 3x `REVIEW_API_TIMEOUT_SECONDS`), `REVIEW_API_TIMEOUT_SECONDS` (default 20).

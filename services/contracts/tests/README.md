@@ -1,8 +1,8 @@
 # Contract tests
 
 ```bash
-pip install -r contracts/tests/requirements-dev.txt
-pytest contracts/tests
+pip install -r services/contracts/tests/requirements-dev.txt
+pytest services/contracts/tests
 ```
 
 - `test_json_schemas.py` – checks report/finding/checkpoint schemas are valid Draft 2020-12, accept `fixtures/valid/*` and reject `fixtures/invalid/*`. Fixture naming: `<schema>__<case>.json`.
@@ -13,4 +13,4 @@ pytest contracts/tests
   - `REVIEW_API_BASE_URL=http://localhost:8001` (+ `AISCAN_INTERNAL_TOKEN`, `AISCAN_USER_ID`)
   - `GATEWAY_BASE_URL=http://localhost:8000` (+ `AISCAN_SESSION_COOKIE`)
 
-Ad-hoc fuzzing: `st run contracts/review-api.openapi.yaml --base-url $REVIEW_API_BASE_URL`.
+Ad-hoc fuzzing: `st run services/contracts/review-api.openapi.yaml --base-url $REVIEW_API_BASE_URL`.

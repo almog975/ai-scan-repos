@@ -2,7 +2,7 @@
 
 ## Local mode (`JOB_LAUNCHER=local`) only
 
-These are tracked as `xfail(strict=True)` in `review-api/tests/test_phase3_recovery.py`; production (Kubernetes) is not affected.
+These are tracked as `xfail(strict=True)` in `services/review-api/tests/test_phase3_recovery.py`; production (Kubernetes) is not affected.
 
 1. **Duplicate attempt after a review-api restart.** `LocalLauncher` keeps worker processes in memory, so after
    review-api restarts a still-running worker reads as `missing`; the reconciler marks the review `stuck` and

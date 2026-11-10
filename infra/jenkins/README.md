@@ -1,6 +1,6 @@
-# deploy/jenkins (Pipelines-owned)
+# infra/jenkins (Pipelines-owned)
 
-Jenkins controller + agents in namespace `jenkins`, deployed by Argo CD (`deploy/argocd/apps/jenkins.yaml`,
+Jenkins controller + agents in namespace `jenkins`, deployed by Argo CD (`infra/argocd/apps/jenkins.yaml`,
 project `ai-scan-ci`).
 
 | Path | What |
@@ -19,7 +19,7 @@ in 2025; if the image becomes unavailable, switch to the Chainguard-maintained f
 
 ## Infra-owned prerequisites (not in this folder)
 Namespace `jenkins` and PVC `jenkins-home` (infra/bootstrap), IngressRoute `jenkins` + TLS secret `jenkins-tls`
-(infra/ingress), AppProject `ai-scan-ci` (infra/argocd), registry htpasswd (docs/registry-auth-runbook.md).
+(infra/bootstrap/ingress), AppProject `ai-scan-ci` (infra/argocd), registry htpasswd (docs/registry-auth-runbook.md).
 
 ## Secrets Almog creates (never in git)
 Jenkins credentials are K8s Secrets read by the kubernetes-credentials-provider plugin (label + annotations):
@@ -79,5 +79,5 @@ runs with `set +x`, gives it to git through a temporary `GIT_ASKPASS` script (no
 
 Loop guard for the PR flow: `deploy/*` and `rollback/*` are excluded from branch indexing (`headWildcardFilter` in
 values.yaml); PR-N jobs whose source branch is `deploy/*` are skipped by the Jenkinsfile (`CHANGE_BRANCH`); the
-commit Almog's merge puts on `main` is skipped because it only touches `deploy/**` (and carries `[skip ci]` from
+commit Almog's merge puts on `main` is skipped because it only touches `infra/k8s/**` (and carries `[skip ci]` from
 the PR title for merge/squash).

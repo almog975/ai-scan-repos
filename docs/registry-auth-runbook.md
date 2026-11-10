@@ -47,11 +47,11 @@ in ns `registry`, plain HTTP inside the cluster, htpasswd auth). The external na
 for the kubelet/node and for pushes from outside the cluster; `*.127.0.0.1.nip.io` resolves to 127.0.0.1 inside a pod,
 so it cannot be used for in-cluster pushes. NetworkPolicies allow 5000 only from ns `jenkins` and Traefik.
 
-`<REGISTRY_HOST>`: local `registry.ai-scan.local`, k3s `registry.registry:5000` (in-cluster Service; nodes reach it via the registries.yaml mirror → NodePort 30500, see infra/registry/registries.yaml.example), eks `registry.ai-scan.example.com`.
-Referenced by (in git): SA `default` (deploy/platform/base/default-sa.yaml; frontend, gateway, migrations Job),
+`<REGISTRY_HOST>`: local `registry.ai-scan.local`, k3s `registry.registry:5000` (in-cluster Service; nodes reach it via the registries.yaml mirror → NodePort 30500, see infra/bootstrap/registry/registries.yaml.example), eks `registry.ai-scan.example.com`.
+Referenced by (in git): SA `default` (infra/k8s/platform/base/default-sa.yaml; frontend, gateway, migrations Job),
 SA `review-api`, SA `scanner`, and the scanner Job template pod spec. Without `regcred` pods fail with ImagePullBackOff.
 On K3s, containerd also needs the creds in `/etc/rancher/k3s/registries.yaml` only if pulls bypass the kubelet
-(they don't for normal pods); see infra/registry/registries.yaml.example for the mirror/TLS config.
+(they don't for normal pods); see infra/bootstrap/registry/registries.yaml.example for the mirror/TLS config.
 
 ## Rotate
 Recreate the Secret with new values (same commands), update the Jenkins credential, then

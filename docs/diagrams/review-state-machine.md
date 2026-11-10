@@ -1,6 +1,6 @@
 # Review state machine
 
-Source: `review-api/app/state.py` (`TRANSITIONS`, `MAX_ATTEMPTS = 5`), `app/watchdog.py`, `app/service.py`,
+Source: `services/review-api/app/state.py` (`TRANSITIONS`, `MAX_ATTEMPTS = 5`), `app/watchdog.py`, `app/service.py`,
 `app/routers/reviews.py`, `app/routers/control.py` on `feat/phase-2-scanner` (14e5a55). Paths are review-api paths;
 through the gateway prefix them with `/api`. Illegal transitions return **409 CONFLICT**.
 Transitions allowed by `TRANSITIONS` but with no code path that triggers them are marked **pending**.

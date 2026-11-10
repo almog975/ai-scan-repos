@@ -1,18 +1,18 @@
-# deploy/
+# infra/k8s/
 
 Part of the standalone `almog975/ai-scan-repos` repo. Kubernetes manifests watched by
-Argo CD (GitOps). See the [top-level README](../README.md) and [ADR-0001](../docs/adr/0001-repo-layout.md).
+Argo CD (GitOps). See the [top-level README](../README.md) and [ADR-0001](../../docs/adr/0001-repo-layout.md).
 
 ## Layout
 ```
-deploy/<component>/base/                    # Infra-owned
-deploy/<component>/overlays/{local,k3s,eks} # Infra-owned; Jenkins only rewrites image tags here
-deploy/overlays/local/                      # Lightweight compose overlay (Docker Desktop / k3d; no registry)
-deploy/argocd/root-app.yaml                 # Pipelines-owned: app-of-apps root
-deploy/argocd/apps/<component>.yaml         # Pipelines-owned: one child Application per component
+infra/k8s/<component>/base/                    # Infra-owned
+infra/k8s/<component>/overlays/{local,k3s,eks} # Infra-owned; Jenkins only rewrites image tags here
+infra/k8s/overlays/local/                      # Lightweight compose overlay (Docker Desktop / k3d; no registry)
+infra/argocd/root-app.yaml                 # Pipelines-owned: app-of-apps root
+infra/argocd/apps/<component>.yaml         # Pipelines-owned: one child Application per component
 ```
 Components: `frontend`, `gateway`, `review-api`, `postgres`, `scanner-worker`, `platform` (6 × 3 = 18 overlays),
-plus top-level `deploy/overlays/local` for a one-shot local apply. Everything deploys to the single namespace `ai-scan-repos`.
+plus top-level `infra/k8s/overlays/local` for a one-shot local apply. Everything deploys to the single namespace `ai-scan-repos`.
 
 | Target | Registry host |
 |---|---|
@@ -26,22 +26,22 @@ Images are always `<host>/ai-scan/<svc>:<git-sha>`, never `latest`. Overlays shi
 Bootstrap once (Argo CD installed in namespace `argocd`). First apply the Infra-owned AppProject `ai-scan`
 from `infra/argocd/` (all child apps use `project: ai-scan` and will not sync without it), then:
 ```
-kubectl apply -n argocd -f deploy/argocd/root-app.yaml
+kubectl apply -n argocd -f infra/argocd/root-app.yaml
 ```
-The root Application `ai-scan-root` tracks `deploy/argocd/apps` on `main` (auto-sync, prune + selfHeal) and
-creates one child `ai-scan-<component>-k3s` per file there. Each child tracks `deploy/<component>/overlays/k3s`
+The root Application `ai-scan-root` tracks `infra/argocd/apps` on `main` (auto-sync, prune + selfHeal) and
+creates one child `ai-scan-<component>-k3s` per file there. Each child tracks `infra/k8s/<component>/overlays/k3s`
 on `main`, namespace `ai-scan-repos`, project `ai-scan`, auto-sync with prune + selfHeal and `CreateNamespace=true`,
 with `resources-finalizer.argocd.argoproj.io` (deleting a child deletes its resources). The root stays in project `default`.
 
 Sync waves (`argocd.argoproj.io/sync-wave`): `platform` 0 → `postgres` 1 → `review-api` 2 →
-`gateway`, `frontend`, `scanner-worker` 3. To add a component, add `deploy/argocd/apps/<component>.yaml`.
+`gateway`, `frontend`, `scanner-worker` 3. To add a component, add `infra/argocd/apps/<component>.yaml`.
 For another target, swap `k3s` in the name and path.
 
 ## Tag flow
 1. A push to a service folder triggers Jenkins (via smee relay, see `docs/ci.md`).
 2. Jenkins builds only the changed services, scans with Trivy (fails on HIGH/CRITICAL) and pushes
    `<host for TARGET>/ai-scan/<svc>:<sha>` (TARGET defaults to `k3s`).
-3. Deploy edits `deploy/<svc>/overlays/${TARGET}/kustomization.yaml`:
+3. Deploy edits `infra/k8s/<svc>/overlays/${TARGET}/kustomization.yaml`:
    - frontend, gateway, review-api: `kustomize edit set image ai-scan/<svc>=<host>/ai-scan/<svc>:<sha>`
    - scanner-worker: `kustomize edit set configmap scanner-image --from-literal=SCANNER_IMAGE=<host>/ai-scan/scanner-worker:<sha>`;
      review-api reads `SCANNER_IMAGE` via `configMapKeyRef` and launches per-review scanner Jobs with it.
@@ -50,15 +50,15 @@ For another target, swap `k3s` in the name and path.
    Argo CD syncs the new tag.
 
 ## Build / check locally
-`kustomize build deploy/<component>/overlays/<target>` (or `kubectl kustomize ...`).
+`kustomize build infra/k8s/<component>/overlays/<target>` (or `kubectl kustomize ...`).
 
 ## Config
-No Secret YAML in git for k3s/eks (create from the CLI). `deploy/overlays/local` is the exception: committed **NOT FOR PRODUCTION** placeholders via secretGenerator.
+No Secret YAML in git for k3s/eks (create from the CLI). `infra/k8s/overlays/local` is the exception: committed **NOT FOR PRODUCTION** placeholders via secretGenerator.
 
 ## Owners
 Infra: `base/` and `overlays/` content. Pipelines: image tags, `argocd/`, `Jenkinsfile`. See `.github/CODEOWNERS`.
 
 ## Helm alternative (Docker Desktop)
-For a simple local run without Kustomize, use the Helm chart in [`charts/ai-scan`](../charts/ai-scan/README.md):
-`helm install ai-scan ./charts/ai-scan -n ai-scan-repos --create-namespace`, then open http://localhost
+For a simple local run without Kustomize, use the Helm chart in [`infra/helm/ai-scan`](../helm/ai-scan/README.md):
+`helm install ai-scan ./infra/helm/ai-scan -n ai-scan-repos --create-namespace`, then open http://localhost
 (needs ingress-nginx). Don't install it and a Kustomize overlay in the same namespace at the same time.

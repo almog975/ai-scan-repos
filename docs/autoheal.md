@@ -1,6 +1,6 @@
 # Auto-heal job (`ai-scan-autoheal`)
 
-A Jenkins pipeline job (JCasC in `deploy/jenkins/values.yaml`, pipeline `ci/heal/Jenkinsfile`, script
+A Jenkins pipeline job (JCasC in `infra/jenkins/values.yaml`, pipeline `ci/heal/Jenkinsfile`, script
 `ci/heal/heal.sh`) that runs every 10 minutes (`H/10 * * * *`) and on **Build Now**. Concurrent builds are disabled.
 
 ## What it does (namespace `ai-scan-repos`, env `NAMESPACE`)
@@ -21,10 +21,10 @@ a blip during a rollout recovers before the 3rd check.
 
 ## Permissions
 
-ServiceAccount `jenkins/ai-scan-autoheal` (`deploy/jenkins/manifests/autoheal-sa.yaml`), used only by the
+ServiceAccount `jenkins/ai-scan-autoheal` (`infra/jenkins/manifests/autoheal-sa.yaml`), used only by the
 `autoheal` pod template. Namespaced Roles only, no ClusterRole:
 
-- `ai-scan-repos` (`deploy/platform/base/autoheal-rbac.yaml`): pods get/list/delete, pods/exec create, jobs get/list/create/delete, deployments get/list/patch.
+- `ai-scan-repos` (`infra/k8s/platform/base/autoheal-rbac.yaml`): pods get/list/delete, pods/exec create, jobs get/list/create/delete, deployments get/list/patch.
 - `argocd` (`infra/argocd/autoheal-rbac.yaml`, applied by the installer): applications get/list/patch.
 
 The `jenkins-agent` SA of the normal CI pipeline still has no API access. NetworkPolicies: `autoheal-egress` (ns
@@ -65,7 +65,7 @@ report; no delete, patch, create or restart is sent.
 
 ## Local CronJob
 
-`deploy/overlays/local` runs the same script in-cluster, without Jenkins:
+`infra/k8s/overlays/local` runs the same script in-cluster, without Jenkins:
 
 - CronJob `ai-scan-repos/ai-scan-autoheal`: `*/10 * * * *`, `concurrencyPolicy: Forbid`, `alpine/k8s:1.31.4`
   (`IfNotPresent`), PSA-restricted (uid 65534, runAsNonRoot, drop ALL, seccomp RuntimeDefault, no privilege
@@ -86,7 +86,7 @@ Run once: `kubectl -n ai-scan-repos create job --from=cronjob/ai-scan-autoheal h
 
 `ci/heal/e2e-local.sh [--keep] [--timeout SECONDS] [--no-apply]` (bash: WSL or Git Bash; current kubectl context):
 
-1. `kubectl apply -k deploy/overlays/local`; waits for job `review-api-migrate` Complete, postgres rolled out,
+1. `kubectl apply -k infra/k8s/overlays/local`; waits for job `review-api-migrate` Complete, postgres rolled out,
    review-api/gateway/frontend Available.
 2. `heal-baseline` job from the CronJob: asserts `fixed: 0` and `errors: 0`.
 3. Faults:

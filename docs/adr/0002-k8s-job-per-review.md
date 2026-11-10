@@ -3,12 +3,12 @@
 - **Status:** Accepted for the prototype (implemented in `review-api` + `scanner-worker`); target design in plan Phases 2–3
 - **Date:** 2026-10-28
 - **Deciders:** Planner (A), Coder, Infra (R)
-- **Related:** Source: AI Scan Planner plan canvas (store-3f3d29fa…/09f1217b…), read 2026-10-28. Sections "חוזה worker ↔ volume", "State machine". Code: `review-api/app/launcher.py`,
-  `review-api/app/watchdog.py`, `review-api/app/main.py`, `scanner-worker/scanner/run.py`, `scanner-worker/scanner/checkpoint.py`.
+- **Related:** Source: AI Scan Planner plan canvas (store-3f3d29fa…/09f1217b…), read 2026-10-28. Sections "חוזה worker ↔ volume", "State machine". Code: `services/review-api/app/launcher.py`,
+  `services/review-api/app/watchdog.py`, `services/review-api/app/main.py`, `services/scanner-worker/scanner/run.py`, `services/scanner-worker/scanner/checkpoint.py`.
 
 ## Contracts
-`contracts/` is the source of truth ([ADR-0001](0001-repo-layout.md)): the checkpoint, report, finding and
-review-state shapes in `contracts/*.schema.json` / `review-api.openapi.yaml` are the target, and the code
+`services/contracts/` is the source of truth ([ADR-0001](0001-repo-layout.md)): the checkpoint, report, finding and
+review-state shapes in `services/contracts/*.schema.json` / `review-api.openapi.yaml` are the target, and the code
 must be changed to match them. Exception adopted by the plan: **Brief depth = top 10 findings to the AI**.
 
 ## Context
@@ -51,7 +51,7 @@ As implemented today:
 - Gaps vs. contracts — code must follow the contracts (TODO): no `stuck`/`retrying`/`cancelled` states or cancel endpoint; no Job deletion on
   retry; no `activeDeadlineSeconds`; no `review_attempts` table; checkpoint lacks `commit_sha`
   (resume re-clones HEAD, which may differ); no `findings.partial.jsonl`; reports path is
-  `<reports>/<id>/` not `/reports/reviews/<id>/`; Job spec built in code (`build_job_manifest`), not read from `deploy/base/scanner-job-template.yaml`;
+  `<reports>/<id>/` not `/reports/reviews/<id>/`; Job spec built in code (`build_job_manifest`), not read from `infra/k8s/scanner-worker/base/scanner-job-template.yaml`;
   no startup reconciliation of Jobs vs. DB.
 
 ## Alternatives

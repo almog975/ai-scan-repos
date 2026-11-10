@@ -3,14 +3,14 @@
 - **Status:** Accepted
 - **Date:** 2026-10-29
 - **Deciders:** AI Scan Planner, Pipelines, Infra, Docs; Almog
-- **Related:** [ADR-0001 repo layout](0001-repo-layout.md), [`Jenkinsfile`](../../Jenkinsfile), [`deploy/argocd/`](../../deploy/argocd/), [ci-cd-flow.md](../ci-cd-flow.md), [ci.md](../ci.md), [rollback runbook](../runbooks/rollback.md)
+- **Related:** [ADR-0001 repo layout](0001-repo-layout.md), [`Jenkinsfile`](../../Jenkinsfile), [`infra/argocd/`](../../infra/argocd/), [ci-cd-flow.md](../ci-cd-flow.md), [ci.md](../ci.md), [rollback runbook](../runbooks/rollback.md)
 
 ## Context
-AI Scan Repos has 6 deployable components (frontend, gateway, review-api, postgres, scanner-worker, platform) on k3s (later EKS). We need repeatable deploys, an audit trail, easy rollback, and CI that does not hold cluster credentials. Manifests already live in `deploy/<component>/{base,overlays/{local,k3s,eks}}` (Kustomize).
+AI Scan Repos has 6 deployable components (frontend, gateway, review-api, postgres, scanner-worker, platform) on k3s (later EKS). We need repeatable deploys, an audit trail, easy rollback, and CI that does not hold cluster credentials. Manifests already live in `infra/k8s/<component>/{base,overlays/{local,k3s,eks}}` (Kustomize).
 
 ## Decision
 We will use GitOps:
-- **Git is the source of truth.** The desired state of every component is `deploy/<component>/overlays/<target>` on `main` in `almog975/ai-scan-repos`.
+- **Git is the source of truth.** The desired state of every component is `infra/k8s/<component>/overlays/<target>` on `main` in `almog975/ai-scan-repos`.
 - **Argo CD** deploys it: app-of-apps root `ai-scan-root` → one Application per component, `ai-scan-<component>-k3s`, namespace `ai-scan-repos`, project `ai-scan`, auto-sync with `prune` + `selfHeal`, sync waves platform 0 → postgres 1 → review-api 2 → gateway/frontend/scanner-worker 3.
 - **Kustomize** renders overlays; overlays ship with `GIT_SHA_PLACEHOLDER`.
 - **Jenkins only builds, tests, scans and bumps tags.** It pushes images `<registry>/ai-scan/<svc>:<sha>` (never `latest`) and changes only `newTag` / `SCANNER_IMAGE` in the overlay, committing with `[skip ci]`. Jenkins never runs `kubectl apply` and has no cluster credentials.
@@ -20,7 +20,7 @@ We will use GitOps:
 - + Every deploy and rollback is a reviewable Git commit; drift is auto-corrected (selfHeal).
 - + CI needs only registry and Git credentials, not cluster access.
 - − Manual `kubectl` hotfixes are reverted; all changes must go through Git.
-- − Jenkins needs write access to the repo for tag bumps; the loop guard (`[skip ci]`, deploy/-only) prevents rebuild loops.
+- − Jenkins needs write access to the repo for tag bumps; the loop guard (`[skip ci]`, infra/k8s/-only) prevents rebuild loops.
 - Closed open item (decision 2026-10-31): the Jenkins tag bump goes through an automatic PR (`deploy/<svc>-<sha>` → `main`) opened with the Jenkins credential `github-bot` (usernamePassword, fine-grained PAT scoped to this repo); Almog merges; Argo CD syncs. CI never pushes to `main` and never force-pushes.
 - Schema migrations are not rolled back by Git reverts; handled separately.
 

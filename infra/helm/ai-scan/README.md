@@ -1,8 +1,8 @@
 # ai-scan Helm chart (Docker Desktop)
 
 Basic Helm chart for AI Scan Repos: **frontend, gateway, review-api, postgres**, plus the
-scanner Job template review-api uses. It replaces `kubectl apply -k deploy/overlays/local-registry`
-for local runs. `deploy/` (Kustomize, used by Argo CD / k3s / EKS) is unchanged.
+scanner Job template review-api uses. It replaces `kubectl apply -k infra/k8s/overlays/local-registry`
+for local runs. `infra/k8s/` (Kustomize, used by Argo CD / k3s / EKS) is unchanged.
 
 > Placeholder secrets in `values.yaml` are **NOT FOR PRODUCTION**.
 
@@ -23,7 +23,7 @@ kubectl -n ingress-nginx wait --for=condition=Ready pod -l app.kubernetes.io/com
 kubectl delete ns ai-scan-repos --ignore-not-found
 
 # 3. Install
-helm install ai-scan ./charts/ai-scan -n ai-scan-repos --create-namespace
+helm install ai-scan ./infra/helm/ai-scan -n ai-scan-repos --create-namespace
 kubectl -n ai-scan-repos get pods -w      # postgres, review-api, gateway, frontend -> Running/Ready
 
 # 4. Open
@@ -55,7 +55,7 @@ Docker Desktop exposes NodePorts on `localhost`, and the Ingress host `localhost
 ```powershell
 helm upgrade --install ingress-nginx ingress-nginx --repo https://kubernetes.github.io/ingress-nginx -n ingress-nginx --create-namespace `
   --set controller.service.type=NodePort --set controller.service.nodePorts.http=30080 --wait
-helm upgrade --install ai-scan ./charts/ai-scan -n ai-scan-repos --create-namespace `
+helm upgrade --install ai-scan ./infra/helm/ai-scan -n ai-scan-repos --create-namespace `
   --set gateway.publicUrl=http://localhost:30080
 curl.exe http://localhost:30080/nginx-health
 ```
@@ -71,27 +71,27 @@ Add this **Authorization callback URL** to your GitHub OAuth App:
 
 Real credentials are never committed. Either:
 - copy `values.local.yaml.example` to `values.local.yaml` (gitignored), fill it, and add
-  `-f charts/ai-scan/values.local.yaml` to `helm install/upgrade`; or
+  `-f infra/helm/ai-scan/values.local.yaml` to `helm install/upgrade`; or
 - create the optional Secret the gateway already reads:
-  `kubectl -n ai-scan-repos create secret generic gateway-oauth --from-env-file=deploy/overlays/local/secrets/gateway-oauth.local.env`
+  `kubectl -n ai-scan-repos create secret generic gateway-oauth --from-env-file=infra/k8s/overlays/local/secrets/gateway-oauth.local.env`
   then `kubectl -n ai-scan-repos rollout restart deploy/gateway`.
 
 ### Without ingress (port-forward)
 ```powershell
-helm upgrade --install ai-scan ./charts/ai-scan -n ai-scan-repos --create-namespace --set ingress.enabled=false
+helm upgrade --install ai-scan ./infra/helm/ai-scan -n ai-scan-repos --create-namespace --set ingress.enabled=false
 kubectl -n ai-scan-repos port-forward svc/frontend 8080:8080   # http://localhost:8080
 ```
 
 ### Locally built images
 `docker build` images named `ai-scan-repos-*:latest` (Docker Desktop shares the image store):
 ```powershell
-helm upgrade --install ai-scan ./charts/ai-scan -n ai-scan-repos --create-namespace --set global.imageRegistry=""
+helm upgrade --install ai-scan ./infra/helm/ai-scan -n ai-scan-repos --create-namespace --set global.imageRegistry=""
 ```
 
 ### Upgrade / teardown
 ```powershell
 git pull
-helm upgrade ai-scan ./charts/ai-scan -n ai-scan-repos
+helm upgrade ai-scan ./infra/helm/ai-scan -n ai-scan-repos
 kubectl -n ai-scan-repos rollout restart deploy   # re-pull :latest if you changed images
 helm list -n ai-scan-repos ; helm history ai-scan -n ai-scan-repos
 helm rollback ai-scan 1 -n ai-scan-repos
@@ -116,7 +116,7 @@ kubectl delete ns ai-scan-repos          # also deletes the kept PVCs (postgres-
 - PVCs `postgres-data` and `reports` have `helm.sh/resource-policy: keep` so `helm uninstall` keeps data.
 
 ## Kustomize -> Helm mapping (for the defense)
-| Kustomize (deploy/) | Helm (this chart) |
+| Kustomize (infra/k8s/) | Helm (this chart) |
 |---|---|
 | `base/` YAML per component | `templates/<component>/*.yaml` |
 | `overlays/local`, `local-registry` patches | `values.yaml` (+ `--set` / `-f values.local.yaml`) |
@@ -129,7 +129,7 @@ kubectl delete ns ai-scan-repos          # also deletes the kept PVCs (postgres-
 
 ## Not in the basic chart (future `enabled: false` flags)
 NetworkPolicies, Traefik IngressRoutes/Middlewares, ServiceMonitors, PrometheusRules, Grafana dashboard,
-postgres backup / reports-cleanup / auto-heal CronJobs. Use `deploy/` (Kustomize/Argo CD) for those today.
+postgres backup / reports-cleanup / auto-heal CronJobs. Use `infra/k8s/` (Kustomize/Argo CD) for those today.
 
 **Status:** validated with `helm lint`, `helm template` and `kubeconform`; not yet run on a real cluster.
 
@@ -143,7 +143,7 @@ or a stale webhook left from an older ingress-nginx install). The failed release
 kubectl -n ingress-nginx get pods,svc,endpoints          # controller Running? admission endpoint present?
 kubectl get validatingwebhookconfigurations              # stale entries from old installs?
 kubectl -n ingress-nginx wait --for=condition=Ready pod -l app.kubernetes.io/component=controller --timeout=180s
-helm upgrade --install ai-scan ./charts/ai-scan -n ai-scan-repos --create-namespace
+helm upgrade --install ai-scan ./infra/helm/ai-scan -n ai-scan-repos --create-namespace
 kubectl -n ai-scan-repos get ingress
 ```
 If the controller is healthy but the error persists (stale webhook from a removed install):
@@ -156,11 +156,11 @@ Extra pieces, all optional. Give Docker Desktop at least **6 GB RAM** (Settings 
 
 | Piece | Where | URL |
 |---|---|---|
-| Auto-heal Role (+ Jenkins RoleBinding) | `charts/ai-scan` `autoheal.*` (on by default) | - |
-| Auto-heal CronJob (no Jenkins) | `charts/ai-scan` `autoheal.cronjob.enabled=true` | - |
-| Jenkins with only the `ai-scan-autoheal` job | `deploy/jenkins/local/values-local.yaml` | http://jenkins.localhost |
+| Auto-heal Role (+ Jenkins RoleBinding) | `infra/helm/ai-scan` `autoheal.*` (on by default) | - |
+| Auto-heal CronJob (no Jenkins) | `infra/helm/ai-scan` `autoheal.cronjob.enabled=true` | - |
+| Jenkins with only the `ai-scan-autoheal` job | `infra/jenkins/local/values-local.yaml` | http://jenkins.localhost |
 | Prometheus + Grafana | `infra/helm/kube-prometheus-stack/values-local.yaml` | http://grafana.localhost |
-| ServiceMonitors, alert rules, "AI Scan Repos" dashboard | `charts/ai-scan` `monitoring.enabled=true` | - |
+| ServiceMonitors, alert rules, "AI Scan Repos" dashboard | `infra/helm/ai-scan` `monitoring.enabled=true` | - |
 
 Chrome and Edge resolve `*.localhost` to 127.0.0.1. If yours doesn't: `curl.exe -H "Host: jenkins.localhost" http://localhost/`.
 With the NodePort option (B above), use `http://jenkins.localhost:30080` and `http://grafana.localhost:30080`. For Jenkins, also add `--set controller.jenkinsUrl=http://jenkins.localhost:30080` to its `helm upgrade --install`.
@@ -182,14 +182,14 @@ helm upgrade --install kube-prometheus-stack kube-prometheus-stack `
 
 # 2. Jenkins (auto-heal job only) + the ServiceAccount its agent pods use
 kubectl create namespace jenkins --dry-run=client -o yaml | kubectl apply -f -
-kubectl apply -f deploy/jenkins/local/autoheal-sa.yaml
+kubectl apply -f infra/jenkins/local/autoheal-sa.yaml
 helm upgrade --install jenkins jenkins --repo https://charts.jenkins.io --version 5.10.3 `
-  -n jenkins -f deploy/jenkins/local/values-local.yaml --wait --timeout 10m
+  -n jenkins -f infra/jenkins/local/values-local.yaml --wait --timeout 10m
 # admin password (user: admin)
 kubectl -n jenkins get secret jenkins -o jsonpath="{.data.jenkins-admin-password}" | %{ [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($_)) }
 
 # 3. The app with monitoring objects (auto-heal RBAC is on by default)
-helm upgrade --install ai-scan ./charts/ai-scan -n ai-scan-repos --create-namespace --set monitoring.enabled=true
+helm upgrade --install ai-scan ./infra/helm/ai-scan -n ai-scan-repos --create-namespace --set monitoring.enabled=true
 #    NodePort option (B): keep the GitHub callback on :30080
 #    add: --set gateway.publicUrl=http://localhost:30080
 
@@ -235,7 +235,7 @@ dashboard **Kubernetes / Compute Resources / Namespace (Pods)** for namespace `a
 ### Without Jenkins: the CronJob
 
 ```powershell
-helm upgrade --install ai-scan ./charts/ai-scan -n ai-scan-repos --reuse-values --set autoheal.cronjob.enabled=true
+helm upgrade --install ai-scan ./infra/helm/ai-scan -n ai-scan-repos --reuse-values --set autoheal.cronjob.enabled=true
 kubectl -n ai-scan-repos create job --from=cronjob/ai-scan-autoheal heal-now
 kubectl -n ai-scan-repos logs job/heal-now -f
 ```
@@ -246,7 +246,7 @@ fails if it drifts from `ci/heal/heal.sh`. Same for the dashboard JSON and the a
 
 Push to GitHub, and Jenkins tests, builds, scans and pushes `ghcr.io/almog975/ai-scan-repos-*:<git sha>`, then
 commits the tag into `values-images.yaml`; Argo CD deploys it. Setup, demo and rollback are in
-[docs/cicd-docker-desktop.md](../../docs/cicd-docker-desktop.md).
+[docs/cicd-docker-desktop.md](../../../docs/cicd-docker-desktop.md).
 
 ### Teardown
 ```powershell

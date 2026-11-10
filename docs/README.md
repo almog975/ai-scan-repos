@@ -17,5 +17,5 @@ Architecture notes, ADRs and runbooks for AI Scan Repos.
 - [monitoring.md](monitoring.md) – metrics, alerts, Grafana dashboard
 - [severity-mapping.md](severity-mapping.md) – scanner severities → normalized severity
 - [report-md-spec.md](report-md-spec.md) – structure of report.md and its report.json sources
- Contract docs: [../contracts/README.md](../contracts/README.md).
+ Contract docs: [../services/contracts/README.md](../services/contracts/README.md).
 - [local-k3d.md](local-k3d.md) - full local stack on k3d (Docker Desktop / WSL2): `make local-k8s`, OAuth callback, Argo CD, troubleshooting

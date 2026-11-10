@@ -1,21 +1,21 @@
 # Local full stack on k3d (Docker Desktop)
 
-## Docker Desktop quickstart (recommended: `deploy/overlays/local-registry`)
+## Docker Desktop quickstart (recommended: `infra/k8s/overlays/local-registry`)
 
 No local builds. The images are pulled from ghcr (public). PowerShell, from the repo root:
 
 ```powershell
 kubectl config use-context docker-desktop
-kubectl apply -k deploy/overlays/local-registry
+kubectl apply -k infra/k8s/overlays/local-registry
 kubectl -n ai-scan-repos get pods -w        # postgres, review-api, gateway, frontend Running; review-api-migrate Completed
 kubectl -n ai-scan-repos port-forward svc/frontend 8080:8080
 # open http://localhost:8080   (OAuth callback: http://localhost:8080/auth/github/callback)
 curl.exe http://localhost:8080/nginx-health
-# teardown: kubectl delete -k deploy/overlays/local-registry
+# teardown: kubectl delete -k infra/k8s/overlays/local-registry
 ```
 
-Use **only** `deploy/overlays/local` or `deploy/overlays/local-registry` on Docker Desktop. The per-service
-`deploy/<svc>/overlays/k3s` (and `eks`) overlays are for the Jenkins + Argo CD k3s setup. They run with `APP_ENV=production`,
+Use **only** `infra/k8s/overlays/local` or `infra/k8s/overlays/local-registry` on Docker Desktop. The per-service
+`infra/k8s/<svc>/overlays/k3s` (and `eks`) overlays are for the Jenkins + Argo CD k3s setup. They run with `APP_ENV=production`,
 pull from `registry.registry:5000/...:GIT_SHA_PLACEHOLDER`, and set NetworkPolicies that allow the Kubernetes API only at
 the k3s Service IP `10.43.0.1` (Docker Desktop's is usually `10.96.0.1`).
 
@@ -25,17 +25,17 @@ the k3s Service IP `10.43.0.1` (Docker Desktop's is usually `10.96.0.1`).
 |---|---|---|
 | review-api crash-loops: `SCANNER_IMAGE must be pinned (no :latest)` | `APP_ENV=production` (k3s/eks overlays or a hand-edited base) with a `:latest`/untagged `SCANNER_IMAGE` | Use the local overlays (`APP_ENV=local` allows `:latest`). Otherwise set a `sha-<short>` tag or `SKIP_SCANNER_VALIDATION=true`. If `SCANNER_IMAGE` is unset in dev, review-api starts and `POST /reviews` returns 503 with the reason. |
 | `/readyz` logs `Connection refused` to `10.43.0.1:443` | The k3s overlays' `review-api-kube-api-egress` NetworkPolicy / k3s service IP on a non-k3s cluster | Use the local overlays (no NetworkPolicies). `/readyz` now stays 200 and reports `checks.kube: "unavailable"` (DB-only gating; `READYZ_REQUIRE_KUBE=true` restores strict gating). Check with `kubectl get svc kubernetes -n default`. |
-| `ErrImagePull` / `ImagePullBackOff` | The k3s overlays' in-cluster registry does not exist, or locally built images aren't visible to the cluster | Use `local-registry` (ghcr). With `deploy/overlays/local`, Docker Desktop **kubeadm** mode sees `docker build` images, but the newer **kind** mode (Settings → Kubernetes → cluster type) does not: use `local-registry` there, or `kind load docker-image ...`. |
+| `ErrImagePull` / `ImagePullBackOff` | The k3s overlays' in-cluster registry does not exist, or locally built images aren't visible to the cluster | Use `local-registry` (ghcr). With `infra/k8s/overlays/local`, Docker Desktop **kubeadm** mode sees `docker build` images, but the newer **kind** mode (Settings → Kubernetes → cluster type) does not: use `local-registry` there, or `kind load docker-image ...`. |
 
-## Lightweight overlay (`deploy/overlays/local`)
+## Lightweight overlay (`infra/k8s/overlays/local`)
 
 One `kubectl apply -k` for Docker Desktop Kubernetes **or** k3d. No in-cluster registry, no
 manual Secret creation, and **no NetworkPolicies** (the strict default-deny + allows stay in
-`deploy/platform/base` and the k3s/eks overlays). Secrets are committed **dev-only placeholders**
+`infra/k8s/platform/base` and the k3s/eks overlays). Secrets are committed **dev-only placeholders**
 marked `ai-scan.local/not-for-production` / `NOT FOR PRODUCTION` — never reuse them outside a
 personal laptop cluster.
 
-`deploy/*/overlays/local` + `make local-k8s` (below) are unchanged: they still use the k3d
+`infra/k8s/*/overlays/local` + `make local-k8s` (below) are unchanged: they still use the k3d
 registry (`:dev`, `imagePullPolicy: Always`) and Argo CD.
 
 ### Quickstart (PowerShell or bash)
@@ -48,7 +48,7 @@ docker build -t ai-scan-repos-frontend:latest frontend
 docker build -t ai-scan-repos-scanner-worker:latest scanner-worker
 # k3d only — Docker Desktop Kubernetes already sees local images:
 # k3d image import ai-scan-repos-review-api:latest ai-scan-repos-gateway:latest ai-scan-repos-frontend:latest ai-scan-repos-scanner-worker:latest -c <cluster>
-kubectl apply -k deploy/overlays/local
+kubectl apply -k infra/k8s/overlays/local
 kubectl get pods -n ai-scan-repos
 kubectl -n ai-scan-repos port-forward svc/frontend 8080:8080
 ```
@@ -56,7 +56,7 @@ kubectl -n ai-scan-repos port-forward svc/frontend 8080:8080
 Open http://localhost:8080. Teardown:
 
 ```powershell
-kubectl delete -k deploy/overlays/local
+kubectl delete -k infra/k8s/overlays/local
 ```
 
 Migrate Job logs (and the review-api `migrate` initContainer also runs `alembic upgrade head`):
@@ -74,33 +74,33 @@ OAuth (real GitHub login): never edit the tracked `secrets/gateway-secrets.env` 
 GitHub OAuth App callback `http://localhost:8080/auth/github/callback`, then (PowerShell or bash, from the repo root):
 
 ```powershell
-Copy-Item deploy/overlays/local/secrets/gateway-oauth.local.env.example deploy/overlays/local/secrets/gateway-oauth.local.env
-notepad deploy/overlays/local/secrets/gateway-oauth.local.env   # set GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET
-kubectl -n ai-scan-repos create secret generic gateway-oauth --from-env-file=deploy/overlays/local/secrets/gateway-oauth.local.env --dry-run=client -o yaml | kubectl apply -f -
+Copy-Item infra/k8s/overlays/local/secrets/gateway-oauth.local.env.example infra/k8s/overlays/local/secrets/gateway-oauth.local.env
+notepad infra/k8s/overlays/local/secrets/gateway-oauth.local.env   # set GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET
+kubectl -n ai-scan-repos create secret generic gateway-oauth --from-env-file=infra/k8s/overlays/local/secrets/gateway-oauth.local.env --dry-run=client -o yaml | kubectl apply -f -
 kubectl -n ai-scan-repos rollout restart deploy/gateway
 ```
 
 `gateway-oauth.local.env` is gitignored; the gateway reads Secret `gateway-oauth` as an optional `envFrom` after
-`gateway-secrets`, so `kubectl apply -k deploy/overlays/local` works without it (login then just fails at GitHub).
+`gateway-secrets`, so `kubectl apply -k infra/k8s/overlays/local` works without it (login then just fails at GitHub).
 
 ---
 
 One command brings up postgres, review-api (+ migrations), scanner Jobs, gateway, frontend and Argo CD on a local
 [k3d](https://k3d.io) cluster (K3s in Docker). K3s ships Traefik and the `local-path` StorageClass, so the
-`deploy/*/overlays/local` overlays behave like the K3s ones. Docker Desktop's built-in Kubernetes is **not** used.
+`infra/k8s/*/overlays/local` overlays behave like the K3s ones. Docker Desktop's built-in Kubernetes is **not** used.
 
 ```bash
 cp .env.example .env          # same file as docker compose; see "The .env" below
-make local-k8s                # = infra/local/k3d.sh up      (ARGS=--no-argocd to skip Argo CD)
+make local-k8s                # = infra/bootstrap/local/k3d.sh up      (ARGS=--no-argocd to skip Argo CD)
 # UI: https://ai-scan.localhost  (self-signed certificate: accept the browser warning)
 make local-k8s-status         # pods, jobs, URLs
 make local-k8s-down           # deletes cluster + registry (asks; ARGS=--yes for non-interactive)
 ```
 
-`infra/local/k3d.sh --dry-run up` prints every command without touching anything.
+`infra/bootstrap/local/k3d.sh --dry-run up` prints every command without touching anything.
 
 
-### GitHub Container Registry (`deploy/overlays/local-registry`)
+### GitHub Container Registry (`infra/k8s/overlays/local-registry`)
 
 Same lightweight stack as above, but pods pull pre-built images from
 `ghcr.io/almog975/ai-scan-repos-<svc>` instead of locally built `:latest` tags.
@@ -124,16 +124,16 @@ the Makefiles and Jenkins kaniko.
    **Package settings → Change visibility → Public**
 
 Anonymous pulls then work with no `imagePullSecrets`. Until then, either keep the
-packages private and add a pull credential, or use `deploy/overlays/local` with local builds.
+packages private and add a pull credential, or use `infra/k8s/overlays/local` with local builds.
 
 ```powershell
-kubectl apply -k deploy/overlays/local-registry
+kubectl apply -k infra/k8s/overlays/local-registry
 kubectl get pods -n ai-scan-repos
 kubectl -n ai-scan-repos port-forward svc/frontend 8080:8080
-# teardown: kubectl delete -k deploy/overlays/local-registry
+# teardown: kubectl delete -k infra/k8s/overlays/local-registry
 ```
 
-To pin a known build, edit `deploy/overlays/local-registry/kustomization.yaml` and set
+To pin a known build, edit `infra/k8s/overlays/local-registry/kustomization.yaml` and set
 `newTag` / `SCANNER_IMAGE` to `sha-<short>` (and switch `imagePullPolicy` back to
 `IfNotPresent` in `patches/pull-always.yaml` if you prefer). The k3s/eks overlays still
 use the in-cluster registry pushed by Jenkins; pointing them at ghcr is a follow-up.
@@ -187,12 +187,12 @@ Give Docker Desktop at least 4 CPUs / 8 GB RAM. Ports 80 and 443 on the host mus
 3. Installs the Prometheus Operator **CRDs only** (ServiceMonitor, PrometheusRule; no Prometheus) so the platform
    overlay applies unchanged. Monitoring itself is not installed locally.
 4. Creates `ai-scan-repos/ai-scan-tls`, a self-signed certificate for `ai-scan.localhost` (kept on re-runs).
-5. Runs `infra/installer/aiscan-install.sh --overlay local --mode direct` (steps preflight, bootstrap, secrets,
-   images, egress, deploy, verify) on a **temporary copy** of `deploy/` and `infra/`, so your working tree is never
+5. Runs `infra/bootstrap/installer/aiscan-install.sh --overlay local --mode direct` (steps preflight, bootstrap, secrets,
+   images, egress, deploy, verify) on a **temporary copy** of `infra/`, so your working tree is never
    edited. The egress step pins `KUBE_API_ENDPOINT` (from `kubectl get endpoints kubernetes`), `KUBE_SERVICE_IP`,
    `POD_CIDR=10.42.0.0/16` and `SERVICE_CIDR=10.43.0.0/16` (k3d defaults). The migrations Job is re-run every time.
-6. Installs Argo CD (helm chart pinned in `aiscan-install.sh`) and `deploy/argocd/local/root-app.yaml`, whose
-   children sync `deploy/*/overlays/local` from GitHub **main**.
+6. Installs Argo CD (helm chart pinned in `aiscan-install.sh`) and `infra/argocd/local/root-app.yaml`, whose
+   children sync `infra/k8s/*/overlays/local` from GitHub **main**.
 7. Prints the URLs. Secrets are never printed.
 
 Re-run `make local-k8s` after code changes: it rebuilds, re-pushes and restarts the deployments.
@@ -221,7 +221,7 @@ registered in the GitHub OAuth App exactly:
 
 | How you run it | PUBLIC_URL | Callback URL to register |
 |---|---|---|
-| `docker compose` / `kubectl apply -k deploy/overlays/local` + port-forward svc/frontend 8080 | `http://localhost:8080` | `http://localhost:8080/auth/github/callback` |
+| `docker compose` / `kubectl apply -k infra/k8s/overlays/local` + port-forward svc/frontend 8080 | `http://localhost:8080` | `http://localhost:8080/auth/github/callback` |
 | `make local-k8s` (k3d + Traefik) | `https://ai-scan.localhost` | `https://ai-scan.localhost/auth/github/callback` |
 | k3s overlay | `https://ai-scan.127.0.0.1.nip.io` | `https://ai-scan.127.0.0.1.nip.io/auth/github/callback` |
 | eks overlay | `https://ai-scan.example.com` (your host) | `https://<your host>/auth/github/callback` |
@@ -257,7 +257,7 @@ NetworkPolicies `review-api-ai-egress`, `review-api-kube-api-egress` (platform a
 (scanner-worker app) get cluster-specific `spec.egress` from the installer (`AI_EGRESS_CIDRS`, `KUBE_API_ENDPOINT`).
 The local apps list them under `ignoreDifferences` (`/spec/egress`) with `RespectIgnoreDifferences=true`, so
 self-heal neither reports them OutOfSync nor reverts them to the committed placeholders. To change them, re-run
-`make local-k8s` (with a new `AI_EGRESS_CIDRS`), not a git commit. The k3s apps in `deploy/argocd/apps/`
+`make local-k8s` (with a new `AI_EGRESS_CIDRS`), not a git commit. The k3s apps in `infra/argocd/apps/`
 are not used locally.
 
 ## Troubleshooting
@@ -274,4 +274,4 @@ are not used locally.
 - Scanner Jobs pull `:dev` with `Always` (review-api env `SCANNER_IMAGE_PULL_POLICY`, local overlay only), so a
   rebuilt scanner-worker is used by the next scan.
 - Login redirects to the wrong host: the gateway's `PUBLIC_URL` is `https://ai-scan.localhost`
-  (`deploy/gateway/overlays/local`); it must match the OAuth App.
+  (`infra/k8s/gateway/overlays/local`); it must match the OAuth App.

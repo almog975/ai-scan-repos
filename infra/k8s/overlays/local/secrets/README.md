@@ -1,7 +1,7 @@
 # Local-only Secret placeholders (NOT FOR PRODUCTION)
 
-These files feed `secretGenerator` in `deploy/overlays/local`. Values are
-fixed, well-known placeholders so a clean `kubectl apply -k deploy/overlays/local`
+These files feed `secretGenerator` in `infra/k8s/overlays/local`. Values are
+fixed, well-known placeholders so a clean `kubectl apply -k infra/k8s/overlays/local`
 needs no manual `kubectl create secret`.
 
 **Never** reuse these values outside a personal Docker Desktop / k3d cluster.

@@ -85,7 +85,7 @@ The report's provider block then shows your provider instead of `none`.
 ### Without GitOps (plain `helm upgrade`)
 
 With `secrets.create: true` (the chart's default), you can instead put the values in the gitignored
-`charts/ai-scan/values.local.yaml` (template: `values.local.yaml.example`): `secrets.aiApiKey`,
+`infra/helm/ai-scan/values.local.yaml` (template: `values.local.yaml.example`): `secrets.aiApiKey`,
 `scanner.aiProvider`, `scanner.aiModel`, `scanner.aiBaseUrl`. Under Argo CD that file is never read, so use the
 Secrets above.
 

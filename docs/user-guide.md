@@ -2,7 +2,7 @@
 
 For people who run security reviews of GitHub repositories in the web UI. Operators: [runbook](runbooks/runbook.md). Admins managing AI providers: [admin: AI providers](runbooks/admin-ai-providers.md).
 
-> **Screenshots** were captured with Playwright (headless Chromium) against a **real local stack**: the built SPA under the `frontend/nginx.conf` headers → gateway → review-api (SQLite, local launcher) → scanner-worker, using the full-stack e2e harness (`frontend/e2e/test_fullstack.py`). Only GitHub OAuth and the scanner binaries are stand-ins (a fake GitHub and the test shims), so the findings shown are fixture data. The two providers in the cloud screenshot were inserted directly into the database (no key).
+> **Screenshots** were captured with Playwright (headless Chromium) against a **real local stack**: the built SPA under the `services/frontend/nginx.conf` headers → gateway → review-api (SQLite, local launcher) → scanner-worker, using the full-stack e2e harness (`services/frontend/e2e/test_fullstack.py`). Only GitHub OAuth and the scanner binaries are stand-ins (a fake GitHub and the test shims), so the findings shown are fixture data. The two providers in the cloud screenshot were inserted directly into the database (no key).
 
 The UI is available in English and Hebrew (language selector in the sidebar / top right). Each step names the API call behind it (gateway `/api/*` → review-api).
 

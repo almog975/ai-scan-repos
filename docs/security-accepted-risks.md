@@ -3,7 +3,7 @@
 Each entry: what, why it is accepted, mitigations, and when to revisit. Owner: Almog.
 
 ## Jenkins egress: TCP 443 to any public IP {#jenkins-egress}
-- **What:** `deploy/jenkins/manifests/networkpolicies.yaml` (`jenkins-egress`) lets every pod in ns `jenkins`
+- **What:** `infra/jenkins/manifests/networkpolicies.yaml` (`jenkins-egress`) lets every pod in ns `jenkins`
   (controller, agents, smee-client) open TCP 443 to `0.0.0.0/0` except RFC1918, CGNAT (100.64/10), link-local and loopback.
 - **Why:** builds need GitHub, smee.io, updates.jenkins.io, PyPI/npm, the Trivy DB and upstream image registries. These are
   hostname-based and CDN-backed, so they cannot be pinned to stable CIDRs in a NetworkPolicy (no FQDN support).

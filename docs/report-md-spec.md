@@ -1,11 +1,11 @@
 # report.md specification
 
-`report.md` is the human-readable rendering of `report.json` (`contracts/report.schema.json`, `report/v1`).
-Renderer: `scanner-worker/scanner/report.py` → `render_markdown()` (no separate template file). `write_report()` writes `report.md` first and
+`report.md` is the human-readable rendering of `report.json` (`services/contracts/report.schema.json`, `report/v1`).
+Renderer: `services/scanner-worker/scanner/report.py` → `render_markdown()` (no separate template file). `write_report()` writes `report.md` first and
 `report.json` last — the presence of `report.json` means the report is complete.
 
-Status: everything below is implemented on `feat/phase-2-scanner` (✅), tests in `scanner-worker/tests/test_report_md.py`.
-Contract fields `ai_severity`, `snippet`, `repo.private` and the required `provider` object are in `contracts/`.
+Status: everything below is implemented on `feat/phase-2-scanner` (✅), tests in `services/scanner-worker/tests/test_report_md.py`.
+Contract fields `ai_severity`, `snippet`, `repo.private` and the required `provider` object are in `services/contracts/`.
 
 ## Section order
 

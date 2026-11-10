@@ -1,10 +1,10 @@
 # Reports PVC recovery across node restarts
 
 > **Status: NOT VERIFIED YET.** The procedure below has not been run: K3S-SRV is not reachable from the
-> build box. Run `infra/scripts/verify-reports-pvc-restart.sh` on/against K3S-SRV and record the result here.
+> build box. Run `infra/bootstrap/scripts/verify-reports-pvc-restart.sh` on/against K3S-SRV and record the result here.
 
 ## K3s: static local PV `ai-scan-reports-pv` (StorageClass `reports-local`)
-Defined in `infra/bootstrap/overlays/k3s/reports-pv.yaml` (applied by the installer with `kubectl apply -k infra/bootstrap/overlays/k3s`, not by Argo CD; the PVC in `deploy/platform/overlays/k3s` pins it via `volumeName`): a `local:` volume at `/srv/ai-scan/reports`
+Defined in `infra/bootstrap/cluster/overlays/k3s/reports-pv.yaml` (applied by the installer with `kubectl apply -k infra/bootstrap/cluster/overlays/k3s`, not by Argo CD; the PVC in `infra/k8s/platform/overlays/k3s` pins it via `volumeName`): a `local:` volume at `/srv/ai-scan/reports`
 (not `hostPath`, but same idea: a directory on the node's disk), pinned by `nodeAffinity` to one node,
 `persistentVolumeReclaimPolicy: Retain` (already set; StorageClass also `reclaimPolicy: Retain`).
 
@@ -42,7 +42,7 @@ findmnt -no OPTIONS /srv/ai-scan/reports                              # on node:
 kubectl -n $NS run pvc-read --rm -i --restart=Never --image=busybox:1.36 --overrides='{"spec":{"containers":[{"name":"c","image":"busybox:1.36","command":["sh","-c","cat /reports/.restart-marker"],"volumeMounts":[{"name":"r","mountPath":"/reports"}]}],"volumes":[{"name":"r","persistentVolumeClaim":{"claimName":"reports"}}]}}'
 kubectl -n $NS get pvc reports -o jsonpath='{.status.phase}'           # Bound
 ```
-Automated: `MODE=k3s-restart NODE=<node> infra/scripts/verify-reports-pvc-restart.sh` (or `MODE=reboot`).
+Automated: `MODE=k3s-restart NODE=<node> infra/bootstrap/scripts/verify-reports-pvc-restart.sh` (or `MODE=reboot`).
 
 ## EKS: EFS (`efs-sc`, RWX)
 Data lives in EFS, independent of any node; node restarts/replacements just re-mount it (any AZ). Node loss

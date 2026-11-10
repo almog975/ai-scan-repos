@@ -1,7 +1,7 @@
 # Runbook — resuming a review after days
 
 For a review that has sat `paused` or `failed` for days. Code: `routers/control.py` (`resume`),
-`routers/reviews.py` (`retry`), `jobs.py`, `launcher.py`, `scanner-worker/scanner/checkpoint.py`, `run.py`.
+`routers/reviews.py` (`retry`), `jobs.py`, `launcher.py`, `services/scanner-worker/scanner/checkpoint.py`, `run.py`.
 See also [stuck-review](stuck-review.md) and the [state machine](../diagrams/review-state-machine.md).
 
 | From | Command | Attempt |
@@ -41,7 +41,7 @@ The per-review AI Secret is built **at each launch** from the current DB row (`j
   to `cloud` in between, the report shows the cloud banner but nobody re-confirmed — TODO.
 
 ## 4. Migrations ran in between
-- Migrations run in Job `review-api-migrate` (Argo CD PreSync) — `review-api/alembic/versions/`. Check:
+- Migrations run in Job `review-api-migrate` (Argo CD PreSync) — `services/review-api/alembic/versions/`. Check:
   `kubectl -n ai-scan-repos logs job/review-api-migrate` and that review-api is Ready.
 - Checkpoints are `checkpoint/v1`; a checkpoint with another schema or depth is ignored → full rescan (safe, slower).
 - A newer worker image resumes old partial findings as-is; their `id` recipe or severity mapping may differ

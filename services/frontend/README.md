@@ -1,7 +1,7 @@
-# frontend/
+# services/frontend/
 
 Part of the AI Scan Repos repo (`almog975/ai-scan-repos`). See the
-[top-level README](../README.md) and [ADR-0001](../docs/adr/0001-repo-layout.md).
+[top-level README](../../README.md) and [ADR-0001](../../docs/adr/0001-repo-layout.md).
 
 ## Purpose
 React + Vite SPA (TypeScript): log in with GitHub, start a review (repo URL + depth), follow its progress live,
@@ -14,7 +14,7 @@ src/
   main.tsx, App.tsx      app shell: sidebar nav, language switch, user chip, document title / focus on route change
   router.tsx             tiny history router (login, home, progress, report, admin, not found)
   api/client.ts          typed client (openapi-fetch) on src/api/schema.d.ts, CSRF header, ApiError, CAN state matrix
-  api/schema.d.ts        generated from contracts/review-api.openapi.yaml (do not edit)
+  api/schema.d.ts        generated from services/contracts/review-api.openapi.yaml (do not edit)
   live.ts                SSE progress stream with polling fallback
   version.ts             build version shown in the footer
   views/                 one file per screen: Login, Home (new review + list), Progress, Report, Admin (AI providers)
@@ -30,7 +30,7 @@ e2e/                     Playwright + axe (pytest) against a mock gateway servin
 `npm ci && npm run dev`; `make test` (vitest); `docker build -t ai-scan-repos/frontend frontend`; full stack: `docker compose up --build` → http://localhost:8080.
 
 ## CI/CD
-TODO: Jenkins stage with path filter `frontend/**` (Test → Build → Scan → Push); image tag bump in `deploy/frontend/overlays/<env>`; Argo CD syncs.
+TODO: Jenkins stage with path filter `services/frontend/**` (Test → Build → Scan → Push); image tag bump in `infra/k8s/frontend/overlays/<env>`; Argo CD syncs.
 
 ## Config
 Calls the gateway under `/api` (via nginx/Traefik). TODO: document build-time vars.

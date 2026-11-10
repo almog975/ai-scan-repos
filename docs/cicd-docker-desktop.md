@@ -7,17 +7,17 @@ flowchart LR
   T --> B[kaniko build, no Docker socket]
   B --> S[trivy scan, fail on findings]
   S --> P[push ghcr.io/almog975/ai-scan-repos-svc:git-sha]
-  P --> G[bot commit: charts/ai-scan/values-images.yaml, skip ci]
+  P --> G[bot commit: infra/helm/ai-scan/values-images.yaml, skip ci]
   G -->|Argo CD polls every ~1 min| A[Argo CD app ai-scan]
   A --> K[Helm release ai-scan in namespace ai-scan-repos]
 ```
 
 - **Trigger:** pollSCM `H/2` (a GitHub webhook can't reach a laptop; see [Webhook instead of polling](#production-option-github-webhook-instead-of-polling)).
-- **Build:** only the services whose folder changed (`frontend/`, `gateway/`, `review-api/`, `scanner-worker/`),
+- **Build:** only the services whose folder changed (`services/frontend/`, `services/gateway/`, `services/review-api/`, `services/scanner-worker/`),
   or all of them with `BUILD_ALL`. Unit tests, then kaniko builds a tarball, trivy scans it, and crane pushes it. A test failure or
   a trivy finding (`TRIVY_SEVERITY`, default `CRITICAL`, fixable only) fails the build, so nothing is pushed.
 - **Tag:** the 12-character git SHA. Never `latest`.
-- **GitOps handoff:** the `ai-scan-ci-bot` commit sets the tag in `charts/ai-scan/values-images.yaml` with
+- **GitOps handoff:** the `ai-scan-ci-bot` commit sets the tag in `infra/helm/ai-scan/values-images.yaml` with
   `[skip ci]`. The next poll sees the bot commit and ends as NOT_BUILT, so there's no loop.
 - **Deploy:** only Argo CD deploys. The CI agent pod runs as ServiceAccount `jenkins/default`, which has no RBAC,
   and the pipeline never runs `helm` or `kubectl` against the app.
@@ -25,12 +25,12 @@ flowchart LR
   which the chart renders from `imageTags.scanner` into ConfigMap `scanner-image`. A bump changes that
   ConfigMap, its checksum annotation rolls review-api, and the next scan Job uses the new tag (running Jobs keep
   theirs).
-- **Files:** `ci/cicd/Jenkinsfile.docker-desktop`, `deploy/jenkins/local/values-local.yaml` (job + pod
-  template `ai-scan-ci`), `infra/argocd/values-docker-desktop.yaml`, `deploy/argocd/docker-desktop/ai-scan.yaml`,
-  `charts/ai-scan/values-docker-desktop.yaml` and `charts/ai-scan/values-images.yaml`.
+- **Files:** `ci/cicd/Jenkinsfile.docker-desktop`, `infra/jenkins/local/values-local.yaml` (job + pod
+  template `ai-scan-ci`), `infra/argocd/values-docker-desktop.yaml`, `infra/argocd/docker-desktop/ai-scan.yaml`,
+  `infra/helm/ai-scan/values-docker-desktop.yaml` and `infra/helm/ai-scan/values-images.yaml`.
 
-Prerequisites: everything from `charts/ai-scan/README.md`, i.e. ingress-nginx, kube-prometheus-stack, and Jenkins
-from `deploy/jenkins/local/values-local.yaml`. Commands are bash (WSL Ubuntu), run from the repo root. The
+Prerequisites: everything from `infra/helm/ai-scan/README.md`, i.e. ingress-nginx, kube-prometheus-stack, and Jenkins
+from `infra/jenkins/local/values-local.yaml`. Commands are bash (WSL Ubuntu), run from the repo root. The
 URLs assume ingress-nginx on NodePort 30080; with the LoadBalancer on :80, drop `:30080`.
 
 ## 1. Tokens (you create them; they never go in git or in a chat)
@@ -48,7 +48,7 @@ the token's user to bypass protection, or keep `main` unprotected for the course
 
 ```bash
 helm upgrade --install jenkins jenkins --repo https://charts.jenkins.io --version 5.10.3 -n jenkins \
-  -f deploy/jenkins/local/values-local.yaml --set controller.jenkinsUrl=http://jenkins.localhost:30080 \
+  -f infra/jenkins/local/values-local.yaml --set controller.jenkinsUrl=http://jenkins.localhost:30080 \
   --wait --timeout 10m
 ```
 After that, http://jenkins.localhost:30080 shows **AI Scan CI/CD (GitOps)** next to the auto-heal job.
@@ -76,7 +76,7 @@ Real GitHub OAuth and AI key values go in two optional override Secrets, `gatewa
 
 ```bash
 # Secrets: already in the cluster from the Helm install, so keep them. On a fresh cluster, create them once:
-#   helm template ai-scan ./charts/ai-scan -n ai-scan-repos -f charts/ai-scan/values.local.yaml \
+#   helm template ai-scan ./infra/helm/ai-scan -n ai-scan-repos -f infra/helm/ai-scan/values.local.yaml \
 #     --show-only templates/secrets.yaml | kubectl -n ai-scan-repos apply -f -
 kubectl -n ai-scan-repos get secret db-secrets ai-keys-master gateway-secrets scanner-secrets
 
@@ -85,7 +85,7 @@ kubectl -n ai-scan-repos get secret db-secrets ai-keys-master gateway-secrets sc
 kubectl -n ai-scan-repos delete secret -l owner=helm,name=ai-scan
 
 # Argo CD adopts the same resources (same chart) and keeps them in sync with git.
-kubectl apply -f deploy/argocd/docker-desktop/ai-scan.yaml
+kubectl apply -f infra/argocd/docker-desktop/ai-scan.yaml
 kubectl -n argocd get application ai-scan -w        # wait for Synced / Healthy
 ```
 From here on, change the app through git, not `helm upgrade`. Argo CD's self-heal undoes manual changes.
@@ -93,7 +93,7 @@ From here on, change the app through git, not `helm upgrade`. Argo CD's self-hea
 ## 5. Demo: change, push, deployed
 
 ```bash
-# a visible change, e.g. a heading in frontend/src, then:
+# a visible change, e.g. a heading in services/frontend/src, then:
 git commit -am "feat(frontend): demo change" && git push
 ```
 1. Within 2 minutes Jenkins starts **ai-scan-cicd**, and the build description shows `frontend @ <sha>`. Stages:
@@ -116,7 +116,7 @@ git commit -am "feat(frontend): demo change" && git push
   previous tag. Your revert has no `[skip ci]`, but it changes no service folder, so Jenkins builds nothing.
 - **Argo CD:** pause auto-sync with `kubectl -n argocd patch application ai-scan --type merge -p
   '{"spec":{"syncPolicy":{"automated":null}}}'`, then use History and Rollback in the UI. Re-apply
-  `deploy/argocd/docker-desktop/ai-scan.yaml` to turn auto-sync back on (git wins again).
+  `infra/argocd/docker-desktop/ai-scan.yaml` to turn auto-sync back on (git wins again).
 
 ## Testing a branch before it's merged
 
@@ -134,12 +134,12 @@ While a PR branch is under test, Lior runs Jenkins with `CICD_BRANCH=<branch>` a
 or the bot keeps committing to a dead branch and Argo CD keeps deploying it:
 ```bash
 helm upgrade jenkins jenkins --repo https://charts.jenkins.io --version 5.10.3 -n jenkins \
-  -f deploy/jenkins/local/values-local.yaml --set controller.jenkinsUrl=http://jenkins.localhost:30080 \
+  -f infra/jenkins/local/values-local.yaml --set controller.jenkinsUrl=http://jenkins.localhost:30080 \
   --set controller.containerEnv[0].value=main --wait --timeout 10m
 kubectl -n argocd patch application ai-scan --type merge -p '{"spec":{"source":{"targetRevision":"main"}}}'
 ```
-Git already says `main` in both places (`deploy/jenkins/local/values-local.yaml`,
-`deploy/argocd/docker-desktop/ai-scan.yaml`); this only undoes the on-cluster overrides. Then run **ai-scan-cicd**
+Git already says `main` in both places (`infra/jenkins/local/values-local.yaml`,
+`infra/argocd/docker-desktop/ai-scan.yaml`); this only undoes the on-cluster overrides. Then run **ai-scan-cicd**
 once with `BUILD_ALL=true`, so `main` gets its own SHA tags.
 
 ## Production option: GitHub webhook instead of polling
@@ -148,7 +148,7 @@ Polling every 2 minutes works on a laptop because Jenkins makes the outgoing cal
 reach Jenkins, and `http://jenkins.localhost:30080` isn't reachable from the internet. On a server with a public
 (or tunnelled) URL a webhook is better: builds start within seconds and Jenkins stops polling GitHub.
 
-1. Jenkins: in the job DSL (`deploy/jenkins/local/values-local.yaml`, job `ai-scan-cicd`), replace
+1. Jenkins: in the job DSL (`infra/jenkins/local/values-local.yaml`, job `ai-scan-cicd`), replace
    `scmpoll_spec('H/2 * * * *')` with the GitHub push trigger (`githubPush()`; add the `github` plugin to `installPlugins`). Keep a slow poll
    (e.g. `H/15`) as a fallback if webhook deliveries can be lost.
 2. GitHub: repo > **Settings > Webhooks > Add webhook**: Payload URL `https://<jenkins-host>/github-webhook/`,
@@ -165,7 +165,7 @@ sync immediately.
 
 `values-docker-desktop.yaml` turns on an `autoscaling/v2` HorizontalPodAutoscaler for **frontend**, **gateway** and
 **review-api**: 1 to 3 replicas, 70% average CPU of the pod's request (100m for each, so about 70m). Postgres and
-the scanner Jobs never scale. Keys per service in `charts/ai-scan/values.yaml` (`frontend`, `gateway`, `reviewApi`):
+the scanner Jobs never scale. Keys per service in `infra/helm/ai-scan/values.yaml` (`frontend`, `gateway`, `reviewApi`):
 
 ```yaml
 autoscaling:

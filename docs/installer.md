@@ -1,13 +1,13 @@
 # Installer (Phase 8)
 
-`infra/installer/aiscan-install.sh` installs AI Scan Repos onto an existing cluster. It is non-interactive
+`infra/bootstrap/installer/aiscan-install.sh` installs AI Scan Repos onto an existing cluster. It is non-interactive
 (flags + env + an env file), idempotent (every step can be re-run), and `--dry-run` prints the full plan without
 calling `kubectl`, `helm` or `aws` and without touching the working tree.
 
 ```bash
-cp infra/installer/installer.env.example infra/installer/installer.env   # .gitignored; fill in REPLACE_ME
-infra/installer/aiscan-install.sh --config infra/installer/installer.env --dry-run install   # review the plan
-infra/installer/aiscan-install.sh --config infra/installer/installer.env install
+cp infra/bootstrap/installer/installer.env.example infra/bootstrap/installer/installer.env   # .gitignored; fill in REPLACE_ME
+infra/bootstrap/installer/aiscan-install.sh --config infra/bootstrap/installer/installer.env --dry-run install   # review the plan
+infra/bootstrap/installer/aiscan-install.sh --config infra/bootstrap/installer/installer.env install
 ```
 
 Precedence: defaults < `--config` file < environment < flags. The config file accepts `KEY=VALUE` lines only
@@ -16,7 +16,7 @@ Precedence: defaults < `--config` file < environment < flags. The config file ac
 | Flag / env | Values | Default |
 |---|---|---|
 | `--overlay` / `OVERLAY` | `k3s`, `eks`, `local` | `k3s` |
-| `--mode` / `MODE` | `gitops` (Argo CD app-of-apps; k3s only, because `deploy/argocd/apps` point at k3s overlays), `direct` (`kubectl apply -k`) | `gitops` |
+| `--mode` / `MODE` | `gitops` (Argo CD app-of-apps; k3s only, because `infra/argocd/apps` point at k3s overlays), `direct` (`kubectl apply -k`) | `gitops` |
 | `--registry` / `REGISTRY_TYPE` | `local` (in-cluster registry:2 + htpasswd), `ecr` | `local` |
 | `--tag` / `IMAGE_TAG` | image tag (`[A-Za-z0-9_.-]`) | `GIT_SHA_PLACEHOLDER` |
 | `--dry-run` / `DRY_RUN=1` | print only | off |
@@ -32,13 +32,13 @@ Precedence: defaults < `--config` file < environment < flags. The config file ac
 | Step | What it does |
 |---|---|
 | `preflight` | Required tools for the chosen options (`kubectl kustomize openssl` + `helm` for gitops, `aws` for ECR, `htpasswd` for the local registry); `kubectl version`; `kubectl auth can-i` for namespaces, CRDs, ClusterRoles, Secrets; `aws sts get-caller-identity` for ECR; with `--mode direct` the prometheus-operator CRDs `servicemonitors`/`prometheusrules.monitoring.coreos.com` must exist (<a id="monitoring-crds"></a>install kube-prometheus-stack or its CRDs first, else preflight stops with a clear error) |
-| `bootstrap` | `infra/bootstrap/overlays/<overlay>` (namespaces, reports PV/StorageClass; `NODE_NAME` substituted on k3s, `EFS_FILESYSTEM_ID` on eks) and `infra/ingress/overlays/<overlay>` |
-| `registry` | **local:** Secret `registry/registry-htpasswd` (bcrypt push + pull users; passwords go to `htpasswd -iBn` on stdin, never argv), `infra/registry/registry.yaml`, `regcred` (pull user) in `ai-scan-repos` and `jenkins`, `jenkins/registry-push` (push user, Jenkins credential labels). **ecr:** creates the ECR repos if missing (`ai-scan/{review-api,gateway,frontend,scanner-worker,jenkins-agent}`, scan on push, immutable tags) and runs `ecr-login` |
+| `bootstrap` | `infra/bootstrap/cluster/overlays/<overlay>` (namespaces, reports PV/StorageClass; `NODE_NAME` substituted on k3s, `EFS_FILESYSTEM_ID` on eks) and `infra/bootstrap/ingress/overlays/<overlay>` |
+| `registry` | **local:** Secret `registry/registry-htpasswd` (bcrypt push + pull users; passwords go to `htpasswd -iBn` on stdin, never argv), `infra/bootstrap/registry/registry.yaml`, `regcred` (pull user) in `ai-scan-repos` and `jenkins`, `jenkins/registry-push` (push user, Jenkins credential labels). **ecr:** creates the ECR repos if missing (`ai-scan/{review-api,gateway,frontend,scanner-worker,jenkins-agent}`, scan on push, immutable tags) and runs `ecr-login` |
 | `ecr-login` | `aws ecr get-login-password` → `regcred` (dockerconfigjson) in `ai-scan-repos` and `jenkins`. ECR tokens last 12h: run it from a cron/systemd timer (or rely on the EKS node role for pulls) |
 | `secrets` | `gateway-secrets` (GitHub OAuth `GITHUB_CLIENT_ID/SECRET` + webhook secret), `db-secrets`, `scanner-secrets` (`INTERNAL_API_TOKEN`, AI defaults), `ai-keys-master`, optional `monitoring/grafana-admin` (see [secrets-runbook.md](secrets-runbook.md)) |
-| `images` | Sets registry + tag in `deploy/{review-api,gateway,frontend}/overlays/<overlay>` (targeted rewrite of the existing `images:` entry, `newName`/`newTag` only: minimal stable diff) and `SCANNER_IMAGE` in `deploy/scanner-worker/overlays/<overlay>` |
-| `egress` | Replaces the NetworkPolicy placeholders in `deploy/platform/overlays/<overlay>/kustomization.yaml` (review-api AI + K8s API egress) and `deploy/scanner-worker/overlays/<overlay>/networkpolicy-ai-egress.yaml` from `AI_EGRESS_CIDRS` (comma list, IPv4 `/8`–`/32`, anything broader is refused), `KUBE_API_ENDPOINT` and `KUBE_SERVICE_IP` (IPv4, written as `/32`). Only lines tagged `(installer: VAR)` change; working tree only (open a PR in gitops mode). An unset variable keeps the placeholder with a warning: that traffic stays blocked. See [Egress](#egress) |
-| `deploy` | **gitops:** `helm upgrade --install argocd` (pinned), argocd-cm health patch, AppProjects `ai-scan` and `ai-scan-ci`, `deploy/argocd/root-app.yaml`. **direct:** `kubectl apply -k` platform → postgres → scanner-worker → review-api → gateway → frontend |
+| `images` | Sets registry + tag in `infra/k8s/{review-api,gateway,frontend}/overlays/<overlay>` (targeted rewrite of the existing `images:` entry, `newName`/`newTag` only: minimal stable diff) and `SCANNER_IMAGE` in `infra/k8s/scanner-worker/overlays/<overlay>` |
+| `egress` | Replaces the NetworkPolicy placeholders in `infra/k8s/platform/overlays/<overlay>/kustomization.yaml` (review-api AI + K8s API egress) and `infra/k8s/scanner-worker/overlays/<overlay>/networkpolicy-ai-egress.yaml` from `AI_EGRESS_CIDRS` (comma list, IPv4 `/8`–`/32`, anything broader is refused), `KUBE_API_ENDPOINT` and `KUBE_SERVICE_IP` (IPv4, written as `/32`). Only lines tagged `(installer: VAR)` change; working tree only (open a PR in gitops mode). An unset variable keeps the placeholder with a warning: that traffic stays blocked. See [Egress](#egress) |
+| `deploy` | **gitops:** `helm upgrade --install argocd` (pinned), argocd-cm health patch, AppProjects `ai-scan` and `ai-scan-ci`, `infra/argocd/root-app.yaml`. **direct:** `kubectl apply -k` platform → postgres → scanner-worker → review-api → gateway → frontend |
 | `verify` | Root Application Healthy (gitops), rollout status of postgres/review-api/gateway/frontend, `/readyz` of review-api and gateway from inside their pods |
 | `uninstall` | Needs `--yes`. **Without `--purge` no data is deleted:** PVCs `postgres-data`, `reports`, `postgres-backups`, all Secrets and the namespaces stay. gitops: the `resources-finalizer` is removed from every Application first, so deleting the Applications orphans their resources (no cascade); the PVCs also carry `argocd.argoproj.io/sync-options: Delete=false,Prune=false`. Then the workloads of postgres, scanner-worker, review-api, gateway, frontend are deleted from their rendered overlays **with PersistentVolumeClaims/PersistentVolumes filtered out** (never `kubectl delete -k` on an overlay with a PVC); platform (ServiceAccounts, reports PVC) is kept. A reinstall reuses the data. `--purge` (needs `--yes --purge --confirm-purge ai-scan-repos`) deletes the app and its data: all overlays incl. platform and the PVCs `postgres-data`, `reports`, `postgres-backups`, the registry with its `registry-data` PVC, Argo CD, the registry, ingress and namespaces `ai-scan-repos`, `registry`, `argocd`. It is **not** everything: namespaces `jenkins` (incl. the `jenkins-home` PVC) and `monitoring`, and cluster-scoped bootstrap (PVs, StorageClasses; reports PV is Retain) are left alone |
 
@@ -56,7 +56,7 @@ Precedence: defaults < `--config` file < environment < flags. The config file ac
 - Every failing command prints `ERROR: step "<step>" failed …` naming the step.
 - `ai-keys-master` is **never** replaced by the installer, not even with `--rotate-secrets`: it encrypts every
   stored provider key (rotation = re-encrypt first, docs/secrets-runbook.md).
-- `infra/installer/installer.env` is in `.gitignore`; the committed `installer.env.example` has placeholders only.
+- `infra/bootstrap/installer/installer.env` is in `.gitignore`; the committed `installer.env.example` has placeholders only.
 
 ## Rotation
 
@@ -104,7 +104,7 @@ component manifests.
 
 ## Older scripts
 
-`infra/installer/scripts/install-{local,ssh-k3s,eks,argocd}.sh` remain as host/cluster provisioning stubs
+`infra/bootstrap/installer/scripts/install-{local,ssh-k3s,eks,argocd}.sh` remain as host/cluster provisioning stubs
 (K3s over SSH, Terraform EKS). After the cluster exists, use `aiscan-install.sh`.
 
 ## Tests

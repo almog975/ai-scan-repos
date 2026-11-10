@@ -1,21 +1,21 @@
 # Phase 1 – Backend implementation plan
 
 Base: `feat/phase-0-foundation` @ `7b51cf4` (contracts v0.1.0-rc, not tagged).
-`contracts/` is the source of truth. A step is finished only when its listed contract tests and unit tests pass, `make test` is green, and every kustomize overlay builds.
+`services/contracts/` is the source of truth. A step is finished only when its listed contract tests and unit tests pass, `make test` is green, and every kustomize overlay builds.
 Out of scope: UI designs, tags, and per-depth estimates. Findings are not paged server-side; Brief = top 10 findings stays.
 
 ## DB migration direction (decision; not implemented yet)
-- **Alembic** in `review-api/alembic/` is the only thing that runs migrations. Its runner is a k8s Job or init container; it must not be part of the app CMD.
-- `infra/db/schema.sql` is the reference DDL, and a CI test checks that it matches the migrations. Run `alembic upgrade head` against an empty Postgres, then `pg_dump --schema-only`, then diff the dump against `schema.sql` with normalisation.
+- **Alembic** in `services/review-api/alembic/` is the only thing that runs migrations. Its runner is a k8s Job or init container; it must not be part of the app CMD.
+- `infra/bootstrap/db/schema.sql` is the reference DDL, and a CI test checks that it matches the migrations. Run `alembic upgrade head` against an empty Postgres, then `pg_dump --schema-only`, then diff the dump against `schema.sql` with normalisation.
 - Planned revisions:
   - `0002_contract_v1`: enums `review_state` (queued, running, paused, stuck, retrying, completed, failed, cancelled — exactly `common.schema.json#/$defs/state`; "done" = `completed`) and `user_role`; `reviews.budget_no`, `ref`, `commit_sha CHECK ^[a-f0-9]{40}$`, `provider_id`, `ack_cloud`, `depth`; table `review_attempts(review_id, budget_no, n 1..5, job_name, outcome, started_at, finished_at, error)` with UNIQUE(review_id, budget_no, n); `ai_providers(key_ciphertext, key_nonce, key_version)`; `settings` key/value jsonb; `sessions`; `webhook_deliveries`; a first-user-admin trigger.
   - `0003_*`: indexes and backfills only. Every revision must have a working downgrade.
-- Test: `review-api/tests/test_migrations.py` runs upgrade, then downgrade, then upgrade (testcontainers Postgres; skipped when docker is absent).
+- Test: `services/review-api/tests/test_migrations.py` runs upgrade, then downgrade, then upgrade (testcontainers Postgres; skipped when docker is absent).
 
 ## Steps (each one is one PR into `feat/phase-1-backend`)
 
 ### 1. Error envelope + auth/roles
-- Files: `review-api/app/errors.py` (exception → `{error:{code,message,details},request_id}`, codes from the Error.code enum), a request-id middleware, and `app/auth.py` (session lookup, `require_user` → 401 UNAUTHORIZED, `require_admin` → 403 FORBIDDEN). Gateway: `gateway/app/errors.py`, same envelope.
+- Files: `services/review-api/app/errors.py` (exception → `{error:{code,message,details},request_id}`, codes from the Error.code enum), a request-id middleware, and `app/auth.py` (session lookup, `require_user` → 401 UNAUTHORIZED, `require_admin` → 403 FORBIDDEN). Gateway: `services/gateway/app/errors.py`, same envelope.
 - DB: migration 0002, covering `users.role` and the first-user-admin trigger.
 - Acceptance: the `test_openapi_specs` Error/401/403 checks pass. New `tests/test_errors.py` checks that every error response validates against the Error schema. `tests/test_auth.py` checks that the first user becomes admin, the second becomes user, and `/admin/*` returns 403 for a user.
 
@@ -26,7 +26,7 @@ Out of scope: UI designs, tags, and per-depth estimates. Findings are not paged 
 ### 3. POST/GET /reviews
 - Body is `ReviewCreate{repo_url, ref, depth, provider_id, ack_cloud}` with closed schemas. A cloud provider without `ack_cloud=true` gets 422 CLOUD_ACK_REQUIRED. `ref` is resolved to a 40-char SHA. The list endpoint uses `page`/`page_size` (≤100) and returns `total`.
 - Files: `app/routers/reviews.py`, `app/schemas.py`, generated from or checked against the OpenAPI.
-- Acceptance: schemathesis `st run contracts/review-api.openapi.yaml` passes for /reviews against the test app. This enables the 4 or 5 tests that are skipped today, using an in-process ASGI base URL. `test_agreed_decisions` CLOUD_ACK cases pass.
+- Acceptance: schemathesis `st run services/contracts/review-api.openapi.yaml` passes for /reviews against the test app. This enables the 4 or 5 tests that are skipped today, using an in-process ASGI base URL. `test_agreed_decisions` CLOUD_ACK cases pass.
 
 ### 4. AI providers + crypto
 - `app/crypto.py`: AES-256-GCM with a 96-bit random nonce and AAD = provider id. The key is `AI_KEYS_ENCRYPTION_KEY` from Secret `ai-keys-master`; startup fails, and `/readyz` returns 503, if it is missing or not 32 bytes. `key_version` allows rotation later.
@@ -49,14 +49,14 @@ Out of scope: UI designs, tags, and per-depth estimates. Findings are not paged 
   - env `DEPTH`, `REVIEW_ID`, `ATTEMPT`, `BUDGET_NO` and `COMMIT_SHA`;
   - the `reports` PVC mounted at `/reports`;
   - a pinned image (`:latest` is rejected).
-- RBAC lives in `deploy/review-api/base` (Role: jobs create/get/delete/list, pods/log get).
+- RBAC lives in `infra/k8s/review-api/base` (Role: jobs create/get/delete/list, pods/log get).
 - Acceptance: the existing `test_watchdog_crypto_launcher` tests are extended. The rendered Job validates with kubeconform, and the name and labels are asserted.
 
 ### 7. Checkpoint, reports layout, scanner-worker
 - Volume layout: `/reports/<review_id>/attempts/<budget_no>-<n>/{checkpoint.json, findings.partial.jsonl, logs/}`, plus `/reports/<review_id>/report.json|report.md` (final).
 - `checkpoint/v1` keys (contract is closed): `schema, review_id, commit_sha, depth, attempt, budget_no, stage, cursor{scanners_done, files_total, files_done, findings_offset}, progress, updated_at`. Partial findings always live in the sibling `findings.partial.jsonl`; only the first `cursor.findings_offset` lines are trusted. The worker resumes from the newest earlier attempt (any budget) only when `commit_sha` and `depth` match.
-- Files: `scanner-worker/scanner/{checkpoint.py,report.py,run.py}`. Finding id = sha1 recipe from `finding.schema.json`. `report.json` includes `attempt` and `budget_no`, and Brief = top 10 by severity.
-- Acceptance: worker output validates against `checkpoint`, `report` and `finding` schemas (reuse `contracts/tests` registry). Kill-and-resume test: same findings and no duplicate ids.
+- Files: `services/scanner-worker/scanner/{checkpoint.py,report.py,run.py}`. Finding id = sha1 recipe from `finding.schema.json`. `report.json` includes `attempt` and `budget_no`, and Brief = top 10 by severity.
+- Acceptance: worker output validates against `checkpoint`, `report` and `finding` schemas (reuse `services/contracts/tests` registry). Kill-and-resume test: same findings and no duplicate ids.
 
 ### 8. Watchdog + /retry
 - `app/watchdog.py` marks running reviews as `stuck` when the heartbeat is stale or the Job has failed. It deletes the old Job (propagationPolicy Background) and launches attempt n+1, up to 5. After 5 the review is `failed`. `POST /reviews/{id}/retry` is allowed only from `failed`; it returns 202 and moves the review to `retrying` with budget_no+1 and attempt 1. Each attempt writes a `review_attempts` row.
@@ -98,4 +98,4 @@ Out of scope: UI designs, tags, and per-depth estimates. Findings are not paged 
 | progress.schema + SSE progress/state/done, pause/resume 202, /files paged | 9 |
 | gateway explicit routes, session cookie, internal token, HMAC | 10 |
 | /healthz /readyz /metrics | 11 |
-| migrations (Alembic) parity with infra/db/schema.sql | 0002 in 1, parity in 12 |
+| migrations (Alembic) parity with infra/bootstrap/db/schema.sql | 0002 in 1, parity in 12 |

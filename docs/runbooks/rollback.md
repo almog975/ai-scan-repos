@@ -5,7 +5,7 @@ letting Argo CD sync. Do **not** `kubectl set image` (selfHeal undoes it within 
 Flow background: [ci-cd-flow.md](../ci-cd-flow.md).
 
 ## 0. Preconditions
-- Argo CD apps `ai-scan-<component>-k3s` are **Synced/Healthy** and track `main` (`deploy/argocd/apps/*.yaml`).
+- Argo CD apps `ai-scan-<component>-k3s` are **Synced/Healthy** and track `main` (`infra/argocd/apps/*.yaml`).
 - The known-good image (`<registry>/ai-scan/<component>:<good-sha>`) is still in the registry (never delete old tags
   before a demo).
 - You can push a branch to `almog975/ai-scan-repos` and open/merge a PR to `main` (`gh` logged in, or the GitHub UI).
@@ -17,9 +17,9 @@ Jenkins deploys arrive as merged PRs from `deploy/<component>-<sha>` (or `deploy
 (`git revert -m 1 <merge-sha>`) or, for a squash/rebase merge, the bump commit itself.
 ```bash
 git fetch origin
-git log origin/main --oneline -- deploy/<component>/overlays/k3s
+git log origin/main --oneline -- infra/k8s/<component>/overlays/k3s
 # Jenkins commits: "ci(k3s): gateway,scanner-worker -> bbbbbbb [skip ci]" by ai-scan-ci-bot <ci-bot@ai-scan.local>
-git show <bump-sha> -- deploy/          # which newTag / SCANNER_IMAGE changed
+git show <bump-sha> -- infra/k8s/          # which newTag / SCANNER_IMAGE changed
 kubectl -n ai-scan-repos get deploy -o custom-columns=NAME:.metadata.name,IMAGE:.spec.template.spec.containers[*].image
 kubectl -n ai-scan-repos get cm scanner-image -o jsonpath='{.data.SCANNER_IMAGE}'; echo
 ```
@@ -30,7 +30,7 @@ them; to roll back only one, edit that overlay back to the good tag instead (sam
 ```bash
 git switch -c rollback/<component>-<bad-sha> origin/main
 git revert --no-edit <bump-sha>           # merge commit of the deploy PR: git revert --no-edit -m 1 <merge-sha>
-kustomize build deploy/<component>/overlays/k3s | grep -E 'image:|SCANNER_IMAGE'   # must show the good tag
+kustomize build infra/k8s/<component>/overlays/k3s | grep -E 'image:|SCANNER_IMAGE'   # must show the good tag
 git push -u origin rollback/<component>-<bad-sha>
 gh pr create --base main --title "Rollback <component> to <good-sha>" --body "Reverts <bump-sha>."
 # or the GitHub UI: "Revert" button on the merged deploy PR creates the same revert PR.
@@ -38,9 +38,9 @@ gh pr create --base main --title "Rollback <component> to <good-sha>" --body "Re
 ```
 If later bumps touched the same file, `git revert` conflicts: set the good tag by hand, then `git revert --continue`:
 ```bash
-(cd deploy/<component>/overlays/k3s && kustomize edit set image ai-scan/<component>=<registry>/ai-scan/<component>:<good-sha>)
+(cd infra/k8s/<component>/overlays/k3s && kustomize edit set image ai-scan/<component>=<registry>/ai-scan/<component>:<good-sha>)
 # scanner-worker:
-(cd deploy/scanner-worker/overlays/k3s && kustomize edit set configmap scanner-image \
+(cd infra/k8s/scanner-worker/overlays/k3s && kustomize edit set configmap scanner-image \
    --from-literal=SCANNER_IMAGE=<registry>/ai-scan/scanner-worker:<good-sha>)
 ```
 
@@ -83,24 +83,24 @@ sync policy; disable auto-sync on `ai-scan-root` too for the duration, or prefer
 | **Total** | **~1.5 min with manual sync, ~5 min waiting for the poll** |
 
 ## Gotchas
-- **No CI rebuild:** the revert touches only `deploy/**` and its subject contains `[skip ci]` (`Revert "ci(k3s): … [skip ci]"`),
+- **No CI rebuild:** the revert touches only `infra/k8s/**` and its subject contains `[skip ci]` (`Revert "ci(k3s): … [skip ci]"`),
   so the Jenkins loop guard skips it (rehearsed; see below). Do not edit the message to drop `[skip ci]` and do not
-  mix code changes into the rollback commit. A PR merge commit also only changes `deploy/**`, so it is skipped too.
+  mix code changes into the rollback commit. A PR merge commit also only changes `infra/k8s/**`, so it is skipped too.
 - **Poll interval:** ~3 min (`timeout.reconciliation` in `argocd-cm`) unless the Argo CD webhook is configured.
 - **DB migrations do not roll back.** review-api's migrations Job only upgrades. If the bad release added an alembic
   migration, the old image must be compatible with the new schema; a downgrade is a separate manual step.
 - **Next bump:** the following Jenkins build writes a new tag again; fix forward on a branch.
 - **Deploy PRs:** Jenkins opens a PR per build (`deploy/*`); an unmerged deploy PR is simply closed, no rollback
-  needed. `rollback/*` branches are excluded from Jenkins indexing and the merge is skipped as `deploy/**`-only.
+  needed. `rollback/*` branches are excluded from Jenkins indexing and the merge is skipped as `infra/k8s/**`-only.
 
 ## Demo script
 ```bash
 C=gateway; R=registry.registry:5000
-BAD=$(git log origin/main --first-parent --format=%h -1 -- deploy/$C/overlays/k3s)
+BAD=$(git log origin/main --first-parent --format=%h -1 -- infra/k8s/$C/overlays/k3s)
 git show --stat $BAD
 git switch -c rollback/$C-$BAD origin/main
 git revert --no-edit -m 1 $BAD      # BAD = merge commit of the deploy PR; for a squash merge drop "-m 1"
-kustomize build deploy/$C/overlays/k3s | grep "image: $R/ai-scan/$C"
+kustomize build infra/k8s/$C/overlays/k3s | grep "image: $R/ai-scan/$C"
 git push -u origin HEAD && gh pr create --fill --base main && gh pr merge --merge   # or open/merge in the UI
 argocd app sync ai-scan-$C-k3s --grpc-web && argocd app wait ai-scan-$C-k3s --sync --health --grpc-web
 kubectl -n ai-scan-repos rollout status deploy/$C --timeout=180s
@@ -114,8 +114,8 @@ then `git revert --no-edit <B>`:
 after A : gateway:aaaaaaa  SCANNER_IMAGE=…/scanner-worker:aaaaaaa   guard: skip (bot author)
 after B : gateway:bbbbbbb  SCANNER_IMAGE=…/scanner-worker:bbbbbbb   guard: skip (bot author)
 revert  : author = human, subject 'Revert "ci(k3s): gateway,scanner-worker -> bbbbbbb [skip ci]"'
-          files = deploy/gateway/overlays/k3s/kustomization.yaml, deploy/scanner-worker/overlays/k3s/kustomization.yaml
-          guard: skip ([skip ci]; would also skip as deploy/**-only)
+          files = infra/k8s/gateway/overlays/k3s/kustomization.yaml, infra/k8s/scanner-worker/overlays/k3s/kustomization.yaml
+          guard: skip ([skip ci]; would also skip as infra/k8s/**-only)
 build   : gateway:aaaaaaa  SCANNER_IMAGE=…/scanner-worker:aaaaaaa   (tree identical to A)
 ```
 Not rehearsed: the Argo CD sync and rollout (needs a live cluster).

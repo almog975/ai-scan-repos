@@ -6,7 +6,7 @@
 
 ## Context
 AI provider API keys are stored in `ai_providers.api_key_enc` encrypted with AES-256-GCM
-(`review-api/app/crypto.py`): master key `AI_KEYS_ENCRYPTION_KEY` from Secret `ai-keys-master`
+(`services/review-api/app/crypto.py`): master key `AI_KEYS_ENCRYPTION_KEY` from Secret `ai-keys-master`
 (32 bytes), random 96-bit nonce per key (`key_nonce`), AAD = provider id. There is **one** master key and
 no key-version column.
 

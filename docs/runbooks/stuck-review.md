@@ -1,7 +1,7 @@
 # Runbook — stuck review
 
-Based on `review-api/app/watchdog.py`, `state.py`, `routers/control.py`, `routers/reviews.py`, `launcher.py`,
-`config.py` and `scanner-worker/scanner/checkpoint.py`. States and transitions:
+Based on `services/review-api/app/watchdog.py`, `state.py`, `routers/control.py`, `routers/reviews.py`, `launcher.py`,
+`config.py` and `services/scanner-worker/scanner/checkpoint.py`. States and transitions:
 [review state machine](../diagrams/review-state-machine.md). Namespace: `ai-scan-repos`.
 
 ```bash

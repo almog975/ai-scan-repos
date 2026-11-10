@@ -2,7 +2,7 @@
 
 Based on the code on `feat/phase-2-scanner` (review-api `app/routers/providers.py`, `app/providers/`,
 `app/crypto.py`, `app/jobs.py`, `app/launcher.py`; scanner-worker `scanner/ai_client.py`, `scanner/run.py`)
-and the contract `contracts/review-api.openapi.yaml`. Planner decisions for Phase 2 are implemented there; remaining gaps are in the status table (section 6).
+and the contract `services/contracts/review-api.openapi.yaml`. Planner decisions for Phase 2 are implemented there; remaining gaps are in the status table (section 6).
 
 > ⚠️ **Cloud providers send your source code outside the network.** With a provider of kind `cloud`,
 > the scanner Job sends scanner findings **and source-code snippets / whole files** (Brief: code context
@@ -11,7 +11,7 @@ and the contract `contracts/review-api.openapi.yaml`. Planner decisions for Phas
 
 ## 1. Who can do this
 Only users with `role = admin` (`require_admin`; non-admins get 403). The first user to log in becomes admin
-(see [contracts/README.md](../../contracts/README.md)). Admin routes are reached through the gateway at
+(see [services/contracts/README.md](../../services/contracts/README.md)). Admin routes are reached through the gateway at
 `/api/admin/...` with the session cookie (gateway `app/routes.py` allow-list).
 
 **UI:** admins manage providers in the web UI under **AI providers** (`/admin/ai-providers`): add, edit, delete, **Test connection**, and a cloud acknowledgement checkbox for `kind: cloud`. The API below does the same. Overview: [admin-guide.md](../admin-guide.md).
@@ -46,7 +46,7 @@ curl -s -b "$COOKIES" -X POST https://<host>/api/admin/ai-providers/<id>/test
 curl -s -b "$COOKIES" -H 'Content-Type: application/json' -X PUT https://<host>/api/admin/settings \
   -d '{"default_provider_id":"<id>","max_concurrent_reviews":3,"max_repo_size_mb":500}'
 ```
-(`$COOKIES` = your browser session cookies. State-changing calls through the gateway also need the `X-CSRF-Token` header — see `contracts/gateway.openapi.yaml`.)
+(`$COOKIES` = your browser session cookies. State-changing calls through the gateway also need the `X-CSRF-Token` header — see `services/contracts/gateway.openapi.yaml`.)
 
 **`/test`:** makes a real minimal completion (`max_tokens` 5, 10 s timeout) to the provider with the stored
 key and model (`app/providers/base.py` → `ai_adapters.Adapter`). Any network/HTTP/parse error → **502** with the
@@ -100,7 +100,7 @@ code never leaves your tailnet.
      curl -sS http://100.x.y.z:11434/v1/chat/completions -H 'Content-Type: application/json' \
      -d '{"model":"qwen2.5-coder:14b","messages":[{"role":"user","content":"ping"}]}'
    ```
-   Egress NetworkPolicy for scanner Jobs: `deploy/scanner-worker/base/networkpolicy-egress.yaml` (Infra), see [onprem-ai-tailscale.md](../onprem-ai-tailscale.md).
+   Egress NetworkPolicy for scanner Jobs: `infra/k8s/scanner-worker/base/networkpolicy-egress.yaml` (Infra), see [onprem-ai-tailscale.md](../onprem-ai-tailscale.md).
 6. Create the provider with `kind: "onprem"` and that `base_url` (section 2), then set it as default.
 
 ## 4. Cloud providers

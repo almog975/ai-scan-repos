@@ -4,11 +4,11 @@
 
 ### Local (dev)
 See README Quickstart. Defaults: SQLite `./review-api.db`, `JOB_LAUNCHER=local`, reports in `./reports`.
-Set `LOCAL_WORKER_CWD` to `scanner-worker/` so the subprocess finds the `scanner` package.
+Set `LOCAL_WORKER_CWD` to `services/scanner-worker/` so the subprocess finds the `scanner` package.
 
 ### Docker images
 Images are always `<host>/ai-scan/<svc>:<sha>` (git SHA, never `latest`); registry hosts per target are in
-[deploy/README.md](../../deploy/README.md).
+[infra/k8s/README.md](../../infra/k8s/README.md).
 ```bash
 SHA=$(git rev-parse --short HEAD)
 docker build -t <host>/ai-scan/review-api:$SHA review-api
@@ -19,29 +19,29 @@ docker push <host>/ai-scan/<svc>:$SHA
 ```
 
 ### K3s / EKS (supported path)
-Use the CLI installer `infra/installer/aiscan-install.sh` (no web UI; the old web wizard was removed in Phase 9):
+Use the CLI installer `infra/bootstrap/installer/aiscan-install.sh` (no web UI; the old web wizard was removed in Phase 9):
 it bootstraps the cluster, creates secrets, installs Argo CD and the app-of-apps. See [installer.md](../installer.md).
 The manual per-component steps below are for debugging only.
 
 ### Kubernetes (Kustomize, per component)
-Manifests live in `deploy/<component>/{base,overlays/{local,k3s,eks}}`; deploy each with
-`kubectl apply -k deploy/<component>/overlays/$OVERLAY`. Apply order (from [infra-README.md](../infra-README.md)):
+Manifests live in `infra/k8s/<component>/{base,overlays/{local,k3s,eks}}`; deploy each with
+`kubectl apply -k infra/k8s/<component>/overlays/$OVERLAY`. Apply order (from [infra-README.md](../infra-README.md)):
 
-1. **platform** – `kubectl apply -k deploy/platform/overlays/$OVERLAY` (on a fresh cluster the ServiceMonitor
+1. **platform** – `kubectl apply -k infra/k8s/platform/overlays/$OVERLAY` (on a fresh cluster the ServiceMonitor
    CRD is missing: re-apply after step 3 or ignore that error).
 2. **secrets** – create them from the CLI per [secrets-runbook.md](../secrets-runbook.md) (never in git):
    `gateway-secrets`, `db-secrets`, `ai-keys-master`, `scanner-secrets` (ns `ai-scan-repos`),
    `grafana-admin` (ns `monitoring`), `registry-htpasswd`, `registry-tls` (ns `registry`).
 3. **kube-prometheus-stack** – `infra/helm/kube-prometheus-stack/install.sh`.
-4. **registry** – `kubectl apply -f infra/registry/registry.yaml`; on K3s nodes install
-   `infra/registry/registries.yaml.example` as the registries config.
-5. **postgres** – `kubectl apply -k deploy/postgres/overlays/$OVERLAY`.
-6. **scanner-worker** – `kubectl apply -k deploy/scanner-worker/overlays/$OVERLAY` (RBAC + Job template).
-7. **review-api, gateway, frontend** – `kubectl apply -k deploy/<svc>/overlays/$OVERLAY`.
+4. **registry** – `kubectl apply -f infra/bootstrap/registry/registry.yaml`; on K3s nodes install
+   `infra/bootstrap/registry/registries.yaml.example` as the registries config.
+5. **postgres** – `kubectl apply -k infra/k8s/postgres/overlays/$OVERLAY`.
+6. **scanner-worker** – `kubectl apply -k infra/k8s/scanner-worker/overlays/$OVERLAY` (RBAC + Job template).
+7. **review-api, gateway, frontend** – `kubectl apply -k infra/k8s/<svc>/overlays/$OVERLAY`.
 
 **Image tags:** overlays ship with `GIT_SHA_PLACEHOLDER`. For a manual deploy set a real tag first:
 ```bash
-cd deploy/review-api/overlays/$OVERLAY
+cd infra/k8s/review-api/overlays/$OVERLAY
 kustomize edit set image ai-scan/review-api=<host>/ai-scan/review-api:$SHA
 # scanner-worker: the image is passed to review-api via ConfigMap scanner-image
 cd ../../../scanner-worker/overlays/$OVERLAY
@@ -49,7 +49,7 @@ kustomize edit set configmap scanner-image --from-literal=SCANNER_IMAGE=<host>/a
 ```
 Don't commit these manual edits on `main` — in normal operation Jenkins sets the tags.
 
-What the code expects at runtime (defaults in `review-api/app/config.py`; check against the manifests):
+What the code expects at runtime (defaults in `services/review-api/app/config.py`; check against the manifests):
 - Namespace `ai-scan-repos`; review-api `JOB_LAUNCHER=kubernetes` with RBAC to create `batch/jobs` there.
 - Postgres reachable via `DATABASE_URL` (from `db-secrets`); migrations run in Job `review-api-migrate` (Argo CD PreSync hook) before review-api rolls.
 - Reports PVC mounted at `REPORTS_DIR` in review-api **and** at `/reports` in every scanner Job → must be
@@ -64,8 +64,8 @@ What the code expects at runtime (defaults in `review-api/app/config.py`; check 
 
 ### CI/CD and GitOps
 Jenkins (smee relay → test → build → Trivy → push → tag bump) and the Argo CD Applications that watch
-`deploy/<component>/overlays/<target>` are described in [docs/ci.md](../ci.md) and
-[deploy/README.md](../../deploy/README.md).
+`infra/k8s/<component>/overlays/<target>` are described in [docs/ci.md](../ci.md) and
+[infra/k8s/README.md](../../infra/k8s/README.md).
 
 ## 2. Operate
 
@@ -115,7 +115,7 @@ Two different webhooks exist. Don't confuse them:
 | CI (push → Jenkins build) | smee-client → Jenkins `/github-webhook/` | none in our code. Jenkins also polls (`pollSCM H/5`) |
 | Auto-review (push → review, only with `WEBHOOK_AUTO_REVIEW=true`) | gateway `POST /webhooks/github` | replay protection (below; delivery ids expire after 24 h, a planned change) |
 
-The gateway (`gateway/app/main.py`, `WEBHOOK_REPLAY_WINDOW_SECONDS`, default 86400 = 24 h) checks each signed delivery like this. Every rejection is **409 CONFLICT**.
+The gateway (`services/gateway/app/main.py`, `WEBHOOK_REPLAY_WINDOW_SECONDS`, default 86400 = 24 h) checks each signed delivery like this. Every rejection is **409 CONFLICT**.
 
 > Delivery-id and payload-hash rows older than the window are purged periodically by the gateway (fix/phase-9-lows).
 

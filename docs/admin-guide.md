@@ -54,10 +54,10 @@ Names and keys only (never commit values). Full table: **[secrets-runbook.md](se
 
 ## 4. Deploy and Argo CD
 
-- **Install** (CLI only; the former web wizard was removed): `infra/installer/aiscan-install.sh --config infra/installer/installer.env install` (try `--dry-run` first) runs preflight → bootstrap → registry → secrets → images → deploy → verify. See [installer.md](installer.md) and [k3s.md](k3s.md).
+- **Install** (CLI only; the former web wizard was removed): `infra/bootstrap/installer/aiscan-install.sh --config infra/bootstrap/installer/installer.env install` (try `--dry-run` first) runs preflight → bootstrap → registry → secrets → images → deploy → verify. See [installer.md](installer.md) and [k3s.md](k3s.md).
 - **GitOps:** Argo CD app-of-apps `ai-scan-root`, with one Application `ai-scan-<component>-k3s` per component in ns `ai-scan-repos`, auto-sync with prune and selfHeal. See [ci-cd-flow.md](ci-cd-flow.md) and [ADR-0004](adr/0004-gitops.md).
 - **CI:** Jenkins test → build (kaniko) → Trivy → push → tag bump. See [ci.md](ci.md) and [ci-cd.md](ci-cd.md).
-- **Deploy PRs:** each main build opens a PR `ci(k3s): <svcs> -> <sha> [skip ci]` from `deploy/<svc>-<sha>`; merge it to deploy (Argo CD syncs). PAT setup: [deploy/jenkins/README.md](../deploy/jenkins/README.md#github-bot-pat-deploy-pr-flow).
+- **Deploy PRs:** each main build opens a PR `ci(k3s): <svcs> -> <sha> [skip ci]` from `deploy/<svc>-<sha>`; merge it to deploy (Argo CD syncs). PAT setup: [infra/jenkins/README.md](../infra/jenkins/README.md#github-bot-pat-deploy-pr-flow).
 
 ```bash
 argocd app list | grep ai-scan

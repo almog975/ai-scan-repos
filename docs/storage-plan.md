@@ -10,8 +10,8 @@
 
 * **local**: local-path ignores `mountOptions`, so noexec is **not enforced** (dev only).
   Mitigation: pods run as uid 10001 with readOnlyRootFilesystem, drop ALL caps and no privilege escalation; nothing is ever executed from /reports.
-* **k3s**: a static `local` PV (`infra/bootstrap/overlays/k3s/reports-pv.yaml`, applied by the installer, bound via PVC `volumeName`) on a host
-  directory that is itself mounted noexec. Host prep, which `infra/installer/scripts/install-ssh-k3s.sh` does:
+* **k3s**: a static `local` PV (`infra/bootstrap/cluster/overlays/k3s/reports-pv.yaml`, applied by the installer, bound via PVC `volumeName`) on a host
+  directory that is itself mounted noexec. Host prep, which `infra/bootstrap/installer/scripts/install-ssh-k3s.sh` does:
   ```bash
   mkdir -p /srv/ai-scan/reports
   # either a dedicated disk/LV:  /dev/vg0/reports /srv/ai-scan/reports ext4 noexec,nosuid,nodev 0 2
@@ -26,7 +26,7 @@
 * **eks**: EFS CSI StorageClass with `mountOptions: [noexec, nosuid, nodev]`, access point uid/gid 10001.
 
 ## Retention (CronJob `reports-cleanup`)
-`deploy/platform/base/reports-cleanup.yaml` runs daily at 03:00 Asia/Jerusalem and deletes top-level report
+`infra/k8s/platform/base/reports-cleanup.yaml` runs daily at 03:00 Asia/Jerusalem and deletes top-level report
 directories on the `reports` PVC older than `REPORT_RETENTION_DAYS` (ConfigMap `reports-retention`, default 30).
 It runs as uid/gid 10001 with no SA token and a deny-all NetworkPolicy (no egress). Once a report is pruned,
 review-api returns **410 Gone** for it (the review row still exists, the artifact doesn't), not 404.

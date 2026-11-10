@@ -22,7 +22,7 @@ AI host (tailscale 100.x.y.z, or LAN subnet advertised by another router)
 - Tailscale ACLs restrict K3S-SRV to the AI host:port only.
 
 ## CIDR to add to the overlay allowlist
-Edit `deploy/scanner-worker/overlays/k3s/networkpolicy-ai-egress.yaml` and replace
+Edit `infra/k8s/scanner-worker/overlays/k3s/networkpolicy-ai-egress.yaml` and replace
 the placeholder `192.0.2.0/24` with **one** of:
 - the AI host's Tailscale IP as `/32` (e.g. `100.101.102.103/32`), preferred; or
 - the advertised AI LAN subnet (e.g. `192.168.50.0/24`).
