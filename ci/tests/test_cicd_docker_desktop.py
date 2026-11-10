@@ -224,3 +224,60 @@ def test_gitops_commits_then_pushes_in_one_stage():
     nothing = g.split("already has these tags.'")[1].split("\n")[0]
     assert "return" in nothing                                   # no commit -> no push
     assert "when { expression { !skipBuild } }" in g
+
+
+# ---- loop guard: [skip ci] in the subject only, bot author always -------------------------------
+GUARD = JF.split("stage('Loop guard')")[1].split("// Tests are independent")[0]
+BOT_EMAIL = re.search(r"def BOT_EMAIL = '([^']+)'", JF).group(1)
+
+
+def _guard_skips(repo):
+    """Run the guard's own git commands in `repo` and apply its condition."""
+    subject_cmd = re.search(r"def subject = sh\(script: '([^']+)'", GUARD).group(1)
+    author_cmd = re.search(r"def author  = sh\(script: '([^']+)'", GUARD).group(1)
+    run = lambda c: subprocess.run(c, shell=True, cwd=repo, check=True, capture_output=True, text=True).stdout.strip()
+    subject, author = run(subject_cmd), run(author_cmd)
+    return author == BOT_EMAIL or "[skip ci]" in subject
+
+
+def _commit(repo, msg, email="almog975@users.noreply.github.com", name="almog975"):
+    (repo / "f.txt").write_text(msg)
+    subprocess.run(["git", "add", "-A"], cwd=repo, check=True)
+    subprocess.run(["git", "-c", f"user.name={name}", "-c", f"user.email={email}", "commit", "-q", "-m", msg],
+                   cwd=repo, check=True)
+
+
+@pytest.fixture
+def repo(tmp_path):
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    return tmp_path
+
+
+def test_guard_condition_uses_subject_and_bot_author():
+    assert "def subject = sh(script: 'git log -1 --pretty=%s', returnStdout: true).trim()" in GUARD
+    assert "if (author == BOT_EMAIL || subject.contains('[skip ci]')) {" in GUARD
+    assert "%B" not in GUARD
+
+
+def test_guard_skips_marker_in_subject(repo):
+    _commit(repo, "docs: typo [skip ci]")
+    assert _guard_skips(repo)
+
+
+def test_guard_ignores_marker_mentioned_only_in_body(repo):
+    _commit(repo, "ci(cicd): stages\n\n- commit message, [skip ci] and the credential helper are unchanged")
+    assert not _guard_skips(repo)
+
+
+def test_guard_skips_bot_author_even_without_marker(repo):
+    _commit(repo, "ci(gitops): frontend -> 0123456789ab", email=BOT_EMAIL, name="ai-scan-ci-bot")
+    assert _guard_skips(repo)
+
+
+def test_bot_commit_subject_carries_the_marker(repo):
+    m = re.search(r"commit -q -m '(.+)'\"$", JF.split("stage('GitOps')")[1], re.M)
+    msg = m.group(1).replace("${changed.join(',')}", "frontend,gateway").replace("${env.GIT_SHA}", "0123456789ab")
+    assert "\n" not in msg and msg.endswith("[skip ci]")          # single -m line = the subject
+    _commit(repo, msg)                                              # even with a non-bot author it skips
+    assert subprocess.run(["git", "log", "-1", "--pretty=%s"], cwd=repo, capture_output=True, text=True).stdout.strip() == msg
+    assert _guard_skips(repo)

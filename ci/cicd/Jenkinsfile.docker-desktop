@@ -80,9 +80,10 @@ pipeline {
   options { timestamps(); disableConcurrentBuilds(); buildDiscarder(logRotator(numToKeepStr: '30')) }
   stages {
     stage('Loop guard') { steps { script {
-      def msg    = sh(script: 'git log -1 --pretty=%B', returnStdout: true).trim()
-      def author = sh(script: 'git log -1 --pretty=%ae', returnStdout: true).trim()
-      if (author == BOT_EMAIL || msg.contains('[skip ci]')) {
+      // Subject line only: a body that merely mentions the marker (e.g. in a changelog) must not skip the build.
+      def subject = sh(script: 'git log -1 --pretty=%s', returnStdout: true).trim()
+      def author  = sh(script: 'git log -1 --pretty=%ae', returnStdout: true).trim()
+      if (author == BOT_EMAIL || subject.contains('[skip ci]')) {
         skipBuild = true
         currentBuild.result = 'NOT_BUILT'
         currentBuild.description = 'CI bot / [skip ci] commit'
