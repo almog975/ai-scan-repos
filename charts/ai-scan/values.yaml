@@ -38,6 +38,14 @@ postgres:
 reviewApi:
   replicas: 1
   port: 8001
+  # HorizontalPodAutoscaler (autoscaling/v2; needs metrics-server). When enabled the Deployment has no
+  # spec.replicas, so the HPA (not Argo CD / Helm) owns the replica count. Memory target: unset = CPU only.
+  autoscaling:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 70
+    # targetMemoryUtilizationPercentage: 80
   resources:
     requests: {cpu: 100m, memory: 128Mi}
     limits: {cpu: 500m, memory: 512Mi}
@@ -62,6 +70,14 @@ gateway:
   # Optional pre-created Secret with real GITHUB_CLIENT_ID / GITHUB_CLIENT_SECRET.
   # Loaded after gateway-secrets so it overrides the placeholders. Missing = ignored.
   oauthSecretName: gateway-oauth
+  # HorizontalPodAutoscaler (autoscaling/v2; needs metrics-server). When enabled the Deployment has no
+  # spec.replicas, so the HPA (not Argo CD / Helm) owns the replica count. Memory target: unset = CPU only.
+  autoscaling:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 70
+    # targetMemoryUtilizationPercentage: 80
   resources:
     requests: {cpu: 100m, memory: 128Mi}
     limits: {cpu: 500m, memory: 512Mi}
@@ -71,6 +87,14 @@ frontend:
   port: 8080
   service:
     type: ClusterIP
+  # HorizontalPodAutoscaler (autoscaling/v2; needs metrics-server). When enabled the Deployment has no
+  # spec.replicas, so the HPA (not Argo CD / Helm) owns the replica count. Memory target: unset = CPU only.
+  autoscaling:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 70
+    # targetMemoryUtilizationPercentage: 80
   resources:
     requests: {cpu: 100m, memory: 128Mi}
     limits: {cpu: 500m, memory: 512Mi}

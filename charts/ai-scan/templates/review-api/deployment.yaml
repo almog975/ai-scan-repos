@@ -4,7 +4,7 @@ metadata:
   name: review-api
   labels: {app: review-api}
 spec:
-  replicas: {{ .Values.reviewApi.replicas }}
+  {{- include "ai-scan.replicas" (list . "reviewApi") | nindent 2 }}
   selector:
     matchLabels: {app: review-api}
   template:

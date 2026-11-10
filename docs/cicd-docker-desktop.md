@@ -160,3 +160,52 @@ reach Jenkins, and `http://jenkins.localhost:30080` isn't reachable from the int
 Argo CD has the same choice: it polls git every 3 minutes by default (every 60s here, `timeout.reconciliation` in
 `infra/argocd/values-docker-desktop.yaml`), and a GitHub webhook to `https://<argocd-host>/api/webhook` makes it
 sync immediately.
+
+## Autoscaling (HPA)
+
+`values-docker-desktop.yaml` turns on an `autoscaling/v2` HorizontalPodAutoscaler for **frontend**, **gateway** and
+**review-api**: 1 to 3 replicas, 70% average CPU of the pod's request (100m for each, so about 70m). Postgres and
+the scanner Jobs never scale. Keys per service in `charts/ai-scan/values.yaml` (`frontend`, `gateway`, `reviewApi`):
+
+```yaml
+autoscaling:
+  enabled: false                    # chart default; true in values-docker-desktop.yaml
+  minReplicas: 1
+  maxReplicas: 3
+  targetCPUUtilizationPercentage: 70
+  # targetMemoryUtilizationPercentage: 80   # optional second metric, unset = CPU only
+```
+With `enabled: true` the Deployment has **no `spec.replicas`**, so the HPA owns the count and Argo CD has nothing to
+diff (no `ignoreDifferences` needed). All three services are safe to run more than once: sessions live in Postgres,
+and the review-api reconciler takes rows with `FOR UPDATE SKIP LOCKED`. Docker Desktop has a single node, so the
+`reports` PVC (ReadWriteOnce) can be mounted by every review-api replica.
+
+**metrics-server is required.** Docker Desktop doesn't ship it. Without it the HPAs show `<unknown>/70%`, never
+scale, and Argo CD marks the `ai-scan` app **Degraded** (the HPA condition is `FailedGetResourceMetric`); the pods
+keep running at 1 replica. Docker Desktop's kubelet uses a self-signed certificate, hence `--kubelet-insecure-tls`
+(local only):
+```bash
+helm upgrade --install metrics-server metrics-server --repo https://kubernetes-sigs.github.io/metrics-server/ \
+  --version 3.14.0 -n kube-system --set 'args={--kubelet-insecure-tls}' --wait
+kubectl top nodes                      # works after ~1 minute
+```
+
+**Verify:**
+```bash
+kubectl -n ai-scan-repos get hpa                    # TARGETS cpu: 3%/70%, MINPODS 1, MAXPODS 3, REPLICAS 1
+kubectl -n ai-scan-repos top pods
+kubectl -n ai-scan-repos get deploy gateway -o jsonpath='{.spec.replicas}{"\n"}'   # set by the HPA
+```
+
+**Load test** (gateway 1 → 3 → 1). Eight busybox loops hit the gateway Service from inside the cluster:
+```bash
+kubectl -n ai-scan-repos run hpa-load --image=busybox:1.36 --restart=Never -- /bin/sh -c \
+  'for i in 1 2 3 4 5 6 7 8; do (while true; do wget -q -O /dev/null http://gateway:8000/healthz; done) & done; sleep 600'
+kubectl -n ai-scan-repos get hpa gateway -w          # CPU climbs past 70%, REPLICAS 1 -> 2 -> 3 within ~1-2 min
+kubectl -n ai-scan-repos get pods -l app=gateway     # in a second terminal
+kubectl -n ai-scan-repos delete pod hpa-load         # stop the load
+kubectl -n ai-scan-repos get hpa gateway -w          # back to 1 after the 5-minute scale-down window
+```
+For the frontend use `http://frontend:8080/` in the loop and watch `hpa frontend`. To turn autoscaling off again,
+set `<svc>.autoscaling.enabled: false` in `values-docker-desktop.yaml` and push; the Deployment gets
+`replicas: <svc>.replicas` (1) back.

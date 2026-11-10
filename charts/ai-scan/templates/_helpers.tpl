@@ -125,3 +125,61 @@ Usage: {{- $ah := include "ai-scan.autoheal" . | fromYaml }}
 {{- $d := dict "enabled" false "releaseLabel" "kube-prometheus-stack" "scrapeInterval" "30s" -}}
 {{- include "ai-scan.withDefaults" (dict "v" .Values.monitoring "d" $d) -}}
 {{- end -}}
+
+{{/*
+HorizontalPodAutoscaler settings for one service, nil-safe (`--reuse-values` from a release made before
+<svc>.autoscaling existed): built-in defaults below, overridden by .Values.<key>.autoscaling.
+Usage: {{- $as := include "ai-scan.autoscaling" (list . "reviewApi") | fromYaml }}
+*/}}
+{{- define "ai-scan.autoscaling" -}}
+{{- $root := index . 0 -}}
+{{- $svc := index $root.Values (index . 1) | default dict -}}
+{{- $d := dict "enabled" false "minReplicas" 1 "maxReplicas" 3 "targetCPUUtilizationPercentage" 70 -}}
+{{- include "ai-scan.withDefaults" (dict "v" $svc.autoscaling "d" $d) -}}
+{{- end -}}
+
+{{/* spec.replicas, omitted when the HPA owns the replica count (so Argo CD doesn't fight it).
+Usage: {{- include "ai-scan.replicas" (list . "frontend") | nindent 2 }} */}}
+{{- define "ai-scan.replicas" -}}
+{{- $root := index . 0 -}}
+{{- $as := include "ai-scan.autoscaling" . | fromYaml -}}
+{{- if not $as.enabled -}}
+{{- $svc := index $root.Values (index . 1) | default dict -}}
+replicas: {{ ternary $svc.replicas 1 (hasKey $svc "replicas") }}
+{{- end -}}
+{{- end -}}
+
+{{/* autoscaling/v2 HPA for Deployment <name>. Usage: include "ai-scan.hpa" (list . "reviewApi" "review-api") */}}
+{{- define "ai-scan.hpa" -}}
+{{- $root := index . 0 -}}
+{{- $name := index . 2 -}}
+{{- $as := include "ai-scan.autoscaling" (list $root (index . 1)) | fromYaml -}}
+{{- if $as.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ $name }}
+  labels: {{- include "ai-scan.labels" $root | nindent 4 }}
+    app: {{ $name }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ $name }}
+  minReplicas: {{ $as.minReplicas }}
+  maxReplicas: {{ $as.maxReplicas }}
+  metrics:
+    {{- with $as.targetCPUUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: cpu
+        target: {type: Utilization, averageUtilization: {{ . }}}
+    {{- end }}
+    {{- with $as.targetMemoryUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: memory
+        target: {type: Utilization, averageUtilization: {{ . }}}
+    {{- end }}
+{{- end }}
+{{- end -}}

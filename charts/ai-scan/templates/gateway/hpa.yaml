@@ -1,0 +1,1 @@
+{{- include "ai-scan.hpa" (list . "gateway" "gateway") }}

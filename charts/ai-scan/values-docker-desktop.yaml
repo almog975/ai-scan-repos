@@ -4,6 +4,7 @@
 secrets:
   create: false
 gateway:
+  autoscaling: {enabled: true}      # HPA 1-3 replicas at 70% CPU (docs/cicd-docker-desktop.md#autoscaling-hpa)
   # ingress-nginx as NodePort 30080 (README option B). With the LoadBalancer on :80 (option A) use http://localhost.
   publicUrl: http://localhost:30080
 global:
@@ -13,3 +14,7 @@ monitoring:
 autoheal:
   cronjob:
     enabled: false                  # the Jenkins ai-scan-autoheal job does this
+frontend:
+  autoscaling: {enabled: true}      # needs metrics-server (--kubelet-insecure-tls on Docker Desktop)
+reviewApi:
+  autoscaling: {enabled: true}
