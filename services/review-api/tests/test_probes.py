@@ -8,7 +8,7 @@ import subprocess
 
 import pytest
 
-DEPLOY = Path(__file__).resolve().parents[2] / "deploy"
+DEPLOY = Path(__file__).resolve().parents[3] / "infra" / "k8s"
 
 
 def _val(name, **labels):
@@ -142,7 +142,7 @@ def test_migrations_job_uses_deployment_image(overlay):
 
 
 def test_dockerfile_does_not_migrate():
-    cmd = [l for l in (DEPLOY.parent / "review-api" / "Dockerfile").read_text().splitlines() if l.startswith("CMD")]
+    cmd = [l for l in (Path(__file__).resolve().parents[1] / "Dockerfile").read_text().splitlines() if l.startswith("CMD")]
     assert cmd and "alembic" not in cmd[0]
 
 

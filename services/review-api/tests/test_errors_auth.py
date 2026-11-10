@@ -59,11 +59,11 @@ def test_error_codes_match_contract():
 
 
 def test_migration_sql_matches_infra_schema():
-    root = Path(__file__).resolve().parents[2]
-    infra = (root / "infra/db/schema.sql").read_text().splitlines(keepends=True)
+    root = Path(__file__).resolve().parents[3]   # repo root
+    infra = (root / "infra/bootstrap/db/schema.sql").read_text().splitlines(keepends=True)
     body = "".join(l for i, l in enumerate(infra) if not (i < 3 and l.startswith("--")))
-    p3 = (root / "review-api/alembic/sql/0003_phase3_recovery.sql").read_text()
-    p4 = (root / "review-api/alembic/sql/0004_phase4_provider_ack.sql").read_text()
-    p5 = (root / "review-api/alembic/sql/0005_review_idempotency_key.sql").read_text()
+    p3 = (root / "services/review-api/alembic/sql/0003_phase3_recovery.sql").read_text()
+    p4 = (root / "services/review-api/alembic/sql/0004_phase4_provider_ack.sql").read_text()
+    p5 = (root / "services/review-api/alembic/sql/0005_review_idempotency_key.sql").read_text()
     assert body.endswith("\n" + p3 + "\n" + p4 + "\n" + p5)  # Phase 3, 4 and 9 (0005) blocks appended verbatim
-    assert (root / "review-api/alembic/sql/0002_contract_v1.sql").read_text() == body[: -len(p3) - len(p4) - len(p5) - 3]
+    assert (root / "services/review-api/alembic/sql/0002_contract_v1.sql").read_text() == body[: -len(p3) - len(p4) - len(p5) - 3]

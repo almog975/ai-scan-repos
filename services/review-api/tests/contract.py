@@ -1,4 +1,4 @@
-"""Validate payloads against contracts/ (the source of truth)."""
+"""Validate payloads against services/contracts/ (the source of truth)."""
 import json
 from functools import lru_cache
 from pathlib import Path

@@ -6,7 +6,7 @@ import yaml
 
 from conftest import ROOT
 
-SRC = [ROOT / "review-api/app/metrics.py", ROOT / "gateway/app/main.py", ROOT / "scanner-worker/scanner/health.py"]
+SRC = [ROOT / "services/review-api/app/metrics.py", ROOT / "services/gateway/app/main.py", ROOT / "services/scanner-worker/scanner/health.py"]
 # exporters outside this repo (Prometheus itself, kube-state-metrics)
 EXTERNAL = {"up", "kube_pod_container_status_restarts_total"}
 FUNCS = {"max", "sum", "by", "rate", "increase", "histogram_quantile", "clamp_min", "and", "or", "unless", "on", "le",

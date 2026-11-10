@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]   # repo root
 TOKEN = "t" * 40
 KEY = "00" * 32
 
@@ -63,7 +63,7 @@ def test_get_app_exits_on_bad_production_config(monkeypatch):
 def _render(component, overlay="k3s"):
     if not shutil.which("kustomize"):
         pytest.skip("kustomize not installed")
-    out = subprocess.run(["kustomize", "build", str(ROOT / "deploy" / component / "overlays" / overlay)],
+    out = subprocess.run(["kustomize", "build", str(ROOT / "infra" / "k8s" / component / "overlays" / overlay)],
                          check=True, capture_output=True, text=True).stdout
     return [d for d in yaml.safe_load_all(out) if d]
 
@@ -101,7 +101,7 @@ def test_gateway_env_matches_settings():
 def test_frontend_probes_hit_nginx_health():
     spec, c = _container(_render("frontend"), "frontend")
     assert c["livenessProbe"]["httpGet"]["path"] == c["readinessProbe"]["httpGet"]["path"] == "/nginx-health"
-    assert "location = /nginx-health" in (ROOT / "frontend" / "nginx.conf").read_text()
+    assert "location = /nginx-health" in (ROOT / "services" / "frontend" / "nginx.conf").read_text()
     assert spec["automountServiceAccountToken"] is False
 
 

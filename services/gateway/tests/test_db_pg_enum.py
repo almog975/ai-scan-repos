@@ -10,7 +10,7 @@ from sqlalchemy.dialects import postgresql
 
 from app.db import USER_ROLES, User
 
-SCHEMA_SQL = Path(__file__).resolve().parents[2] / "infra" / "db" / "schema.sql"
+SCHEMA_SQL = Path(__file__).resolve().parents[3] / "infra" / "bootstrap" / "db" / "schema.sql"
 
 
 def test_role_column_is_native_user_role_enum():

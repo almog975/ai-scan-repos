@@ -1,5 +1,5 @@
 """Optional cluster chaos test (kind/k3s/k3d). Opt-in: AISCAN_K8S_CHAOS=1 plus a deployed stack
-(`kustomize build deploy/platform/overlays/<k3s|local> | kubectl apply -f -`) reachable at AISCAN_K8S_API
+(`kustomize build infra/k8s/platform/overlays/<k3s|local> | kubectl apply -f -`) reachable at AISCAN_K8S_API
 (review-api base URL, e.g. via `kubectl port-forward svc/review-api 8001`) with AISCAN_K8S_TOKEN/AISCAN_K8S_USER.
 
 Scenario: create a review -> wait for its scanner pod -> `kubectl delete pod --grace-period=0 --force` (pod kill)

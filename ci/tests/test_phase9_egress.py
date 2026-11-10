@@ -85,8 +85,8 @@ SCANNER = {"app": "scanner", "review-id": "r1"}
 def P(k3s):
     """k3s overlays + the jenkins manifests and the registry (applied by the installer, not an overlay)."""
     from conftest import ROOT, build
-    docs = list(k3s) + build(ROOT / "deploy/jenkins/manifests")
-    docs += [d for d in yaml.safe_load_all((ROOT / "infra/registry/registry.yaml").read_text()) if d]
+    docs = list(k3s) + build(ROOT / "infra/jenkins/manifests")
+    docs += [d for d in yaml.safe_load_all((ROOT / "infra/bootstrap/registry/registry.yaml").read_text()) if d]
     seen, out = set(), []
     for d in nps(docs):
         k = (d["metadata"]["namespace"], d["metadata"]["name"])

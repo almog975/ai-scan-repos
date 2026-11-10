@@ -83,9 +83,9 @@ def world(tmp_path):
     git("config", "http.receivepack", "true", cwd=bare)
     work = tmp_path / "work"
     git("init", "-q", "-b", "main", str(work), cwd=tmp_path)
-    ov = work / "deploy/gateway/overlays/k3s"; ov.mkdir(parents=True)
+    ov = work / "infra/k8s/gateway/overlays/k3s"; ov.mkdir(parents=True)
     (ov / "kustomization.yaml").write_text("images:\n- name: ai-scan/gateway\n  newTag: aaaaaaa\n")
-    (work / "gateway").mkdir(); (work / "gateway/app.py").write_text("v=1\n")
+    (work / "services/gateway").mkdir(parents=True); (work / "services/gateway/app.py").write_text("v=1\n")
     git(*ALMOG, "add", "-A", cwd=work); git(*ALMOG, "commit", "-qm", "base", cwd=work)
     git("push", "-q", str(bare), "main", cwd=work)
     Fake.prs, Fake.api_auth, Fake.bare = {}, [], bare
@@ -97,8 +97,8 @@ def world(tmp_path):
 
 def bump(work, sha, branch, comps="gateway"):
     git("checkout", "-q", "-B", branch, "main", cwd=work)
-    (work / "deploy/gateway/overlays/k3s/kustomization.yaml").write_text(f"images:\n- name: ai-scan/gateway\n  newTag: {sha}\n")
-    git("add", "deploy/gateway/overlays/k3s/kustomization.yaml", cwd=work)
+    (work / "infra/k8s/gateway/overlays/k3s/kustomization.yaml").write_text(f"images:\n- name: ai-scan/gateway\n  newTag: {sha}\n")
+    git("add", "infra/k8s/gateway/overlays/k3s/kustomization.yaml", cwd=work)
     git(*BOT, "commit", "-qm", f"ci(k3s): {comps} -> {sha} [skip ci]", cwd=work)
 
 
@@ -173,7 +173,7 @@ def guard(work, base):
     reasons = []
     if author == "ci-bot@ai-scan.local": reasons.append("bot")
     if "[skip ci]" in msg: reasons.append("skip-ci")
-    if files and all(f.startswith("deploy/") for f in files): reasons.append("deploy-only")
+    if files and all(f.startswith("infra/k8s/") for f in files): reasons.append("deploy-only")
     return reasons
 
 
@@ -192,7 +192,7 @@ def test_almog_merge_of_deploy_pr_is_skipped(world, how):
     else:                    # rebase: bot commit replayed
         git("merge", "-q", "--ff-only", br, cwd=work)
     r = guard(work, base)
-    assert "deploy-only" in r, r            # the deploy/**-only check alone skips it, whatever the message
+    assert "deploy-only" in r, r            # the infra/k8s/**-only check alone skips it, whatever the message
     # stricter: even if Almog edits the message to drop [skip ci] on a merge commit, deploy-only still skips
     if how == "merge":
         git(*ALMOG, "commit", "-q", "--amend", "-m", "Merge pull request #1 (edited)", cwd=work)

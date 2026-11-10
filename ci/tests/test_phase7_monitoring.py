@@ -3,7 +3,7 @@ import json, pathlib, re, shutil, subprocess
 import pytest, yaml
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-BASE = ROOT / "deploy/platform/base"
+BASE = ROOT / "infra/k8s/platform/base"
 HERE = pathlib.Path(__file__).parent / "promtool"
 promtool = shutil.which("promtool")
 needs_promtool = pytest.mark.skipif(not promtool, reason="promtool not installed")
@@ -53,7 +53,7 @@ def test_dashboard_datasource_variable():
 
 
 def test_no_high_cardinality_labels():
-    for f in ["review-api/app/metrics.py", "gateway/app/main.py", "scanner-worker/scanner/health.py"]:
+    for f in ["services/review-api/app/metrics.py", "services/gateway/app/main.py", "services/scanner-worker/scanner/health.py"]:
         src = (ROOT / f).read_text()
         for labels in re.findall(r"(?:Counter|Gauge|Histogram|Summary|GaugeMetricFamily|CounterMetricFamily)\([^\[\)]*\[([^\]]*)\]", src):
             assert not re.search(r"['\"](repo|repo_url|review_id|id|user|login|commit_sha)['\"]", labels), (f, labels)
@@ -61,10 +61,10 @@ def test_no_high_cardinality_labels():
 
 def test_servicemonitors_match_services():
     sms = [d for d in yaml.safe_load_all((BASE / "servicemonitors.yaml").read_text()) if d]
-    svcs = [d for p in (ROOT / "deploy").rglob("*.yaml") for d in yaml.safe_load_all(p.read_text())
+    svcs = [d for p in (ROOT / "infra" / "k8s").rglob("*.yaml") for d in yaml.safe_load_all(p.read_text())
             if isinstance(d, dict) and d.get("kind") == "Service"]
     assert sms
-    assert re.search(r"Counter|Histogram", (ROOT / "review-api/app/metrics.py").read_text())
+    assert re.search(r"Counter|Histogram", (ROOT / "services/review-api/app/metrics.py").read_text())
     for sm in sms:
         sel = sm["spec"]["selector"]["matchLabels"]
         hit = [s for s in svcs if sel.items() <= (s["metadata"].get("labels") or {}).items()]
@@ -90,8 +90,8 @@ def test_gaps_test_still_asserts_firing():
 
 
 def test_review_attempts_used_rename_consistent():
-    for p in ["deploy/platform/base/dashboards/ai-scan-repos.json", "deploy/platform/base/prometheusrules.yaml",
-              "docs/monitoring.md", "review-api/app/metrics.py", "review-api/tests/test_metrics.py"]:
+    for p in ["infra/k8s/platform/base/dashboards/ai-scan-repos.json", "infra/k8s/platform/base/prometheusrules.yaml",
+              "docs/monitoring.md", "services/review-api/app/metrics.py", "services/review-api/tests/test_metrics.py"]:
         src = (ROOT / p).read_text()
         assert not re.search(r"review_attempts_(sum|count|bucket)\b", src), p
         assert not re.search(r"[\"`]review_attempts[\"`]", src), p

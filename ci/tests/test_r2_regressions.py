@@ -16,7 +16,7 @@ def scratch(tmp_path):
 @needs_pg
 def test_parity_round_trip_failure_fails(tmp_path):
     dst = scratch(tmp_path)
-    mig = next((dst / "review-api/alembic/versions").glob("0004_*.py"))
+    mig = next((dst / "services/review-api/alembic/versions").glob("0004_*.py"))
     s = mig.read_text()
     s2 = re.sub(r"(def downgrade\(\)[^:]*:\n)", r"\1    raise RuntimeError('injected downgrade failure')\n", s, count=1)
     assert s2 != s
@@ -30,7 +30,7 @@ def test_parity_round_trip_failure_fails(tmp_path):
 def test_root_make_test_all_propagates(tmp_path):
     """`make test` (all components) must stop nonzero when a later component (review-api) fails."""
     dst = scratch(tmp_path)
-    (dst / "review-api/tests/test_zz_injected.py").write_text("def test_injected():\n    assert 1 == 2\n")
+    (dst / "services/review-api/tests/test_zz_injected.py").write_text("def test_injected():\n    assert 1 == 2\n")
     env = dict(os.environ); env.pop("PYTEST_ADDOPTS", None)
     r = subprocess.run(["make", "-k", "test-gateway", "test-review-api"], cwd=dst, capture_output=True, text=True, env=env)
     assert r.returncode != 0 and "test_injected" in r.stdout + r.stderr
@@ -40,7 +40,7 @@ def test_root_make_test_all_propagates(tmp_path):
 def test_root_make_build_delegates():
     out = subprocess.run(["make", "-n", "build"], cwd=ROOT, capture_output=True, text=True)
     for c in ("frontend", "gateway", "review-api", "scanner-worker"):
-        assert f"-C {c}" in out.stdout + out.stderr
+        assert f"-C services/{c}" in out.stdout + out.stderr
 
 
 def test_jenkins_shared_includes_root_makefile():
@@ -108,7 +108,7 @@ def test_default_deny_ingress_present(k3s):
     ("traefik", "review-api", 8001, False),
     ("traefik", "postgres", 5432, False),
     ("scanner", "gateway", 8000, False),
-    ("frontend", "gateway", 8000, True),            # nginx proxy (frontend/nginx.conf)
+    ("frontend", "gateway", 8000, True),            # nginx proxy (services/frontend/nginx.conf)
     ("migrate", "postgres", 5432, True),            # migrations Job (alembic upgrade head)
     ("grafana", "gateway", 8000, False),            # other monitoring pods: ns AND pod selector
     ("grafana", "review-api", 8001, False),
@@ -152,7 +152,7 @@ def test_postgres_automount_false(k3s):
 def test_np_structure_all_overlays(overlay):
     """Prometheus allow is ONE from-item (namespaceSelector AND podSelector); migrate allowed on postgres; in every overlay."""
     import yaml
-    out = subprocess.run(["kustomize", "build", str(ROOT / "deploy/platform/overlays" / overlay)], capture_output=True, text=True, check=True).stdout
+    out = subprocess.run(["kustomize", "build", str(ROOT / "infra/k8s/platform/overlays" / overlay)], capture_output=True, text=True, check=True).stdout
     nps = {d["metadata"]["name"]: d["spec"] for d in yaml.safe_load_all(out) if d and d["kind"] == "NetworkPolicy"}
     peers = [p for r in nps["postgres-ingress"]["ingress"] for p in r["from"]]
     assert {"podSelector": {"matchLabels": {"app": "review-api-migrate"}}} in peers

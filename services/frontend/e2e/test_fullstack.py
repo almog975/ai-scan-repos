@@ -1,7 +1,7 @@
 """Opt-in (AISCAN_FULLSTACK=1 + AISCAN_WORKER_PYTHON): the built SPA against the REAL stack:
-front proxy (static dist + the exact add_header set of frontend/nginx.conf, incl. CSP) -> gateway (uvicorn,
+front proxy (static dist + the exact add_header set of services/frontend/nginx.conf, incl. CSP) -> gateway (uvicorn,
 real GitHub OAuth flow against a fake GitHub) -> review-api (uvicorn, sqlite, LocalLauncher) -> scanner-worker
-subprocesses with review-api/tests/phase3_shims. Verifies the flow end to end and that the SPA runs under the CSP."""
+subprocesses with services/review-api/tests/phase3_shims. Verifies the flow end to end and that the SPA runs under the CSP."""
 import http.client, json, os, re, socket, subprocess, sys, threading, time
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from pathlib import Path

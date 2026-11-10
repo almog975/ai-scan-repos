@@ -9,7 +9,7 @@ EGRESS = {"AI_EGRESS_CIDRS": "100.64.10.0/24,100.64.20.5/32", "KUBE_API_ENDPOINT
 
 
 def build(sb, comp, overlay):
-    out = subprocess.run(["kustomize", "build", str(sb.tmp / "repo" / "deploy" / comp / "overlays" / overlay)],
+    out = subprocess.run(["kustomize", "build", str(sb.tmp / "repo" / "infra" / "k8s" / comp / "overlays" / overlay)],
                          capture_output=True, text=True, check=True).stdout
     return {d["metadata"]["name"]: d for d in yaml.safe_load_all(out) if d and d["kind"] == "NetworkPolicy"}
 
@@ -59,7 +59,7 @@ def test_egress_rejects_bad_or_broad(sb, env):
 
 def test_egress_in_install_order():
     from conftest import ROOT
-    s = (ROOT / "infra/installer/aiscan-install.sh").read_text()
+    s = (ROOT / "infra/bootstrap/installer/aiscan-install.sh").read_text()
     assert "images; egress; deploy;" in s
 
 

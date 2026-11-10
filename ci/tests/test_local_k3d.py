@@ -1,10 +1,10 @@
-"""infra/local/k3d.sh (make local-k8s): dry-run plan, no secret leaks, overlays/local + deploy/argocd/local wiring."""
+"""infra/bootstrap/local/k3d.sh (make local-k8s): dry-run plan, no secret leaks, overlays/local + infra/argocd/local wiring."""
 import pathlib, shutil, subprocess
 import pytest
 import yaml
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-SCRIPT = ROOT / "infra/local/k3d.sh"
+SCRIPT = ROOT / "infra/bootstrap/local/k3d.sh"
 REG = "k3d-ai-scan-registry.localhost:5111/ai-scan/"
 SECRETS = {"GITHUB_CLIENT_ID": "cid", "GITHUB_CLIENT_SECRET": "S3CRET_gh",
            "INTERNAL_API_TOKEN": "S3CRET_tok_0123456789abcdef0123456789", "POSTGRES_PASSWORD": "S3CRET_pg",
@@ -33,13 +33,13 @@ def test_dry_run_up_plan_order_and_no_secrets(env_file):
     assert "S3CRET" not in out
     marks = ["k3d registry create", "k3d cluster create ai-scan", "-p 80:80@loadbalancer", "docker push localhost:5111/ai-scan/scanner-worker:dev",
              "monitoring.coreos.com_servicemonitors.yaml", "create secret tls ai-scan-tls", "KUBE_API_ENDPOINT=",
-             "secret generic db-secrets", "delete job review-api-migrate", "repo/deploy/platform/overlays/local", "wait --for=condition=complete job/review-api-migrate",
-             "rollout status deploy/gateway", "helm upgrade --install argocd", "repo-ai-scan-repos", "deploy/argocd/local/root-app.yaml",
+             "secret generic db-secrets", "delete job review-api-migrate", "repo/infra/k8s/platform/overlays/local", "wait --for=condition=complete job/review-api-migrate",
+             "rollout status deploy/gateway", "helm upgrade --install argocd", "repo-ai-scan-repos", "infra/argocd/local/root-app.yaml",
              "https://ai-scan.localhost/auth/github/callback"]
     pos = [r.stdout.find(m) for m in marks]
     assert all(p >= 0 for p in pos), [m for m, p in zip(marks, pos) if p < 0]
     assert pos == sorted(pos), out
-    order = [l.split("deploy/")[1].split("/")[0] for l in out.splitlines() if "apply -k" in l and "/deploy/" in l]
+    order = [l.split("infra/k8s/")[1].split("/")[0] for l in out.splitlines() if "apply -k" in l and "/infra/k8s/" in l]
     assert order == ["platform", "postgres", "scanner-worker", "review-api", "gateway", "frontend"]
     after = subprocess.run(["git", "status", "--porcelain"], cwd=ROOT, capture_output=True, text=True).stdout
     assert before == after, "k3d.sh must not edit the working tree"
@@ -64,7 +64,7 @@ def test_bad_args():
 def test_local_overlays_use_k3d_registry_and_localhost():
     imgs, text_all = set(), ""
     for c in ("platform", "postgres", "scanner-worker", "review-api", "gateway", "frontend"):
-        out = subprocess.run(["kustomize", "build", str(ROOT / f"deploy/{c}/overlays/local")],
+        out = subprocess.run(["kustomize", "build", str(ROOT / f"infra/k8s/{c}/overlays/local")],
                              capture_output=True, text=True, check=True).stdout
         text_all += out
         for d in yaml.safe_load_all(out):
@@ -80,15 +80,15 @@ def test_local_overlays_use_k3d_registry_and_localhost():
 
 
 def test_argocd_local_apps_point_to_local_overlays_only():
-    apps = sorted((ROOT / "deploy/argocd/local/apps").glob("*.yaml"))
+    apps = sorted((ROOT / "infra/argocd/local/apps").glob("*.yaml"))
     assert {a.stem for a in apps} == {"platform", "postgres", "scanner-worker", "review-api", "gateway", "frontend"}
     for a in apps:
         d = yaml.safe_load(a.read_text())
-        assert d["spec"]["source"]["path"] == f"deploy/{a.stem}/overlays/local"
+        assert d["spec"]["source"]["path"] == f"infra/k8s/{a.stem}/overlays/local"
         assert d["spec"]["source"]["targetRevision"] == "main"
-    root = yaml.safe_load((ROOT / "deploy/argocd/local/root-app.yaml").read_text())
-    assert root["spec"]["source"]["path"] == "deploy/argocd/local/apps"
-    for a in (ROOT / "deploy/argocd/apps").glob("*.yaml"):
+    root = yaml.safe_load((ROOT / "infra/argocd/local/root-app.yaml").read_text())
+    assert root["spec"]["source"]["path"] == "infra/argocd/local/apps"
+    for a in (ROOT / "infra/argocd/apps").glob("*.yaml"):
         assert "overlays/local" not in a.read_text()
 
 
@@ -97,33 +97,33 @@ def test_make_targets():
         pytest.skip("make")
     for t, sub in (("local-k8s", "up"), ("local-k8s-down", "down"), ("local-k8s-status", "status")):
         out = subprocess.run(["make", "-n", t], cwd=ROOT, capture_output=True, text=True).stdout
-        assert f"infra/local/k3d.sh  {sub}" in out or f"infra/local/k3d.sh {sub}" in out, out
+        assert f"infra/bootstrap/local/k3d.sh  {sub}" in out or f"infra/bootstrap/local/k3d.sh {sub}" in out, out
 
 
 def test_argocd_local_ignores_installer_owned_egress():
     """Argo CD self-heal must not revert the egress endpoints aiscan-install.sh fills (AI_EGRESS_CIDRS, KUBE_API_ENDPOINT)."""
     want = {"platform": {"review-api-ai-egress", "review-api-kube-api-egress"}, "scanner-worker": {"scanner-egress"}}
     for app, names in want.items():
-        d = yaml.safe_load((ROOT / f"deploy/argocd/local/apps/{app}.yaml").read_text())
+        d = yaml.safe_load((ROOT / f"infra/argocd/local/apps/{app}.yaml").read_text())
         assert "RespectIgnoreDifferences=true" in d["spec"]["syncPolicy"]["syncOptions"]
         got = {i["name"] for i in d["spec"]["ignoreDifferences"]
                if i["kind"] == "NetworkPolicy" and i["jsonPointers"] == ["/spec/egress"] and i["namespace"] == "ai-scan-repos"}
         assert got == names
     # every NetworkPolicy the installer's egress step rewrites is covered (names from the installer-marked overlays)
-    plat = (ROOT / "deploy/platform/overlays/local/kustomization.yaml").read_text()
+    plat = (ROOT / "infra/k8s/platform/overlays/local/kustomization.yaml").read_text()
     for n in ("review-api-ai-egress", "review-api-kube-api-egress"):
         assert f"name: {n}" in plat
-    assert "name: scanner-egress" in (ROOT / "deploy/scanner-worker/overlays/local/kustomization.yaml").read_text()
+    assert "name: scanner-egress" in (ROOT / "infra/k8s/scanner-worker/overlays/local/kustomization.yaml").read_text()
 
 
 @pytest.mark.skipif(not shutil.which("kustomize"), reason="kustomize")
 def test_local_scanner_pull_always_and_ingress_hosts():
-    out = subprocess.run(["kustomize", "build", str(ROOT / "deploy/review-api/overlays/local")],
+    out = subprocess.run(["kustomize", "build", str(ROOT / "infra/k8s/review-api/overlays/local")],
                          capture_output=True, text=True, check=True).stdout
     dep = next(d for d in yaml.safe_load_all(out) if d and d["kind"] == "Deployment")
     env = {e["name"]: e.get("value") for e in dep["spec"]["template"]["spec"]["containers"][0]["env"]}
     assert env["SCANNER_IMAGE_PULL_POLICY"] == "Always"
-    ing = subprocess.run(["kustomize", "build", str(ROOT / "infra/ingress/overlays/local")],
+    ing = subprocess.run(["kustomize", "build", str(ROOT / "infra/bootstrap/ingress/overlays/local")],
                          capture_output=True, text=True, check=True).stdout
     assert "ai-scan.local`" not in ing and "argocd.ai-scan.localhost" in ing and "jenkins.ai-scan.localhost" in ing
 
@@ -146,9 +146,9 @@ def test_gateway_public_url_matches_ingress_host_per_overlay():
         _pt.skip("kubectl not installed")
     root = pathlib.Path(__file__).resolve().parents[2]
     for ov in ("eks", "k3s", "local"):
-        gw = subprocess.run([kubectl, "kustomize", str(root / f"deploy/gateway/overlays/{ov}")],
+        gw = subprocess.run([kubectl, "kustomize", str(root / f"infra/k8s/gateway/overlays/{ov}")],
                             capture_output=True, text=True, check=True).stdout
-        pf = subprocess.run([kubectl, "kustomize", str(root / f"deploy/platform/overlays/{ov}")],
+        pf = subprocess.run([kubectl, "kustomize", str(root / f"infra/k8s/platform/overlays/{ov}")],
                             capture_output=True, text=True, check=True).stdout
         url = re.search(r"name: PUBLIC_URL\n\s+value: (\S+)", gw).group(1)
         hosts = set(re.findall(r"Host\(`([^`]+)`\)", pf))
@@ -167,12 +167,12 @@ def test_oauth_env_local_vs_strict_overlays():
         pytest.skip("kubectl not installed")
     root = pathlib.Path(__file__).resolve().parents[2]
     r = lambda p: subprocess.run([kubectl, "kustomize", str(root / p)], capture_output=True, text=True, check=True).stdout
-    loc = r("deploy/overlays/local")
+    loc = r("infra/k8s/overlays/local")
     assert _env(loc, "PUBLIC_URL") == "http://localhost:8080"
     assert _env(loc, "COOKIE_SECURE") == "false" and _env(loc, "APP_ENV") == "local"
     assert _env(loc, "ALLOWED_GITHUB_LOGINS") == "almog975" and _env(loc, "ADMIN_GITHUB_LOGINS") == "almog975"
     for ov in ("eks", "k3s", "local"):
-        g = r(f"deploy/gateway/overlays/{ov}")
+        g = r(f"infra/k8s/gateway/overlays/{ov}")
         assert _env(g, "APP_ENV") == "production" and _env(g, "COOKIE_SECURE") == "true"
         assert _env(g, "PUBLIC_URL").startswith("https://")
 
@@ -182,7 +182,7 @@ def test_local_gateway_oauth_optional_envfrom_and_gitignored():
     if not kubectl:
         pytest.skip("kubectl not installed")
     root = pathlib.Path(__file__).resolve().parents[2]
-    out = subprocess.run([kubectl, "kustomize", str(root / "deploy/overlays/local")],
+    out = subprocess.run([kubectl, "kustomize", str(root / "infra/k8s/overlays/local")],
                          capture_output=True, text=True, check=True).stdout
     gw = next(d for d in yaml.safe_load_all(out) if d and d["kind"] == "Deployment" and d["metadata"]["name"] == "gateway")
     ef = gw["spec"]["template"]["spec"]["containers"][0]["envFrom"]
@@ -190,8 +190,8 @@ def test_local_gateway_oauth_optional_envfrom_and_gitignored():
     assert names.index("gateway-secrets") < names.index("gateway-oauth")
     assert ef[names.index("gateway-oauth")]["secretRef"].get("optional") is True
     assert not any(d and d["kind"] == "Secret" and d["metadata"]["name"] == "gateway-oauth" for d in yaml.safe_load_all(out))
-    for p in ("deploy/overlays/local/secrets/gateway-oauth.local.env", "deploy/overlays/local/secrets/x.local.env"):
+    for p in ("infra/k8s/overlays/local/secrets/gateway-oauth.local.env", "infra/k8s/overlays/local/secrets/x.local.env"):
         assert subprocess.run(["git", "check-ignore", "-q", p], cwd=root).returncode == 0, p
-    assert subprocess.run(["git", "check-ignore", "-q", "deploy/overlays/local/secrets/gateway-oauth.local.env.example"],
+    assert subprocess.run(["git", "check-ignore", "-q", "infra/k8s/overlays/local/secrets/gateway-oauth.local.env.example"],
                           cwd=root).returncode == 1
-    assert (root / "deploy/overlays/local/secrets/gateway-oauth.local.env.example").exists()
+    assert (root / "infra/k8s/overlays/local/secrets/gateway-oauth.local.env.example").exists()

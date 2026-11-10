@@ -1,4 +1,4 @@
-"""HorizontalPodAutoscaler for frontend / gateway / review-api (charts/ai-scan, docs/cicd-docker-desktop.md)."""
+"""HorizontalPodAutoscaler for frontend / gateway / review-api (infra/helm/ai-scan, docs/cicd-docker-desktop.md)."""
 import shutil
 import subprocess
 
@@ -6,7 +6,7 @@ import pytest
 import yaml
 from conftest import ROOT
 
-CHART = ROOT / "charts" / "ai-scan"
+CHART = ROOT / "infra" / "helm" / "ai-scan"
 DD = ["-f", str(CHART / "values-docker-desktop.yaml"), "-f", str(CHART / "values-images.yaml")]
 SVCS = {"frontend": "frontend", "gateway": "gateway", "reviewApi": "review-api"}   # values key: Deployment
 pytestmark = pytest.mark.skipif(shutil.which("helm") is None, reason="helm not installed")
@@ -100,5 +100,5 @@ def test_helm_lint_with_docker_desktop_values():
 
 
 def test_argo_app_needs_no_ignore_differences():
-    app = yaml.safe_load((ROOT / "deploy/argocd/docker-desktop/ai-scan.yaml").read_text())
+    app = yaml.safe_load((ROOT / "infra/argocd/docker-desktop/ai-scan.yaml").read_text())
     assert "ignoreDifferences" not in app["spec"]

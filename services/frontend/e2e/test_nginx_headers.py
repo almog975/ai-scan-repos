@@ -1,4 +1,4 @@
-"""Static checks of frontend/nginx.conf security headers (no nginx/docker on the test box).
+"""Static checks of services/frontend/nginx.conf security headers (no nginx/docker on the test box).
 Strict xfail = finding, not landed."""
 import os, re
 import pytest
@@ -61,10 +61,10 @@ def test_csp_hardening_directives():
 
 
 def test_permissions_policy():
-    assert "permissions-policy" in headers() or "permissionsPolicy" in open(os.path.join(os.path.dirname(CONF), "..", "deploy", "platform", "base", "ingress.yaml")).read()
+    assert "permissions-policy" in headers() or "permissionsPolicy" in open(os.path.join(os.path.dirname(CONF), "..", "..", "infra", "k8s", "platform", "base", "ingress.yaml")).read()
 
 
-INGRESS = os.path.join(os.path.dirname(CONF), "..", "deploy", "platform", "base", "ingress.yaml")
+INGRESS = os.path.join(os.path.dirname(CONF), "..", "..", "infra", "k8s", "platform", "base", "ingress.yaml")
 ING = open(INGRESS).read()
 
 

@@ -11,8 +11,8 @@ from app.config import Settings
 from app.launcher import job_name_for, JobSpec, KubernetesJobLauncher, LocalLauncher, build_job_manifest, make_launcher
 from app.models import Review
 
-ROOT = Path(__file__).resolve().parents[2]
-TPL = ROOT / "deploy/scanner-worker/base/scanner-job-template.yaml"
+ROOT = Path(__file__).resolve().parents[3]   # repo root
+TPL = ROOT / "infra/k8s/scanner-worker/base/scanner-job-template.yaml"
 RID = "0f8fad5b-d9cb-469f-a165-70867728950e"
 SPEC = JobSpec(RID, 2, 3, "deep", "https://github.com/a/b", "c" * 40, "main")
 

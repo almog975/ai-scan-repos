@@ -23,12 +23,12 @@ def scanner_image(ov):
 
 
 def bump(clone, svc, sha):
-    ov = clone / f"deploy/{svc}/overlays/k3s"
+    ov = clone / f"infra/k8s/{svc}/overlays/k3s"
     if svc == "scanner-worker":
         sh("kustomize", "edit", "set", "configmap", "scanner-image", f"--from-literal=SCANNER_IMAGE={HOST}/ai-scan/{svc}:{sha}", cwd=ov)
     else:
         sh("kustomize", "edit", "set", "image", f"ai-scan/{svc}={HOST}/ai-scan/{svc}:{sha}", cwd=ov)
-    sh("git", "add", "deploy", cwd=clone)
+    sh("git", "add", "infra/k8s", cwd=clone)
     sh("git", *BOT, "commit", "-qm", f"ci(k3s): {svc} -> {sha} [skip ci]", cwd=clone)
 
 
@@ -42,7 +42,7 @@ def clone(tmp_path):
 
 @pytest.mark.parametrize("svc", ["gateway", "frontend", "review-api"])
 def test_revert_restores_previous_tag(clone, svc):
-    ov = clone / f"deploy/{svc}/overlays/k3s"
+    ov = clone / f"infra/k8s/{svc}/overlays/k3s"
     bump(clone, svc, "aaaaaaa")
     bump(clone, svc, "bbbbbbb")
     assert images(ov)[f"ai-scan/{svc}"]["newTag"] == "bbbbbbb"
@@ -54,7 +54,7 @@ def test_revert_restores_previous_tag(clone, svc):
 
 
 def test_revert_scanner_image(clone):
-    ov = clone / "deploy/scanner-worker/overlays/k3s"
+    ov = clone / "infra/k8s/scanner-worker/overlays/k3s"
     bump(clone, "scanner-worker", "aaaaaaa")
     bump(clone, "scanner-worker", "bbbbbbb")
     assert scanner_image(ov).endswith(":bbbbbbb")

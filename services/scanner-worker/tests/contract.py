@@ -1,4 +1,4 @@
-"""Validate worker output against contracts/*.schema.json (source of truth)."""
+"""Validate worker output against services/contracts/*.schema.json (source of truth)."""
 import json
 from functools import lru_cache
 from pathlib import Path

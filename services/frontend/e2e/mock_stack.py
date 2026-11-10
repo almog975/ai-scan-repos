@@ -1,5 +1,5 @@
-"""Mock gateway for Playwright e2e: serves the built SPA (frontend/dist) and the
-contract endpoints the UI uses (contracts/gateway.openapi.yaml), with a test-only
+"""Mock gateway for Playwright e2e: serves the built SPA (services/frontend/dist) and the
+contract endpoints the UI uses (services/contracts/gateway.openapi.yaml), with a test-only
 control API under /__mock/ to drive review state (progress, pause, partial...).
 
 Implements: GitHub login (session + aiscan_csrf cookies), /me, /auth/logout,
@@ -32,7 +32,7 @@ class Stack:
         self.sse_subscribers = 0
         self.providers = []        # GET /api/ai-providers (ProviderPublic[])
         self.created = []          # POST /api/reviews bodies
-        # report.json provider when no AI ran (contracts/report.schema.json)
+        # report.json provider when no AI ran (services/contracts/report.schema.json)
         self.report_provider = {"name": "none", "kind": "onprem", "model": "none"}
         self.expired = set()       # review ids whose report was removed by retention -> 410 REPORT_EXPIRED
         self.provider_test = {}    # provider id -> "ok" | "unreachable" (POST .../test)

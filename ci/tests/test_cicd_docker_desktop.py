@@ -9,15 +9,15 @@ import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
-CHART = ROOT / "charts" / "ai-scan"
+CHART = ROOT / "infra" / "helm" / "ai-scan"
 JF = (ROOT / "ci/cicd/Jenkinsfile.docker-desktop").read_text()
-APP = yaml.safe_load((ROOT / "deploy/argocd/docker-desktop/ai-scan.yaml").read_text())
-JENKINS = yaml.safe_load((ROOT / "deploy/jenkins/local/values-local.yaml").read_text())
+APP = yaml.safe_load((ROOT / "infra/argocd/docker-desktop/ai-scan.yaml").read_text())
+JENKINS = yaml.safe_load((ROOT / "infra/jenkins/local/values-local.yaml").read_text())
 needs_helm = pytest.mark.skipif(shutil.which("helm") is None, reason="helm not installed")
 
 # 'svc' : ['dir', 'valuesKey', 'image']
 SERVICES = {m[0]: (m[1], m[2], m[3]) for m in
-            re.findall(r"'([\w-]+)'\s*:\s*\['([\w-]+)',\s*'(\w+)',\s*'([\w-]+)'\]", JF)}
+            re.findall(r"'([\w-]+)'\s*:\s*\['([\w/-]+)',\s*'(\w+)',\s*'([\w-]+)'\]", JF)}
 
 
 def _render(*args):
@@ -79,7 +79,7 @@ def test_jenkins_job_polls_and_uses_this_jenkinsfile():
 
 def test_argocd_app_values_files_exist():
     src = APP["spec"]["source"]
-    assert src["path"] == "charts/ai-scan" and src["helm"]["releaseName"] == "ai-scan"
+    assert src["path"] == "infra/helm/ai-scan" and src["helm"]["releaseName"] == "ai-scan"
     for f in src["helm"]["valueFiles"]:
         assert (CHART / f).is_file(), f
     assert src["helm"]["valueFiles"][-1] == "values-images.yaml"   # bot tags win
@@ -131,11 +131,11 @@ def test_one_stage_per_service_per_step_and_split_gitops():
             assert f"stage('{step}: {name}')" in JF
             assert f"{{ expression {{ svcOn('{svc}') }} }};" in JF.split(f"stage('{step}: {name}')")[1].split("\n")[0]
     assert "stage('GitOps')" in JF and "GitOps:" not in JF
-    assert "pipeline-graph-view:" in (ROOT / "deploy/jenkins/local/values-local.yaml").read_text()
+    assert "pipeline-graph-view:" in (ROOT / "infra/jenkins/local/values-local.yaml").read_text()
 
 
 def test_job_params_and_branch_survive_jcasc_reload():
-    raw = (ROOT / "deploy/jenkins/local/values-local.yaml").read_text()
+    raw = (ROOT / "infra/jenkins/local/values-local.yaml").read_text()
     job = JENKINS["controller"]["JCasC"]["configScripts"]["ai-scan-cicd"]
     assert "booleanParam('BUILD_ALL', false" in job and "stringParam('TRIVY_SEVERITY', 'CRITICAL'" in job
     assert "branch('*/${CICD_BRANCH:-main}')" in job
@@ -145,8 +145,8 @@ def test_job_params_and_branch_survive_jcasc_reload():
 
 
 def test_scanner_is_built_like_the_other_services():
-    assert SERVICES["scanner"] == ("scanner-worker", "scanner", "ai-scan-repos-scanner-worker")
-    assert (ROOT / "scanner-worker/requirements-dev.txt").is_file() and (ROOT / "scanner-worker/tests").is_dir()
+    assert SERVICES["scanner"] == ("services/scanner-worker", "scanner", "ai-scan-repos-scanner-worker")
+    assert (ROOT / "services/scanner-worker/requirements-dev.txt").is_file() and (ROOT / "services/scanner-worker/tests").is_dir()
     tests = JF.split("stage('Test')")[1].split("stage('Build')")[0]
     assert "parallel {" in tests and "stage('Test: scanner-worker')" in tests
     for step in ("Build", "Scan", "Push"):
@@ -166,7 +166,7 @@ def test_scanner_tag_flows_to_review_api_and_new_jobs():
 
 def test_scanner_dockerfile_builds_gitleaks_from_source():
     # Released gitleaks binaries carry a fixable CRITICAL Go stdlib CVE, which fails "Scan: scanner".
-    df = (ROOT / "scanner-worker/Dockerfile").read_text()
+    df = (ROOT / "services/scanner-worker/Dockerfile").read_text()
     assert re.search(r"^FROM golang:1\.\d+\.\d+-bookworm AS gitleaks$", df, re.M)
     assert "go install" in df and "COPY --from=gitleaks /out/gitleaks /usr/local/bin/gitleaks" in df
     assert "releases/download/v${GITLEAKS_VERSION}" not in df
@@ -181,12 +181,12 @@ def test_optional_override_secrets_are_wired_and_never_committed():
     assert "secretRef: {name: {{ . }}, optional: true}" in gw
     api = (CHART / "templates/review-api/deployment.yaml").read_text()
     assert "{name: SCANNER_AI_SECRET_NAME, value: {{ . | quote }}}" in api
-    launcher = (ROOT / "review-api/app/launcher.py").read_text()
+    launcher = (ROOT / "services/review-api/app/launcher.py").read_text()
     assert '{"secretRef": {"name": s.scanner_ai_secret_name, "optional": True}}' in launcher
     for name in ("gateway-oauth", "scanner-ai"):          # created by hand, never rendered from git
         for f in CHART.rglob("*.yaml"):
             assert f"name: {name}\n" not in f.read_text(), f
-    assert "charts/ai-scan/values.local.yaml" in (ROOT / ".gitignore").read_text()
+    assert "infra/helm/ai-scan/values.local.yaml" in (ROOT / ".gitignore").read_text()
 
 
 def test_local_secrets_doc_uses_placeholders_only():

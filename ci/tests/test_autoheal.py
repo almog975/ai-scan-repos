@@ -151,7 +151,7 @@ def docs(*paths):
     return out
 
 
-RBAC = ["deploy/platform/base/autoheal-rbac.yaml", "infra/argocd/autoheal-rbac.yaml", "deploy/jenkins/manifests/autoheal-sa.yaml"]
+RBAC = ["infra/k8s/platform/base/autoheal-rbac.yaml", "infra/argocd/autoheal-rbac.yaml", "infra/jenkins/manifests/autoheal-sa.yaml"]
 ALLOWED = {("", "pods"): {"get", "list", "delete"}, ("", "pods/exec"): {"create"}, ("batch", "jobs"): {"get", "list", "create", "delete"},
            ("apps", "deployments"): {"get", "list", "patch"}, ("argoproj.io", "applications"): {"get", "list", "patch"}}
 
@@ -174,30 +174,30 @@ def test_rbac_namespaced_and_minimal():
 
 
 def test_jenkins_agent_still_has_no_api_access():
-    for p in ROOT.glob("deploy/**/*.yaml"):
+    for p in ROOT.glob("infra/k8s/**/*.yaml"):
         for d in yaml.safe_load_all(p.read_text()):
             if isinstance(d, dict) and d.get("kind") in ("RoleBinding", "ClusterRoleBinding"):
                 assert all(s.get("name") != "jenkins-agent" for s in d.get("subjects", [])), p
 
 
 def test_wired_into_kustomizations_and_installer():
-    assert "autoheal-rbac.yaml" in (ROOT / "deploy/platform/base/kustomization.yaml").read_text()
-    k = (ROOT / "deploy/jenkins/manifests/kustomization.yaml").read_text()
+    assert "autoheal-rbac.yaml" in (ROOT / "infra/k8s/platform/base/kustomization.yaml").read_text()
+    k = (ROOT / "infra/jenkins/manifests/kustomization.yaml").read_text()
     assert "autoheal-sa.yaml" in k and "autoheal-networkpolicy.yaml" in k
-    assert "infra/argocd/autoheal-rbac.yaml" in (ROOT / "infra/installer/aiscan-install.sh").read_text()
+    assert "infra/argocd/autoheal-rbac.yaml" in (ROOT / "infra/bootstrap/installer/aiscan-install.sh").read_text()
 
 
 def test_networkpolicies_scoped_to_autoheal_pods():
-    eg = docs("deploy/jenkins/manifests/autoheal-networkpolicy.yaml")[0]
+    eg = docs("infra/jenkins/manifests/autoheal-networkpolicy.yaml")[0]
     assert eg["spec"]["podSelector"] == {"matchLabels": {"jenkins/label": "autoheal"}}
-    ing = [d for d in docs("deploy/platform/base/autoheal-rbac.yaml") if d["kind"] == "NetworkPolicy"][0]
+    ing = [d for d in docs("infra/k8s/platform/base/autoheal-rbac.yaml") if d["kind"] == "NetworkPolicy"][0]
     assert ing["spec"]["ingress"][0]["from"][0]["podSelector"] == {"matchLabels": {"jenkins/label": "autoheal"}}
     ports = {p["port"] for p in ing["spec"]["ingress"][0]["ports"]}
     assert ports == {p["port"] for p in eg["spec"]["egress"][0]["ports"]} == {8000, 8001, 8080}
 
 
 def test_jcasc_job_and_pod_template():
-    v = yaml.safe_load((ROOT / "deploy/jenkins/values.yaml").read_text())
+    v = yaml.safe_load((ROOT / "infra/jenkins/values.yaml").read_text())
     jobs = v["controller"]["JCasC"]["configScripts"]["ai-scan-jobs"]
     assert "multibranchPipelineJob('ai-scan-repos')" in jobs
     js = jobs[jobs.index("pipelineJob('ai-scan-autoheal')"):]
@@ -231,7 +231,7 @@ def test_runs_without_writable_home_or_cwd(env, tmp_path):
     assert not list(ro.iterdir())
 
 
-# --- local in-cluster CronJob (deploy/overlays/local) --------------------------------------------------------
+# --- local in-cluster CronJob (infra/k8s/overlays/local) --------------------------------------------------------
 
 @pytest.fixture(scope="module")
 def local():
@@ -239,7 +239,7 @@ def local():
     if not kc:
         pytest.skip("kubectl not on PATH")
     # kubectl kustomize = default load restrictor (LoadRestrictionsRootOnly)
-    out = subprocess.run([kc, "kustomize", str(ROOT / "deploy/overlays/local")], capture_output=True, text=True, check=True).stdout
+    out = subprocess.run([kc, "kustomize", str(ROOT / "infra/k8s/overlays/local")], capture_output=True, text=True, check=True).stdout
     return [d for d in yaml.safe_load_all(out) if d]
 
 
@@ -314,7 +314,7 @@ def _containers(d):
 
 
 def test_local_registry_is_dev_mode_with_ghcr_images():
-    docs = _docs("deploy/overlays/local-registry")
+    docs = _docs("infra/k8s/overlays/local-registry")
     ra = next(d for d in docs if d["kind"] == "Deployment" and d["metadata"]["name"] == "review-api")
     env = {e["name"]: e.get("value") for e in _containers(ra)[-1]["env"]}
     assert env["APP_ENV"] == "local"
@@ -328,9 +328,9 @@ def test_local_registry_is_dev_mode_with_ghcr_images():
 
 @pytest.mark.parametrize("svc", ["review-api", "gateway", "frontend"])
 def test_k3s_overlays_pull_if_not_present(svc):
-    for d in _docs(f"deploy/{svc}/overlays/k3s"):
+    for d in _docs(f"infra/k8s/{svc}/overlays/k3s"):
         if d["kind"] in ("Deployment", "Job"):
             assert all(c.get("imagePullPolicy") == "IfNotPresent" for c in _containers(d)), d["metadata"]["name"]
     if svc == "review-api":
-        ra = next(d for d in _docs("deploy/review-api/overlays/k3s") if d["kind"] == "Deployment")
+        ra = next(d for d in _docs("infra/k8s/review-api/overlays/k3s") if d["kind"] == "Deployment")
         assert {"name": "SCANNER_IMAGE_PULL_POLICY", "value": "IfNotPresent"} in ra["spec"]["template"]["spec"]["containers"][0]["env"]

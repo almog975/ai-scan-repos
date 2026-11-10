@@ -1,4 +1,4 @@
-"""Migration <-> model <-> infra/db/schema.sql parity (sqlite here; Postgres pg_dump diff runs in CI: ci/db-parity.sh)."""
+"""Migration <-> model <-> infra/bootstrap/db/schema.sql parity (sqlite here; Postgres pg_dump diff runs in CI: ci/db-parity.sh)."""
 from pathlib import Path
 
 from alembic import command
@@ -11,7 +11,7 @@ from app import models  # noqa: F401
 from app.db import Base
 
 ROOT = Path(__file__).resolve().parents[1]
-SCHEMA_SQL = ROOT.parent / "infra" / "db" / "schema.sql"
+SCHEMA_SQL = ROOT.parents[1] / "infra" / "bootstrap" / "db" / "schema.sql"
 
 
 def _upgrade(tmp_path, monkeypatch):
