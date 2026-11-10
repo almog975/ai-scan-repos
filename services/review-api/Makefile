@@ -1,5 +1,5 @@
 COMPONENT := review-api
-include ../mk/common.mk
+include ../../ci/mk/common.mk
 PY ?= python3
 # JUnit path; skipped when the caller already passes --junitxml via PYTEST_ADDOPTS (Jenkinsfile does).
 JUNIT ?= $(REPORTS)/junit.xml

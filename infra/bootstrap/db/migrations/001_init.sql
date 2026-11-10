@@ -1,6 +1,6 @@
 BEGIN;
 -- AI Scan Repos – target PostgreSQL schema v1 (Phase 0 contract, per project plan "מודל נתונים").
--- Location: infra/db/ (raw SQL reference). NOTE: the running review-api still uses Alembic 0001_initial (github_accounts/sessions/reviews/settings/ai_keys).
+-- Location: infra/bootstrap/db/ (raw SQL reference). NOTE: the running review-api still uses Alembic 0001_initial (github_accounts/sessions/reviews/settings/ai_keys).
 -- Converging Alembic onto this schema is a follow-up (see README "Contract drift").
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 

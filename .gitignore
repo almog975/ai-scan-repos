@@ -11,16 +11,16 @@ node_modules/
 .ci-venv/
 .ci-venv-worker/
 
-# installer config with real values (infra/installer/installer.env.example is the template)
-infra/installer/installer.env
+# installer config with real values (infra/bootstrap/installer/installer.env.example is the template)
+infra/bootstrap/installer/installer.env
 *.installer.env
 
-# local overlay real OAuth credentials (template: deploy/overlays/local/secrets/gateway-oauth.local.env.example)
-deploy/overlays/local/secrets/gateway-oauth.local.env
-deploy/overlays/local/secrets/*.local.env
+# local overlay real OAuth credentials (template: infra/k8s/overlays/local/secrets/gateway-oauth.local.env.example)
+infra/k8s/overlays/local/secrets/gateway-oauth.local.env
+infra/k8s/overlays/local/secrets/*.local.env
 
 # Helm chart local values (real OAuth creds)
-charts/ai-scan/values.local.yaml
+infra/helm/ai-scan/values.local.yaml
 
 # local kubectl binary downloaded into repo root
 /kubectl

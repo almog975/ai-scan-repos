@@ -1,5 +1,5 @@
 COMPONENT := frontend
-include ../mk/common.mk
+include ../../ci/mk/common.mk
 NPM ?= npm
 
 .PHONY: deps test dist build

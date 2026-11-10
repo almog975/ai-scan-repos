@@ -1,4 +1,4 @@
-"""Gateway uses the shared schema (contracts/../schema.sql, applied by review-api's Alembic migration):
+"""Gateway uses the shared schema (infra/bootstrap/db/schema.sql, applied by review-api's Alembic migration):
 users + sessions + webhook_deliveries. For sqlite (dev/tests) it creates the tables itself."""
 import uuid
 from datetime import datetime, timezone
@@ -14,7 +14,7 @@ def utcnow():
 
 
 class GUID(TypeDecorator):
-    """uuid on Postgres, CHAR(36) elsewhere (same as review-api/app/types.py)."""
+    """uuid on Postgres, CHAR(36) elsewhere (same as services/review-api/app/types.py)."""
     impl = CHAR
     cache_ok = True
 

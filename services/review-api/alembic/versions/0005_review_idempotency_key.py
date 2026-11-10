@@ -1,6 +1,6 @@
 """Phase 9 reviews.idempotency_key (unique, nullable): POST /reviews Idempotency-Key.
 
-On Postgres the DDL is alembic/sql/0005_review_idempotency_key.sql (= the Phase 9 block at the end of infra/db/schema.sql).
+On Postgres the DDL is alembic/sql/0005_review_idempotency_key.sql (= the Phase 9 block at the end of infra/bootstrap/db/schema.sql).
 
 Revision ID: 0005
 Revises: 0004

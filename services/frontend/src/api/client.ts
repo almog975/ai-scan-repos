@@ -1,4 +1,4 @@
-// Typed client generated from contracts/gateway.openapi.yaml (npm run gen:api -> src/api/schema.d.ts).
+// Typed client generated from services/contracts/gateway.openapi.yaml (npm run gen:api -> src/api/schema.d.ts).
 // Every call is a relative path (/api, /auth, /me) so it works behind the ingress, nginx and the vite proxy.
 import createClient, { type Middleware } from 'openapi-fetch'
 import type { components, paths } from './schema'
@@ -112,6 +112,6 @@ export const TERMINAL: State[] = ['completed', 'failed', 'cancelled']
 export const GITHUB_URL = /^https:\/\/github\.com\/[A-Za-z0-9][A-Za-z0-9-]{0,38}\/[A-Za-z0-9._-]{1,100}?(\.git)?\/?$/
 export const repoName = (url: string) => url.replace(/^https:\/\/github\.com\//, '').replace(/(\.git)?\/?$/, '')
 
-/** report.json uses {name:'none', kind:'onprem', model:'none'} when no AI ran (contracts/report.schema.json). */
+/** report.json uses {name:'none', kind:'onprem', model:'none'} when no AI ran (services/contracts/report.schema.json). */
 export const hasAI = (p?: { name: string; model?: string | null } | null): boolean =>
   !!p && !(p.name === 'none' && (p.model ?? 'none') === 'none')

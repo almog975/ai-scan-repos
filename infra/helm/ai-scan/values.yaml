@@ -115,7 +115,7 @@ ingress:
   className: nginx
   host: localhost
 
-# NOT FOR PRODUCTION placeholders (same values as deploy/overlays/local/secrets).
+# NOT FOR PRODUCTION placeholders (same values as infra/k8s/overlays/local/secrets).
 # Never commit real values: use --set or a gitignored values.local.yaml.
 secrets:
   # false = the chart doesn't render the Secrets (they're created once out-of-band, e.g. by Argo CD setup in
@@ -133,7 +133,7 @@ secrets:
 autoheal:
   enabled: true                 # Role ai-scan-autoheal (namespaced, delete/restart/re-run only)
   jenkins:
-    enabled: true               # RoleBinding for the Jenkins job's agent SA (deploy/jenkins/local/)
+    enabled: true               # RoleBinding for the Jenkins job's agent SA (infra/jenkins/local/)
     namespace: jenkins
     serviceAccount: ai-scan-autoheal
   cronjob:

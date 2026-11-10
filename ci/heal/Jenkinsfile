@@ -1,4 +1,4 @@
-// ai-scan-autoheal (JCasC pipelineJob in deploy/jenkins/values.yaml): every 10 min + Build Now. docs/autoheal.md
+// ai-scan-autoheal (JCasC pipelineJob in infra/jenkins/values.yaml): every 10 min + Build Now. docs/autoheal.md
 // Runs on the "autoheal" pod template (ServiceAccount ai-scan-autoheal, namespaced Roles only).
 pipeline {
   agent { label 'autoheal' }

@@ -1,5 +1,5 @@
 # Traefik routes for Jenkins (ns jenkins) and Argo CD (ns argocd). Applied by the installer, not Argo CD.
-# Middlewares are COPIED per namespace (same values as deploy/platform/base/ingress.yaml security-headers)
+# Middlewares are COPIED per namespace (same values as infra/k8s/platform/base/ingress.yaml security-headers)
 # so we don't need Traefik providers.kubernetesCRD.allowCrossNamespace=true (off by default in K3s Traefik).
 # TLS secrets jenkins-tls / argocd-ingress-tls: docs/tls-runbook.md.
 ---

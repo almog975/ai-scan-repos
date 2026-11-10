@@ -1,8 +1,8 @@
-"""contract v1 schema (= infra/db/schema.sql)
+"""contract v1 schema (= infra/bootstrap/db/schema.sql)
 
 Drops the Phase-0 prototype tables (no production data exists) and creates the
 contract v1 schema. On Postgres the DDL is alembic/sql/0002_contract_v1.sql, which a test keeps
-byte-identical to infra/db/schema.sql (minus its header comment). Other dialects (dev sqlite) use the ORM metadata.
+byte-identical to infra/bootstrap/db/schema.sql (minus its header comment). Other dialects (dev sqlite) use the ORM metadata.
 
 Revision ID: 0002
 Revises: 0001

@@ -1,5 +1,5 @@
-# LOCAL (k3d on Docker Desktop) root app-of-apps. Applied by `infra/local/k3d.sh up (make local-k8s)`.
-# Syncs deploy/argocd/local/apps/ (one child per deploy/<component>/overlays/local) from GitHub `main`:
+# LOCAL (k3d on Docker Desktop) root app-of-apps. Applied by `infra/bootstrap/local/k3d.sh up (make local-k8s)`.
+# Syncs infra/argocd/local/apps/ (one child per infra/k8s/<component>/overlays/local) from GitHub `main`:
 # local edits are only deployed after they are pushed AND merged to main. Images: :dev in the k3d registry, pushed by k3d.sh.
 # Waves: platform 0 -> postgres 1 -> scanner-worker 2 (ConfigMaps review-api mounts) -> review-api 3 -> gateway, frontend 4.
 apiVersion: argoproj.io/v1alpha1
@@ -12,7 +12,7 @@ spec:
   source:
     repoURL: https://github.com/almog975/ai-scan-repos.git
     targetRevision: main
-    path: deploy/argocd/local/apps
+    path: infra/argocd/local/apps
   destination:
     server: https://kubernetes.default.svc
     namespace: argocd

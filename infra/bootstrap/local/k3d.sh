@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # Local full stack on k3d (K3s in Docker) on Docker Desktop. Linux/macOS, or WSL2 on Windows. Docs: docs/local-k3d.md
 #
-#   infra/local/k3d.sh [--env FILE] [--no-argocd] [--dry-run] [--yes] up|down|status
+#   infra/bootstrap/local/k3d.sh [--env FILE] [--no-argocd] [--dry-run] [--yes] up|down|status
 #
 #   up      k3d registry + cluster `ai-scan` (80/443 -> Traefik), build + push the 4 images (:dev), Prometheus Operator
-#           CRDs (ServiceMonitor/PrometheusRule only), self-signed TLS, then infra/installer/aiscan-install.sh
+#           CRDs (ServiceMonitor/PrometheusRule only), self-signed TLS, then infra/bootstrap/installer/aiscan-install.sh
 #           --overlay local --mode direct (namespaces, secrets from .env, egress endpoints, deploy, verify), then
-#           Argo CD (pinned) + deploy/argocd/local root app. Idempotent: re-run after code changes.
+#           Argo CD (pinned) + infra/argocd/local root app. Idempotent: re-run after code changes.
 #   down    delete the cluster and the registry (all data). Asks, or --yes.
 #   status  cluster, pods, URLs.
 #
@@ -14,7 +14,7 @@
 # the installer's 0600 temp files; never printed. GITHUB_REPO_TOKEN (env only) = read-only token for Argo CD.
 set -Eeuo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 CLUSTER=ai-scan
 REG_NAME=k3d-ai-scan-registry.localhost   # in-cluster name (k3d adds the k3d- prefix)
 REG_PORT=5111
@@ -22,7 +22,7 @@ HOST=ai-scan.localhost
 NS=ai-scan-repos
 SERVICES=(frontend gateway review-api scanner-worker)
 PROM_OPERATOR_VERSION=v0.81.0   # CRDs only (no Prometheus): the platform overlay ships ServiceMonitor/PrometheusRule
-ARGOCD_CHART_VERSION=$(sed -n 's/^ARGOCD_CHART_VERSION_PINNED="\([^"]*\)".*/\1/p' "$ROOT/infra/installer/aiscan-install.sh")
+ARGOCD_CHART_VERSION=$(sed -n 's/^ARGOCD_CHART_VERSION_PINNED="\([^"]*\)".*/\1/p' "$ROOT/infra/bootstrap/installer/aiscan-install.sh")
 REPO_URL=https://github.com/almog975/ai-scan-repos.git
 
 ENV_FILE="$ROOT/.env"; ARGOCD=1; DRY=0; YES=0; CMD=""
@@ -107,8 +107,8 @@ up() {
     fi
   fi
 
-  log "installer: --overlay local --mode direct on a temp copy of deploy/ + infra/ (the working tree is never edited)"
-  mkdir -p "$TMP/repo"; cp -r "$ROOT/deploy" "$ROOT/infra" "$TMP/repo/"
+  log "installer: --overlay local --mode direct on a temp copy of infra/ (the working tree is never edited)"
+  mkdir -p "$TMP/repo"; cp -r "$ROOT/infra" "$TMP/repo/"
   # egress endpoints from the live cluster; k3d = K3s default pod/service CIDRs
   if dry; then KUBE_API_ENDPOINT=192.0.2.1; KUBE_SERVICE_IP=10.43.0.1; else
     KUBE_API_ENDPOINT=$(kubectl get endpoints kubernetes -n default -o jsonpath='{.subsets[0].addresses[0].ip}')
@@ -118,7 +118,7 @@ up() {
   echo "  KUBE_API_ENDPOINT=$KUBE_API_ENDPOINT KUBE_SERVICE_IP=$KUBE_SERVICE_IP POD_CIDR=10.42.0.0/16 SERVICE_CIDR=10.43.0.0/16"
   export KUBE_API_ENDPOINT KUBE_SERVICE_IP POD_CIDR=10.42.0.0/16 SERVICE_CIDR=10.43.0.0/16
   export REGISTRY_HOST="$REG_NAME:$REG_PORT"
-  local inst=("$TMP/repo/infra/installer/aiscan-install.sh" --overlay local --mode direct --registry local --tag dev)
+  local inst=("$TMP/repo/infra/bootstrap/installer/aiscan-install.sh" --overlay local --mode direct --registry local --tag dev)
   [ -f "$ENV_FILE" ] && inst+=(--config "$ENV_FILE")
   dry && inst+=(--dry-run)
   local step
@@ -136,7 +136,7 @@ up() {
 }
 
 argocd() {
-  log "Argo CD chart $ARGOCD_CHART_VERSION (pinned in aiscan-install.sh) + deploy/argocd/local root app (syncs main)"
+  log "Argo CD chart $ARGOCD_CHART_VERSION (pinned in aiscan-install.sh) + infra/argocd/local root app (syncs main)"
   [ -n "$ARGOCD_CHART_VERSION" ] || die "cannot read ARGOCD_CHART_VERSION_PINNED from the installer"
   run helm repo add argo https://argoproj.github.io/argo-helm --force-update
   run helm upgrade --install argocd argo/argo-cd -n argocd --create-namespace --version "$ARGOCD_CHART_VERSION" \
@@ -156,7 +156,7 @@ argocd() {
   else
     echo "  WARNING: GITHUB_REPO_TOKEN unset: Argo CD cannot read the private repo (apps stay Unknown/ComparisonError)" >&2
   fi
-  run kubectl apply -n argocd -f "$ROOT/deploy/argocd/local/root-app.yaml"
+  run kubectl apply -n argocd -f "$ROOT/infra/argocd/local/root-app.yaml"
 }
 
 urls() {

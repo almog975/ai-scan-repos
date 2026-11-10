@@ -1,4 +1,4 @@
-"""Pydantic request models (closed, mirroring contracts/review-api.openapi.yaml) + response builders."""
+"""Pydantic request models (closed, mirroring services/contracts/review-api.openapi.yaml) + response builders."""
 from __future__ import annotations
 
 import re

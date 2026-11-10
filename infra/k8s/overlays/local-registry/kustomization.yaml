@@ -1,7 +1,7 @@
-# Same stack as deploy/overlays/local, but pulls from GitHub Container Registry
+# Same stack as infra/k8s/overlays/local, but pulls from GitHub Container Registry
 # instead of locally built :latest tags.
 #
-#   kubectl apply -k deploy/overlays/local-registry
+#   kubectl apply -k infra/k8s/overlays/local-registry
 #
 # Images are published by .github/workflows/images.yml on every push to main:
 #   ghcr.io/almog975/ai-scan-repos-<svc>:latest

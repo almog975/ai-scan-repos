@@ -1,4 +1,4 @@
-"""Explicit proxy table: exactly the /api/* paths of contracts/gateway.openapi.yaml, with the methods of the
+"""Explicit proxy table: exactly the /api/* paths of services/contracts/gateway.openapi.yaml, with the methods of the
 referenced review-api.openapi.yaml path items. No catch-all: anything else under /api is 404 NOT_FOUND."""
 ROUTES: dict[str, tuple[str, ...]] = {
     "/api/reviews": ("GET", "POST"),

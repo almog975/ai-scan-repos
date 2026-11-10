@@ -1,5 +1,5 @@
-# Root app-of-apps. Bootstrap once: kubectl apply -n argocd -f deploy/argocd/root-app.yaml
-# Syncs every child Application in deploy/argocd/apps/ (one per deploy/<component>/overlays/k3s).
+# Root app-of-apps. Bootstrap once: kubectl apply -n argocd -f infra/argocd/root-app.yaml
+# Syncs every child Application in infra/argocd/apps/ (one per infra/k8s/<component>/overlays/k3s).
 # Child sync waves: platform 0 -> postgres 1 -> review-api 2 -> gateway, frontend, scanner-worker 3.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
@@ -11,7 +11,7 @@ spec:
   source:
     repoURL: https://github.com/almog975/ai-scan-repos.git
     targetRevision: main
-    path: deploy/argocd/apps
+    path: infra/argocd/apps
   destination:
     server: https://kubernetes.default.svc
     namespace: argocd

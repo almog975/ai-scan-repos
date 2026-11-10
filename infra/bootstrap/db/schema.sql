@@ -1,6 +1,6 @@
 -- AI Scan Repos – target PostgreSQL schema v1 (Phase 0 contract, per project plan "מודל נתונים").
--- Location: infra/db/. Applied by Alembic 0002 (alembic/sql/0002_contract_v1.sql must stay identical below this header);
--- parity with the ORM models is checked by review-api/tests/test_parity.py and ci/db-parity.sh (Postgres).
+-- Location: infra/bootstrap/db/. Applied by Alembic 0002 (alembic/sql/0002_contract_v1.sql must stay identical below this header);
+-- parity with the ORM models is checked by services/review-api/tests/test_parity.py and ci/db-parity.sh (Postgres).
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 CREATE TYPE user_role       AS ENUM ('user', 'admin');

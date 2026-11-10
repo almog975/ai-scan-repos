@@ -5,7 +5,7 @@ images:
   - name: ai-scan/frontend
     newName: k3d-ai-scan-registry.localhost:5111/ai-scan/frontend
     newTag: dev
-# :dev is rebuilt and re-pushed by infra/local/k3d.sh, so always pull from the k3d registry (cheap, same host).
+# :dev is rebuilt and re-pushed by infra/bootstrap/local/k3d.sh, so always pull from the k3d registry (cheap, same host).
 patches:
   - target: {kind: Deployment, name: frontend}
     patch: |

@@ -1,6 +1,6 @@
 """Phase 4 provider cloud_ack columns (cloud_ack_at, cloud_ack_by).
 
-On Postgres the DDL is alembic/sql/0004_phase4_provider_ack.sql (= the Phase 4 block at the end of infra/db/schema.sql).
+On Postgres the DDL is alembic/sql/0004_phase4_provider_ack.sql (= the Phase 4 block at the end of infra/bootstrap/db/schema.sql).
 
 Revision ID: 0004
 Revises: 0003

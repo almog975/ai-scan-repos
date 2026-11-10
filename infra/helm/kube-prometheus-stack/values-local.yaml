@@ -7,7 +7,7 @@ prometheus:
   prometheusSpec:
     retention: 2d
     # ServiceMonitors / PrometheusRules labelled release=kube-prometheus-stack in any namespace
-    # (charts/ai-scan with monitoring.enabled=true)
+    # (infra/helm/ai-scan with monitoring.enabled=true)
     serviceMonitorSelectorNilUsesHelmValues: false
     serviceMonitorSelector:
       matchLabels: {release: kube-prometheus-stack}

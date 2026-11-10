@@ -1,8 +1,8 @@
-# Values for the jenkins/jenkins Helm chart (https://charts.jenkins.io, pinned in deploy/argocd/apps/jenkins.yaml).
+# Values for the jenkins/jenkins Helm chart (https://charts.jenkins.io, pinned in infra/argocd/apps/jenkins.yaml).
 # Rendered by Argo CD (Application ai-scan-jenkins, namespace jenkins). Everything Jenkins needs is in JCasC
 # below; no click-ops. No secrets in git: Jenkins credentials (github-bot, registry-push, smee-url) are K8s Secrets
 # in namespace jenkins labelled jenkins.io/credentials-type (kubernetes-credentials-provider plugin);
-# see deploy/jenkins/README.md for the kubectl commands.
+# see infra/jenkins/README.md for the kubectl commands.
 fullnameOverride: jenkins            # Service jenkins:8080 in namespace jenkins (Infra's IngressRoute targets it)
 
 controller:
@@ -44,7 +44,7 @@ controller:
     configScripts:
       ai-scan: |
         jenkins:
-          systemMessage: "AI Scan Repos CI (managed by JCasC, deploy/jenkins/values.yaml)"
+          systemMessage: "AI Scan Repos CI (managed by JCasC, infra/jenkins/values.yaml)"
         unclassified:
           location:
             # Public URL (Infra's IngressRoute, TLS secret jenkins-tls). Default = k3s host.
@@ -69,7 +69,7 @@ controller:
                           gitHubBranchDiscovery { strategyId(1) }
                           gitHubPullRequestDiscovery { strategyId(1) }
                           // Deploy-stage bot branches (deploy/<c>-<sha>, PRs to main) and human rollback/* branches only
-                          // touch deploy/**: never index them as branch jobs. PRs are matched on their target (main),
+                          // touch infra/k8s/**: never index them as branch jobs. PRs are matched on their target (main),
                           // so PR-N jobs for them still exist; the Jenkinsfile Loop guard skips those (CHANGE_BRANCH).
                           headWildcardFilter { includes('*'); excludes('deploy/* rollback/*') }
                         }
@@ -140,7 +140,7 @@ agent:
             resourceLimitMemory: 512Mi
           - name: tools
             # ci/agent/Dockerfile (node22, python3, trivy, kustomize, crane). Infra/Almog builds and pushes it once.
-            image: registry.registry:5000/ai-scan/jenkins-agent:CHANGE_ME_AGENT_SHA   # kubelet pulls via the K3s mirror (infra/registry/registries.yaml.example)
+            image: registry.registry:5000/ai-scan/jenkins-agent:CHANGE_ME_AGENT_SHA   # kubelet pulls via the K3s mirror (infra/bootstrap/registry/registries.yaml.example)
             command: sleep
             args: infinity
             ttyEnabled: true
@@ -178,7 +178,7 @@ agent:
             resourceLimitMemory: 4Gi
     autoheal: |
       # ai-scan-autoheal job (ci/heal/Jenkinsfile). Separate SA with namespaced Roles only
-      # (deploy/platform/base/autoheal-rbac.yaml, infra/argocd/autoheal-rbac.yaml); jenkins-agent keeps no API access.
+      # (infra/k8s/platform/base/autoheal-rbac.yaml, infra/argocd/autoheal-rbac.yaml); jenkins-agent keeps no API access.
       # Pods get label jenkins/label=autoheal, which the autoheal NetworkPolicies select.
       - name: autoheal
         label: autoheal

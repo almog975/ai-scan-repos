@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Postgres parity: schema from `alembic upgrade head` must equal infra/db/schema.sql (pg_dump --schema-only diff),
+# Postgres parity: schema from `alembic upgrade head` must equal infra/bootstrap/db/schema.sql (pg_dump --schema-only diff),
 # plus a downgrade/upgrade round trip.
 #
 # Two modes:
 #  - Sidecar / external server (Jenkins): set PGHOST (and optionally PGPORT, PGUSER, PGPASSWORD). The ai-scan-agent pod
-#    template runs a postgres:16 sidecar on 127.0.0.1:5432 (deploy/jenkins/values.yaml). Needs psql + pg_dump >= server
+#    template runs a postgres:16 sidecar on 127.0.0.1:5432 (infra/jenkins/values.yaml). Needs psql + pg_dump >= server
 #    major on PATH (ci/agent/Dockerfile installs postgresql-client-16). Two throwaway databases are created and dropped.
 #  - Local fallback (no PGHOST): starts postgres:16-alpine with `docker run`.
 # Usage: ci/db-parity.sh
@@ -39,11 +39,11 @@ fi
 
 psql_ -d postgres -c "CREATE DATABASE $A" -c "CREATE DATABASE $S"
 (cd "$ROOT/review-api" && DATABASE_URL="$URL_BASE/$A" alembic upgrade head)
-psql_ -d "$S" < "$ROOT/infra/db/schema.sql"
+psql_ -d "$S" < "$ROOT/infra/bootstrap/db/schema.sql"
 dump() { pgdump_ --schema-only --no-owner --no-privileges --exclude-table=alembic_version "$1" \
            | grep -vE '^(--|SET |SELECT pg_catalog|\\restrict|\\unrestrict)' | sed '/^$/d'; }
 # Explicit if/exit: under `set -e` a failing command inside an && list does NOT abort the script.
-if ! diff -u <(dump "$S") <(dump "$A"); then echo "[db-parity] FAIL: schema drift (alembic vs infra/db/schema.sql)" >&2; exit 1; fi
+if ! diff -u <(dump "$S") <(dump "$A"); then echo "[db-parity] FAIL: schema drift (alembic vs infra/bootstrap/db/schema.sql)" >&2; exit 1; fi
 echo "db parity ok"
 # Round trip: downgrade to 0001 and back must succeed on Postgres too.
 if ! (cd "$ROOT/review-api" && export DATABASE_URL="$URL_BASE/$A" && alembic downgrade 0001 && alembic upgrade head); then

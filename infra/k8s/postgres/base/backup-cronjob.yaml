@@ -105,7 +105,7 @@ spec:
               emptyDir: {sizeLimit: 64Mi}
 ---
 # Backup pod: no ingress; egress only DNS (allow-dns-egress) + postgres:5432 (postgres-clients-egress) via the
-# namespace policies in deploy/platform. This policy makes the intent explicit and survives if those change.
+# namespace policies in infra/k8s/platform. This policy makes the intent explicit and survives if those change.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata: {name: postgres-backup, namespace: ai-scan-repos}

@@ -1,5 +1,5 @@
 # Copy to values.local.yaml (gitignored) and use:
-#   helm upgrade --install ai-scan ./charts/ai-scan -n ai-scan-repos --create-namespace -f charts/ai-scan/values.local.yaml
+#   helm upgrade --install ai-scan ./infra/helm/ai-scan -n ai-scan-repos --create-namespace -f infra/helm/ai-scan/values.local.yaml
 # GitHub OAuth App callback URL: http://localhost/auth/github/callback
 # Argo CD (values-docker-desktop.yaml) never reads this file; it only seeds the base Secrets once. Under GitOps put
 # real OAuth / AI values in the gateway-oauth / scanner-ai Secrets instead (docs/local-secrets.md).

@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # OPTIONAL installer step: build + push the Jenkins agent "tools" image from ci/agent/Dockerfile as
 #   <REGISTRY>/ai-scan/jenkins-agent:<git-sha>
-# then replace CHANGE_ME_AGENT_SHA in deploy/jenkins/values.yaml (SED=1, default) or just print the tag to commit.
+# then replace CHANGE_ME_AGENT_SHA in infra/jenkins/values.yaml (SED=1, default) or just print the tag to commit.
 # Uses docker, else nerdctl. Log in first with the push user (docs/registry-auth-runbook.md):
 #   echo '<PUSH_PASSWORD>' | docker login <PUSH_REGISTRY> -u <PUSH_USER> --password-stdin
 # The values.yaml change must be committed + pushed by Almog/Pipelines for Argo CD to pick it up.
 set -euo pipefail
-ROOT="${ROOT:-$(cd "$(dirname "$0")/../.." && pwd)}"
+ROOT="${ROOT:-$(cd "$(dirname "$0")/../../.." && pwd)}"
 # Runs on the installer host (outside the cluster). In-cluster pushes (Jenkins agents) use registry.registry:5000
 # directly (docs/registry-auth-runbook.md).
 # REGISTRY = name in the image ref (what pods/kubelet use); PUSH_REGISTRY = where this host can reach it.
@@ -15,7 +15,7 @@ REGISTRY="${REGISTRY:-registry.registry:5000}"
 PUSH_REGISTRY="${PUSH_REGISTRY:-127.0.0.1:30500}"
 SHA="${GIT_SHA:-$(git -C "$ROOT" rev-parse --short=12 HEAD)}"
 IMG="$REGISTRY/ai-scan/jenkins-agent:$SHA"
-VALUES="$ROOT/deploy/jenkins/values.yaml"
+VALUES="$ROOT/infra/jenkins/values.yaml"
 if command -v docker >/dev/null; then CLI=docker
 elif command -v nerdctl >/dev/null; then CLI=nerdctl
 else echo "need docker or nerdctl" >&2; exit 1; fi

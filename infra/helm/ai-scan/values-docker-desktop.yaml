@@ -1,4 +1,4 @@
-# Docker Desktop values used by Argo CD (deploy/argocd/docker-desktop/ai-scan.yaml), on top of values.yaml.
+# Docker Desktop values used by Argo CD (infra/argocd/docker-desktop/ai-scan.yaml), on top of values.yaml.
 # No secrets here: Argo CD renders the chart from git, so secrets.create=false and the Secrets are created
 # once from your gitignored values.local.yaml (docs/cicd-docker-desktop.md, step 3).
 secrets:

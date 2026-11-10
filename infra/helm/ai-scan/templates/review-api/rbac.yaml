@@ -1,4 +1,4 @@
-# review-api launches one scanner Job per review (same rules as deploy/review-api/base/rbac.yaml)
+# review-api launches one scanner Job per review (same rules as infra/k8s/review-api/base/rbac.yaml)
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:

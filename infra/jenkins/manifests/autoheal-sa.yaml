@@ -1,5 +1,5 @@
-# ServiceAccount for the ai-scan-autoheal job's agent pods (pod template "autoheal", deploy/jenkins/values.yaml).
-# Its only permissions are the namespaced Roles in deploy/platform/base/autoheal-rbac.yaml (ns ai-scan-repos) and
+# ServiceAccount for the ai-scan-autoheal job's agent pods (pod template "autoheal", infra/jenkins/values.yaml).
+# Its only permissions are the namespaced Roles in infra/k8s/platform/base/autoheal-rbac.yaml (ns ai-scan-repos) and
 # infra/argocd/autoheal-rbac.yaml (ns argocd). No ClusterRole. The jenkins-agent SA is unchanged (no API access).
 apiVersion: v1
 kind: ServiceAccount

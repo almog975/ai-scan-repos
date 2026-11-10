@@ -16,14 +16,14 @@ RUN apt-get update \
  && curl -fsSL -o /tmp/tv.tgz "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" \
  && echo "${TRIVY_SHA256}  /tmp/tv.tgz" | sha256sum -c - && tar -xzf /tmp/tv.tgz -C /usr/local/bin trivy \
  && rm -f /tmp/*.tgz && rm -rf /var/lib/apt/lists/*
-COPY review-api/requirements.txt /tmp/api-req.txt
-COPY scanner-worker/requirements.txt /tmp/worker-req.txt
+COPY services/review-api/requirements.txt /tmp/api-req.txt
+COPY services/scanner-worker/requirements.txt /tmp/worker-req.txt
 RUN pip install -r /tmp/api-req.txt -r /tmp/worker-req.txt
-COPY scanner-worker/scanner /opt/scanner/scanner
+COPY services/scanner-worker/scanner /opt/scanner/scanner
 WORKDIR /app
-COPY review-api/app ./app
-COPY review-api/alembic ./alembic
-COPY review-api/alembic.ini .
+COPY services/review-api/app ./app
+COPY services/review-api/alembic ./alembic
+COPY services/review-api/alembic.ini .
 RUN groupadd -g 10001 app && useradd -u 10001 -g app -M -s /usr/sbin/nologin app \
  && mkdir -p /reports /work && chown 10001:10001 /reports /work
 USER 10001

@@ -29,7 +29,7 @@ spec:
   podSelector: {matchLabels: {app.kubernetes.io/component: jenkins-controller}}
   policyTypes: [Ingress]
   ingress:
-    - from:   # UI via Traefik (infra/ingress jenkins route)
+    - from:   # UI via Traefik (infra/bootstrap/ingress jenkins route)
         - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: kube-system}}
           podSelector: {matchLabels: {app.kubernetes.io/name: traefik}}
       ports: [{protocol: TCP, port: 8080}]

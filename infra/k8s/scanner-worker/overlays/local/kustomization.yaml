@@ -4,7 +4,7 @@ resources: [../../base]
 namespace: ai-scan-repos
 generatorOptions:
   disableNameSuffixHash: true
-# Scanner Job pull policy: review-api sets Always (env SCANNER_IMAGE_PULL_POLICY, deploy/review-api/overlays/local).
+# Scanner Job pull policy: review-api sets Always (env SCANNER_IMAGE_PULL_POLICY, infra/k8s/review-api/overlays/local).
 configMapGenerator:
   - name: scanner-image
     literals:

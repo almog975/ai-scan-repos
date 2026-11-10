@@ -1,5 +1,5 @@
-# Child of deploy/argocd/root-app.yaml (app-of-apps). Jenkins controller (Helm chart jenkins/jenkins with
-# deploy/jenkins/values.yaml) + smee-client and agent ServiceAccount (deploy/jenkins/manifests), namespace jenkins.
+# Child of infra/argocd/root-app.yaml (app-of-apps). Jenkins controller (Helm chart jenkins/jenkins with
+# infra/jenkins/values.yaml) + smee-client and agent ServiceAccount (infra/jenkins/manifests), namespace jenkins.
 # Project ai-scan-ci (Infra-owned, infra/argocd/appproject-ai-scan-ci.yaml): ai-scan only allows ai-scan-repos.
 # Multi-source Application: needs Argo CD >= 2.6. Wave 0: independent of the app components.
 apiVersion: argoproj.io/v1alpha1
@@ -20,13 +20,13 @@ spec:
       helm:
         releaseName: jenkins
         valueFiles:
-          - $values/deploy/jenkins/values.yaml
+          - $values/infra/jenkins/values.yaml
     - repoURL: https://github.com/almog975/ai-scan-repos.git
       targetRevision: main
       ref: values
     - repoURL: https://github.com/almog975/ai-scan-repos.git
       targetRevision: main
-      path: deploy/jenkins/manifests
+      path: infra/jenkins/manifests
   destination:
     server: https://kubernetes.default.svc
     namespace: jenkins

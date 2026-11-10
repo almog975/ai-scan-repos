@@ -1,26 +1,26 @@
 // CI/CD + GitOps on Docker Desktop (docs/cicd-docker-desktop.md). Jenkins job "ai-scan-cicd"
-// (deploy/jenkins/local/values-local.yaml) polls GitHub every 2 min (no webhook reaches a laptop).
+// (infra/jenkins/local/values-local.yaml) polls GitHub every 2 min (no webhook reaches a laptop).
 //   push to GitHub -> test changed services -> kaniko build (no Docker socket) -> trivy scan
 //   -> push ghcr.io/almog975/ai-scan-repos-<svc>:<git sha> -> bot commits the tag into
-//   charts/ai-scan/values-images.yaml [skip ci] -> Argo CD syncs the "ai-scan" release.
+//   infra/helm/ai-scan/values-images.yaml [skip ci] -> Argo CD syncs the "ai-scan" release.
 // Jenkins never runs helm/kubectl against the app: the agent pod's ServiceAccount has no RBAC.
 // Credentials (create in Jenkins, never in git): ghcr-push, github-push (username + token).
 // Top-level stages (Pipeline Graph): Checkout SCM, Loop guard, Test, Build, Scan, Push, GitOps. Each of Test/Build/
 // Scan/Push nests one stage per service with the same svcOn() when, so an unchanged service is skipped in all four.
 
 def SERVICES = [ // svc : [source dir, values key in imageTags, image name]
-  'frontend'  : ['frontend',   'frontend',  'ai-scan-repos-frontend'],
-  'gateway'   : ['gateway',    'gateway',   'ai-scan-repos-gateway'],
-  'review-api': ['review-api', 'reviewApi', 'ai-scan-repos-review-api'],
+  'frontend'  : ['services/frontend',       'frontend',  'ai-scan-repos-frontend'],
+  'gateway'   : ['services/gateway',        'gateway',   'ai-scan-repos-gateway'],
+  'review-api': ['services/review-api',     'reviewApi', 'ai-scan-repos-review-api'],
   // Not a Deployment: review-api launches one scanner Job per review with SCANNER_IMAGE, which the chart
   // renders from imageTags.scanner (ConfigMap scanner-image; its checksum rolls review-api on a bump).
-  'scanner'   : ['scanner-worker', 'scanner', 'ai-scan-repos-scanner-worker'],
+  'scanner'   : ['services/scanner-worker', 'scanner', 'ai-scan-repos-scanner-worker'],
 ]
 def REGISTRY  = 'ghcr.io/almog975'
 def REPO      = 'github.com/almog975/ai-scan-repos.git'
 def BOT_NAME  = 'ai-scan-ci-bot'
 def BOT_EMAIL = 'ci-bot@ai-scan.local'
-def VALUES    = 'charts/ai-scan/values-images.yaml'
+def VALUES    = 'infra/helm/ai-scan/values-images.yaml'
 def changed   = []
 def skipBuild = false
 
@@ -32,7 +32,7 @@ def svcOn = { String svc -> !skipBuild && changed.contains(svc) }   // per-servi
 // which service failed where (Test: gateway, Scan: frontend, ...).
 def testSvc = { String s ->
   if (s == 'frontend') {
-    container('node') { dir('frontend') {
+    container('node') { dir(SERVICES['frontend'][0]) {
       sh 'npm ci --no-audit --no-fund'
       sh 'CI=true npx vitest run --reporter=default --reporter=junit --outputFile.junit=$WORKSPACE/reports/frontend-junit.xml'
       sh 'npm run build'

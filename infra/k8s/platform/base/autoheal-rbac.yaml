@@ -25,7 +25,7 @@ subjects:
   - {kind: ServiceAccount, name: ai-scan-autoheal, namespace: jenkins}
 ---
 # /readyz checks from the autoheal agent pod (jenkins/label=autoheal in ns jenkins). Additive to the existing
-# *-ingress policies; matching egress: deploy/jenkins/manifests/autoheal-networkpolicy.yaml.
+# *-ingress policies; matching egress: infra/jenkins/manifests/autoheal-networkpolicy.yaml.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata: {name: autoheal-readyz-ingress, namespace: ai-scan-repos}

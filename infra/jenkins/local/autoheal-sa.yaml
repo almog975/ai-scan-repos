@@ -1,5 +1,5 @@
 # ServiceAccount for the ai-scan-autoheal job's agent pods (pod template "autoheal" in values-local.yaml).
-# Its only permissions come from the Helm chart (charts/ai-scan, autoheal.jenkins.enabled): Role + RoleBinding
+# Its only permissions come from the Helm chart (infra/helm/ai-scan, autoheal.jenkins.enabled): Role + RoleBinding
 # in ai-scan-repos. No ClusterRole. Jenkins itself / other agents get no access to ai-scan-repos.
 apiVersion: v1
 kind: ServiceAccount

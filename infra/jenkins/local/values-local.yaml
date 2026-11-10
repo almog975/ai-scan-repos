@@ -2,8 +2,8 @@
 # (ci/cicd/Jenkinsfile.docker-desktop, docs/cicd-docker-desktop.md). Its credentials (ghcr-push, github-push)
 # are created by hand in the Jenkins UI, never in git.
 #   helm upgrade --install jenkins jenkins --repo https://charts.jenkins.io --version 5.10.3 \
-#     -n jenkins --create-namespace -f deploy/jenkins/local/values-local.yaml --wait
-# Full CI setup (multibranch, kaniko, registry, smee) stays in deploy/jenkins/values.yaml (k3s / Argo CD).
+#     -n jenkins --create-namespace -f infra/jenkins/local/values-local.yaml --wait
+# Full CI setup (multibranch, kaniko, registry, smee) stays in infra/jenkins/values.yaml (k3s / Argo CD).
 fullnameOverride: jenkins
 
 controller:
@@ -50,7 +50,7 @@ controller:
     configScripts:
       ai-scan: |
         jenkins:
-          systemMessage: "AI Scan Repos auto-heal (Docker Desktop, deploy/jenkins/local/values-local.yaml)"
+          systemMessage: "AI Scan Repos auto-heal (Docker Desktop, infra/jenkins/local/values-local.yaml)"
         # Don't set unclassified.location here: the chart's default JCasC already sets it
         # (from controller.jenkinsUrl, or the ingress hostName), and a duplicate key makes
         # JCasC fail with ConfiguratorConflictException on boot.
@@ -59,7 +59,7 @@ controller:
           - script: >
               pipelineJob('ai-scan-cicd') {
                 displayName('AI Scan CI/CD (GitOps)')
-                description('Polls GitHub every 2 min: test -> kaniko build -> trivy -> push ghcr.io (git SHA tag) -> bump charts/ai-scan/values-images.yaml [skip ci] -> Argo CD deploys. docs/cicd-docker-desktop.md')
+                description('Polls GitHub every 2 min: test -> kaniko build -> trivy -> push ghcr.io (git SHA tag) -> bump infra/helm/ai-scan/values-images.yaml [skip ci] -> Argo CD deploys. docs/cicd-docker-desktop.md')
                 properties {
                   disableConcurrentBuilds()
                   pipelineTriggers { triggers { pollSCM { scmpoll_spec('H/2 * * * *') } } }
@@ -194,8 +194,8 @@ agent:
             resourceLimitCpu: 500m
             resourceLimitMemory: 256Mi
     autoheal: |
-      # ci/heal/Jenkinsfile runs heal.sh in container "kubectl". SA ai-scan-autoheal (deploy/jenkins/local/autoheal-sa.yaml)
-      # is bound only to the Role ai-scan-autoheal in ai-scan-repos (charts/ai-scan, autoheal.jenkins.enabled).
+      # ci/heal/Jenkinsfile runs heal.sh in container "kubectl". SA ai-scan-autoheal (infra/jenkins/local/autoheal-sa.yaml)
+      # is bound only to the Role ai-scan-autoheal in ai-scan-repos (infra/helm/ai-scan, autoheal.jenkins.enabled).
       - name: autoheal
         label: autoheal
         serviceAccount: ai-scan-autoheal

@@ -12,7 +12,7 @@
 # never echoed, logged or written into the repo.
 set -Eeuo pipefail
 
-ROOT="${ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
+ROOT="${ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)}"
 ARGOCD_CHART_VERSION_PINNED="10.11.6"   # argo/argo-cd chart -> Argo CD v3.5.6 (multi-source apps need >= 2.6)
 APP_NS=ai-scan-repos
 COMPONENTS=(platform postgres scanner-worker review-api gateway frontend)
@@ -69,7 +69,7 @@ case "$OVERLAY" in k3s|eks|local) ;; *) die "--overlay must be k3s|eks|local" ;;
 case "$MODE" in gitops|direct) ;; *) die "--mode must be gitops|direct" ;; esac
 case "$REGISTRY_TYPE" in local|ecr) ;; *) die "--registry must be local|ecr" ;; esac
 if [ "$MODE" = gitops ] && [ "$OVERLAY" != k3s ]; then
-  die "gitops mode deploys deploy/argocd/apps (k3s overlays); use --mode direct for $OVERLAY"
+  die "gitops mode deploys infra/argocd/apps (k3s overlays); use --mode direct for $OVERLAY"
 fi
 [[ "$IMAGE_TAG" =~ ^[A-Za-z0-9_.-]{1,128}$ ]] || die "bad --tag"
 
@@ -82,7 +82,7 @@ if [ "$REGISTRY_TYPE" = ecr ]; then
 else
   case "$OVERLAY" in
     k3s) REGISTRY_HOST="${REGISTRY_HOST:-registry.registry:5000}" ;;   # in-cluster Service, plain HTTP
-    local) REGISTRY_HOST="${REGISTRY_HOST:-k3d-ai-scan-registry.localhost:5111}" ;;   # k3d registry (infra/local/k3d.sh)
+    local) REGISTRY_HOST="${REGISTRY_HOST:-k3d-ai-scan-registry.localhost:5111}" ;;   # k3d registry (infra/bootstrap/local/k3d.sh)
     eks) : "${REGISTRY_HOST:?REGISTRY_HOST required for eks with a local registry}" ;;
   esac
   IMAGE_PREFIX="$REGISTRY_HOST/ai-scan"
@@ -175,21 +175,21 @@ preflight() {
 
 bootstrap() {
   STEP=bootstrap
-  log "bootstrap: namespaces, storage (infra/bootstrap/overlays/$OVERLAY)"
+  log "bootstrap: namespaces, storage (infra/bootstrap/cluster/overlays/$OVERLAY)"
   if [ "$OVERLAY" = k3s ]; then
     need_env NODE_NAME
     [[ "$NODE_NAME" =~ ^[a-z0-9.-]+$ ]] || die "bad NODE_NAME"
-    echo "+ kustomize build infra/bootstrap/overlays/k3s | sed s/REPLACE_NODE_NAME/$NODE_NAME/ | $KUBECTL apply -f -"
-    dry || kustomize build "$ROOT/infra/bootstrap/overlays/k3s" | sed "s/REPLACE_NODE_NAME/$NODE_NAME/" | "$KUBECTL" apply -f -
+    echo "+ kustomize build infra/bootstrap/cluster/overlays/k3s | sed s/REPLACE_NODE_NAME/$NODE_NAME/ | $KUBECTL apply -f -"
+    dry || kustomize build "$ROOT/infra/bootstrap/cluster/overlays/k3s" | sed "s/REPLACE_NODE_NAME/$NODE_NAME/" | "$KUBECTL" apply -f -
   elif [ "$OVERLAY" = eks ]; then
     need_env EFS_FILESYSTEM_ID
     [[ "$EFS_FILESYSTEM_ID" =~ ^fs-[0-9a-f]+$ ]] || die "bad EFS_FILESYSTEM_ID"
-    echo "+ kustomize build infra/bootstrap/overlays/eks | sed s/fs-REPLACE_ME/$EFS_FILESYSTEM_ID/ | $KUBECTL apply -f -"
-    dry || kustomize build "$ROOT/infra/bootstrap/overlays/eks" | sed "s/fs-REPLACE_ME/$EFS_FILESYSTEM_ID/" | "$KUBECTL" apply -f -
+    echo "+ kustomize build infra/bootstrap/cluster/overlays/eks | sed s/fs-REPLACE_ME/$EFS_FILESYSTEM_ID/ | $KUBECTL apply -f -"
+    dry || kustomize build "$ROOT/infra/bootstrap/cluster/overlays/eks" | sed "s/fs-REPLACE_ME/$EFS_FILESYSTEM_ID/" | "$KUBECTL" apply -f -
   else
-    k apply -k "$ROOT/infra/bootstrap/overlays/local"
+    k apply -k "$ROOT/infra/bootstrap/cluster/overlays/local"
   fi
-  k apply -k "$ROOT/infra/ingress/overlays/$OVERLAY"
+  k apply -k "$ROOT/infra/bootstrap/ingress/overlays/$OVERLAY"
 }
 
 registry() {
@@ -219,7 +219,7 @@ registry() {
         --dry-run=client -o yaml | "$KUBECTL" apply -f - >/dev/null
     fi
   else echo "  secret registry/registry-htpasswd exists: kept"; fi
-  k apply -f "$ROOT/infra/registry/registry.yaml"
+  k apply -f "$ROOT/infra/bootstrap/registry/registry.yaml"
   regcred "$REGISTRY_HOST" "$REGISTRY_PULL_USER" "$REGISTRY_PULL_PASSWORD"
   apply_secret jenkins registry-push generic "username=REGISTRY_PUSH_USER" "password=REGISTRY_PUSH_PASSWORD"
   if ! dry; then
@@ -329,7 +329,7 @@ restart_apps() {
 }
 
 # egress: AI_EGRESS_CIDRS (comma list), KUBE_API_ENDPOINT and KUBE_SERVICE_IP replace the NetworkPolicy placeholders in
-# deploy/platform/overlays/$OVERLAY/kustomization.yaml and deploy/scanner-worker/overlays/$OVERLAY/networkpolicy-ai-egress.yaml
+# infra/k8s/platform/overlays/$OVERLAY/kustomization.yaml and infra/k8s/scanner-worker/overlays/$OVERLAY/networkpolicy-ai-egress.yaml
 # (lines tagged "(installer: VAR)"). Unset = placeholder kept (warning). Working tree only, like images.
 cidr_ok() {
   local c=$1 ip m o
@@ -356,8 +356,8 @@ cluster_cidrs() {
 egress() {
   STEP=egress
   log "egress: NetworkPolicy endpoints (overlay $OVERLAY)"
-  local plat="$ROOT/deploy/platform/overlays/$OVERLAY/kustomization.yaml"
-  local scan="$ROOT/deploy/scanner-worker/overlays/$OVERLAY/networkpolicy-ai-egress.yaml"
+  local plat="$ROOT/infra/k8s/platform/overlays/$OVERLAY/kustomization.yaml"
+  local scan="$ROOT/infra/k8s/scanner-worker/overlays/$OVERLAY/networkpolicy-ai-egress.yaml"
   local list="" c cc ip var
   if [ -n "${AI_EGRESS_CIDRS:-}" ]; then
     for c in ${AI_EGRESS_CIDRS//,/ }; do
@@ -368,7 +368,7 @@ egress() {
       done
       list+="${list:+, }{ipBlock: {cidr: $c}}"
     done
-    echo "+ set AI egress [$AI_EGRESS_CIDRS] in deploy/{platform,scanner-worker}/overlays/$OVERLAY"
+    echo "+ set AI egress [$AI_EGRESS_CIDRS] in infra/k8s/{platform,scanner-worker}/overlays/$OVERLAY"
     if ! dry; then
       sed -i "s|value: \[.*\]}\( *# .*(installer: AI_EGRESS_CIDRS)\)$|value: [$list]}\1|" "$plat"
       sed -i "s|to: \[.*\]\( *# .*(installer: AI_EGRESS_CIDRS)\)$|to: [$list]\1|" "$scan"
@@ -378,7 +378,7 @@ egress() {
     if [ -z "${!var:-}" ]; then echo "  WARNING: $var unset: placeholder kept (review-api cannot reach the K8s API)" >&2; continue; fi
     ip="${!var%/32}"
     cidr_ok "$ip/32" || die "$var must be an IPv4 address (optionally /32)"
-    echo "+ set $var=$ip/32 in deploy/platform/overlays/$OVERLAY/kustomization.yaml"
+    echo "+ set $var=$ip/32 in infra/k8s/platform/overlays/$OVERLAY/kustomization.yaml"
     dry || sed -i "s|cidr, value: [0-9./]*}\( *# .*(installer: $var)\)$|cidr, value: $ip/32}\1|" "$plat"
   done
   if ! dry; then
@@ -388,21 +388,21 @@ egress() {
   fi
 }
 
-# Rewrites image registry/tag in deploy/<c>/overlays/$OVERLAY in the working tree. Never commits or pushes:
+# Rewrites image registry/tag in infra/k8s/<c>/overlays/$OVERLAY in the working tree. Never commits or pushes:
 # in gitops mode Argo CD deploys what is on main, so commit the diff through a PR (the CI tag-bump push is a stub).
 images() {
   STEP=images
   log "images: $IMAGE_PREFIX/<component>:$IMAGE_TAG (overlay $OVERLAY)"
   for c in "${IMAGES[@]}"; do
     # targeted rewrite of the existing images: entry (kustomize edit reorders/reformats the whole file)
-    local kf="$ROOT/deploy/$c/overlays/$OVERLAY/kustomization.yaml"
-    echo "+ set image ai-scan/$c=$IMAGE_PREFIX/$c:$IMAGE_TAG in deploy/$c/overlays/$OVERLAY/kustomization.yaml"
+    local kf="$ROOT/infra/k8s/$c/overlays/$OVERLAY/kustomization.yaml"
+    echo "+ set image ai-scan/$c=$IMAGE_PREFIX/$c:$IMAGE_TAG in infra/k8s/$c/overlays/$OVERLAY/kustomization.yaml"
     dry && continue
     grep -qE "^  - name: ai-scan/$c\r?$" "$kf" || die "$kf has no images: entry for ai-scan/$c"
     sed -i "/^  - name: ai-scan\/$c\r\?$/,/newTag:/{s|newName: .*|newName: $IMAGE_PREFIX/$c|;s|newTag: .*|newTag: $IMAGE_TAG|}" "$kf"
   done
-  local f="$ROOT/deploy/scanner-worker/overlays/$OVERLAY/kustomization.yaml"
-  echo "+ sed -i 's|SCANNER_IMAGE=.*|SCANNER_IMAGE=$IMAGE_PREFIX/scanner-worker:$IMAGE_TAG|' deploy/scanner-worker/overlays/$OVERLAY/kustomization.yaml"
+  local f="$ROOT/infra/k8s/scanner-worker/overlays/$OVERLAY/kustomization.yaml"
+  echo "+ sed -i 's|SCANNER_IMAGE=.*|SCANNER_IMAGE=$IMAGE_PREFIX/scanner-worker:$IMAGE_TAG|' infra/k8s/scanner-worker/overlays/$OVERLAY/kustomization.yaml"
   dry || sed -i "s|SCANNER_IMAGE=.*|SCANNER_IMAGE=$IMAGE_PREFIX/scanner-worker:$IMAGE_TAG|" "$f"
   if ! dry && [ "$MODE" = gitops ] && ! git -C "$ROOT" diff --quiet -- deploy; then
     echo "  NOTE: overlays changed in the working tree; Argo CD deploys main. Open a PR with:"
@@ -421,10 +421,10 @@ deploy() {
     k apply -f "$ROOT/infra/argocd/appproject-ai-scan.yaml"
     k apply -f "$ROOT/infra/argocd/appproject-ai-scan-ci.yaml"
     k apply -f "$ROOT/infra/argocd/autoheal-rbac.yaml"
-    k apply -n argocd -f "$ROOT/deploy/argocd/root-app.yaml"
+    k apply -n argocd -f "$ROOT/infra/argocd/root-app.yaml"
   else
-    log "deploy: kubectl apply -k deploy/<component>/overlays/$OVERLAY (no Argo CD)"
-    for c in "${COMPONENTS[@]}"; do k apply -k "$ROOT/deploy/$c/overlays/$OVERLAY"; done
+    log "deploy: kubectl apply -k infra/k8s/<component>/overlays/$OVERLAY (no Argo CD)"
+    for c in "${COMPONENTS[@]}"; do k apply -k "$ROOT/infra/k8s/$c/overlays/$OVERLAY"; done
   fi
 }
 
@@ -479,23 +479,23 @@ uninstall() {
         k -n argocd patch "$app" --type merge -p '{"metadata":{"finalizers":null}}'
       done
     fi
-    k delete -n argocd -f "$ROOT/deploy/argocd/apps/" --ignore-not-found --wait=true
+    k delete -n argocd -f "$ROOT/infra/argocd/apps/" --ignore-not-found --wait=true
   fi
   local i
   if [ "$PURGE" = 1 ]; then
     for ((i=${#COMPONENTS[@]}-1; i>=0; i--)); do
-      k delete -k "$ROOT/deploy/${COMPONENTS[$i]}/overlays/$OVERLAY" --ignore-not-found
+      k delete -k "$ROOT/infra/k8s/${COMPONENTS[$i]}/overlays/$OVERLAY" --ignore-not-found
     done
     k -n "$APP_NS" delete pvc --all --ignore-not-found
     [ "$MODE" = gitops ] && run helm uninstall argocd -n argocd --ignore-not-found
-    [ "$REGISTRY_TYPE" = local ] && k delete -f "$ROOT/infra/registry/registry.yaml" --ignore-not-found
-    k delete -k "$ROOT/infra/ingress/overlays/$OVERLAY" --ignore-not-found
+    [ "$REGISTRY_TYPE" = local ] && k delete -f "$ROOT/infra/bootstrap/registry/registry.yaml" --ignore-not-found
+    k delete -k "$ROOT/infra/bootstrap/ingress/overlays/$OVERLAY" --ignore-not-found
     k delete namespace "$APP_NS" registry argocd --ignore-not-found
     echo "  NOTE: cluster-scoped bootstrap (PVs/StorageClasses, namespaces jenkins/monitoring) left in place;"
     echo "        reports PV has reclaimPolicy Retain (docs/storage-plan.md)."
   else
     # platform keeps ServiceAccounts/RBAC and the reports PVC: only removed with --purge
-    for ((i=${#COMPONENTS[@]}-1; i>=1; i--)); do delete_kept "$ROOT/deploy/${COMPONENTS[$i]}/overlays/$OVERLAY"; done
+    for ((i=${#COMPONENTS[@]}-1; i>=1; i--)); do delete_kept "$ROOT/infra/k8s/${COMPONENTS[$i]}/overlays/$OVERLAY"; done
     echo "  kept: PVCs in $APP_NS (postgres-data, reports, postgres-backups), Secrets, namespaces; reinstall reuses them"
   fi
 }

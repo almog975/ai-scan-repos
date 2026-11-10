@@ -1,6 +1,6 @@
 # Build the four service images; push to GHCR on main (and workflow_dispatch).
 # PRs build only (no push). Contexts match each service Makefile / Jenkins kaniko
-# (--context=<svc>/), not the repo root. k3s/eks still use the in-cluster registry
+# (--context=services/<svc>/), not the repo root. k3s/eks still use the in-cluster registry
 # pushed by Jenkins; switching those overlays to ghcr is a follow-up.
 name: Images
 
@@ -8,17 +8,17 @@ on:
   push:
     branches: [main]
     paths:
-      - "frontend/**"
-      - "gateway/**"
-      - "review-api/**"
-      - "scanner-worker/**"
+      - "services/frontend/**"
+      - "services/gateway/**"
+      - "services/review-api/**"
+      - "services/scanner-worker/**"
       - ".github/workflows/images.yml"
   pull_request:
     paths:
-      - "frontend/**"
-      - "gateway/**"
-      - "review-api/**"
-      - "scanner-worker/**"
+      - "services/frontend/**"
+      - "services/gateway/**"
+      - "services/review-api/**"
+      - "services/scanner-worker/**"
       - ".github/workflows/images.yml"
   workflow_dispatch:
 
@@ -39,13 +39,13 @@ jobs:
       matrix:
         include:
           - service: review-api
-            context: ./review-api
+            context: ./services/review-api
           - service: gateway
-            context: ./gateway
+            context: ./services/gateway
           - service: frontend
-            context: ./frontend
+            context: ./services/frontend
           - service: scanner-worker
-            context: ./scanner-worker
+            context: ./services/scanner-worker
     steps:
       - name: Checkout
         uses: actions/checkout@v4

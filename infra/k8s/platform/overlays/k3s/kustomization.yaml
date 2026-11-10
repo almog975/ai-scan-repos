@@ -1,6 +1,6 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-resources: [../../base]  # PV/StorageClass: infra/bootstrap/overlays/k3s
+resources: [../../base]  # PV/StorageClass: infra/bootstrap/cluster/overlays/k3s
 patches:
   - target: {kind: IngressRoute, name: ai-scan}
     patch: |
@@ -23,7 +23,7 @@ patches:
       - {op: replace, path: /spec/storageClassName, value: reports-local}
       - {op: add, path: /spec/volumeName, value: ai-scan-reports-pv}
   # k3s: per-environment egress endpoints (placeholders, RFC 5737). Keep the AI CIDR in sync with
-  # deploy/scanner-worker/overlays/k3s/networkpolicy-ai-egress.yaml. API endpoint: kubectl get endpoints kubernetes -n default.
+  # infra/k8s/scanner-worker/overlays/k3s/networkpolicy-ai-egress.yaml. API endpoint: kubectl get endpoints kubernetes -n default.
   - target: {kind: NetworkPolicy, name: review-api-ai-egress}
     patch: |
       - {op: replace, path: /spec/egress/0/to, value: [{ipBlock: {cidr: 192.0.2.0/24}}]}   # PLACEHOLDER AI provider CIDRs (installer: AI_EGRESS_CIDRS)

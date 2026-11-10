@@ -1,4 +1,4 @@
-# Child of deploy/argocd/local/root-app.yaml (k3d). Sync wave 4.
+# Child of infra/argocd/local/root-app.yaml (k3d). Sync wave 4.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -13,7 +13,7 @@ spec:
   source:
     repoURL: https://github.com/almog975/ai-scan-repos.git
     targetRevision: main
-    path: deploy/gateway/overlays/local
+    path: infra/k8s/gateway/overlays/local
   destination:
     server: https://kubernetes.default.svc
     namespace: ai-scan-repos

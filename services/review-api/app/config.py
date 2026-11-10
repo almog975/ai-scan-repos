@@ -36,7 +36,7 @@ class Settings(BaseSettings):
     # /readyz gates only on the DB + encryption key; set true to also return 503 when the k8s API is unreachable.
     readyz_require_kube: bool = False
     # Optional scanner container imagePullPolicy (Always|IfNotPresent|Never). Empty = template/K8s default.
-    # The local k3d overlay sets Always: the mutable :dev tag is re-pushed by infra/local/k3d.sh.
+    # The local k3d overlay sets Always: the mutable :dev tag is re-pushed by infra/bootstrap/local/k3d.sh.
     scanner_image_pull_policy: str = ""
     reports_pvc: str = "reports"
     scanner_service_account: str = "scanner"

@@ -1,4 +1,4 @@
-"""report/v1 (contracts/report.schema.json) + report.md."""
+"""report/v1 (services/contracts/report.schema.json) + report.md."""
 from __future__ import annotations
 
 from collections import Counter

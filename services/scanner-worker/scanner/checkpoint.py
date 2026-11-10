@@ -1,4 +1,4 @@
-"""Reports-volume layout + checkpoint/v1 (contracts/checkpoint.schema.json).
+"""Reports-volume layout + checkpoint/v1 (services/contracts/checkpoint.schema.json).
 
     /reports/<review_id>/
         progress.json                       live progress/v1 (atomic tmp+rename)

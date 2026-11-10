@@ -7,7 +7,7 @@ prometheus:
     serviceMonitorSelector:
       matchLabels: {release: kube-prometheus-stack}
     serviceMonitorNamespaceSelector: {}
-    # PrometheusRules (deploy/platform/base/prometheusrules.yaml) use the same release label
+    # PrometheusRules (infra/k8s/platform/base/prometheusrules.yaml) use the same release label
     ruleSelectorNilUsesHelmValues: false
     ruleSelector:
       matchLabels: {release: kube-prometheus-stack}
@@ -59,7 +59,7 @@ kubeControllerManager: {enabled: false}
 kubeScheduler: {enabled: false}
 kubeProxy: {enabled: false}
 # App ServiceMonitors (review-api :8001, gateway :8000), PrometheusRules and the Grafana dashboard live in
-# deploy/platform/base (servicemonitors.yaml, prometheusrules.yaml, dashboards/). See docs/monitoring.md.
+# infra/k8s/platform/base (servicemonitors.yaml, prometheusrules.yaml, dashboards/). See docs/monitoring.md.
 # Phase 9: requests/limits for the remaining chart components (sized for a single-node K3s lab).
 prometheusOperator:
   resources: {requests: {cpu: 50m, memory: 64Mi}, limits: {cpu: 200m, memory: 256Mi}}

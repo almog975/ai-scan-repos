@@ -1,4 +1,4 @@
-"""review-api (contract: contracts/review-api.openapi.yaml)."""
+"""review-api (contract: services/contracts/review-api.openapi.yaml)."""
 from __future__ import annotations
 
 import asyncio

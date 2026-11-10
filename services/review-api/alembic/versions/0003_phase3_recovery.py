@@ -1,7 +1,7 @@
 """Phase 3 recovery columns (failure_code, stuck_since, next_retry_at, paused_by, cancelled_at, cancelled_by,
 overdue_since).
 
-On Postgres the DDL is alembic/sql/0003_phase3_recovery.sql (= the Phase 3 block at the end of infra/db/schema.sql).
+On Postgres the DDL is alembic/sql/0003_phase3_recovery.sql (= the Phase 3 block at the end of infra/bootstrap/db/schema.sql).
 failure_detail is the existing failure_reason column (free text). paused_at already exists (0002).
 
 Revision ID: 0003

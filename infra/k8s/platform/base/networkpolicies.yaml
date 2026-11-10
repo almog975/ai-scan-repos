@@ -2,9 +2,9 @@
 # Traefik is selected by namespace (kube-system on K3s, also used by the installer for local/EKS) + its standard pod
 # label; Prometheus by namespace "monitoring" + app.kubernetes.io/name=prometheus. Change them in an overlay if Traefik/Prometheus live elsewhere.
 # Kubelet probes are node traffic and are not affected.
-# Egress (Phase 9): default-deny for every pod, then explicit allows below. scanner-egress (deploy/scanner-worker)
+# Egress (Phase 9): default-deny for every pod, then explicit allows below. scanner-egress (infra/k8s/scanner-worker)
 # and reports-cleanup-deny-all keep their own rules; policies are additive, so DNS here also applies to them.
-# Per-overlay placeholders (patches in deploy/platform/overlays/<env>/kustomization.yaml): AI provider CIDRs and
+# Per-overlay placeholders (patches in infra/k8s/platform/overlays/<env>/kustomization.yaml): AI provider CIDRs and
 # the K8s API server endpoint. NetworkPolicy matches IPs, not hostnames.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy

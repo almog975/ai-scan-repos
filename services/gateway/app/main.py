@@ -1,4 +1,4 @@
-"""gateway (contract: contracts/gateway.openapi.yaml).
+"""gateway (contract: services/contracts/gateway.openapi.yaml).
 
 Browser -> gateway: `aiscan_session` cookie (HttpOnly; Secure; SameSite=Lax) + double-submit CSRF on unsafe
 /api/* and /auth/logout. Gateway -> review-api: X-Internal-Token + X-User-Id + X-User-Role, only for the

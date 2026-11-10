@@ -1,4 +1,4 @@
-"""ORM models = infra/db/schema.sql (contract v1). Enum names match the Postgres types."""
+"""ORM models = infra/bootstrap/db/schema.sql (contract v1). Enum names match the Postgres types."""
 import enum
 from datetime import datetime, timezone
 

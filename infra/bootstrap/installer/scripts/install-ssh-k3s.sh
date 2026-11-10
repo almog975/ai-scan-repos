@@ -14,15 +14,15 @@ run "sudo mkdir -p $REPORTS_DIR && \
 # 2. K3s (bundled Traefik kept)
 run "command -v k3s >/dev/null || curl -sfL https://get.k3s.io | sh -"
 # 3. Cluster-scoped bootstrap (namespaces, reports PV + StorageClass) BEFORE Argo CD.
-ROOT="${ROOT:-$(cd "$(dirname "$0")/../../.." && pwd)}"
+ROOT="${ROOT:-$(cd "$(dirname "$0")/../../../.." && pwd)}"
 : "${NODE_NAME:=$SSH_HOST}"
-echo "+ kubectl apply -k infra/bootstrap/overlays/k3s (node $NODE_NAME)"
+echo "+ kubectl apply -k infra/bootstrap/cluster/overlays/k3s (node $NODE_NAME)"
 if [ "${DRY_RUN:-1}" != 1 ]; then
-  kubectl kustomize "$ROOT/infra/bootstrap/overlays/k3s" | sed "s/REPLACE_NODE_NAME/$NODE_NAME/" | kubectl apply -f -
+  kubectl kustomize "$ROOT/infra/bootstrap/cluster/overlays/k3s" | sed "s/REPLACE_NODE_NAME/$NODE_NAME/" | kubectl apply -f -
 fi
 # 4. Registry (htpasswd) + Jenkins/Argo CD IngressRoutes (secrets: docs/registry-auth-runbook.md, docs/tls-runbook.md)
-echo "+ kubectl apply -f infra/registry/registry.yaml && kubectl apply -k infra/ingress/overlays/k3s"
-[ "${DRY_RUN:-1}" = 1 ] || { kubectl apply -f "$ROOT/infra/registry/registry.yaml"; kubectl apply -k "$ROOT/infra/ingress/overlays/k3s"; }
+echo "+ kubectl apply -f infra/bootstrap/registry/registry.yaml && kubectl apply -k infra/bootstrap/ingress/overlays/k3s"
+[ "${DRY_RUN:-1}" = 1 ] || { kubectl apply -f "$ROOT/infra/bootstrap/registry/registry.yaml"; kubectl apply -k "$ROOT/infra/bootstrap/ingress/overlays/k3s"; }
 # 5. TODO: copy registries.yaml, fetch kubeconfig
-# 6. Optional: agent image (infra/installer/build-jenkins-agent.sh). 7. Argo CD + AppProjects (2a ai-scan, 2b ai-scan-ci) + root app:
-"$ROOT/infra/installer/scripts/install-argocd.sh"
+# 6. Optional: agent image (infra/bootstrap/installer/build-jenkins-agent.sh). 7. Argo CD + AppProjects (2a ai-scan, 2b ai-scan-ci) + root app:
+"$ROOT/infra/bootstrap/installer/scripts/install-argocd.sh"

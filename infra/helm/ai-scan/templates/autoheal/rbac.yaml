@@ -1,7 +1,7 @@
 {{- $ah := include "ai-scan.autoheal" . | fromYaml }}
 {{- if $ah.enabled }}
 # What ci/heal/heal.sh may do in this namespace: delete / restart / re-run, never edit specs.
-# Same rules as deploy/platform/base/autoheal-rbac.yaml. Namespaced Role only, no ClusterRole. docs/autoheal.md
+# Same rules as infra/k8s/platform/base/autoheal-rbac.yaml. Namespaced Role only, no ClusterRole. docs/autoheal.md
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -23,7 +23,7 @@ rules:
 {{- if $ah.jenkins.enabled }}
 ---
 # Jenkins job ai-scan-autoheal: its agent pods run as ServiceAccount <jenkins ns>/ai-scan-autoheal
-# (deploy/jenkins/local/autoheal-sa.yaml). The normal CI agent gets no access here.
+# (infra/jenkins/local/autoheal-sa.yaml). The normal CI agent gets no access here.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:

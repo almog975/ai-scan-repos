@@ -1,7 +1,7 @@
 """Contract Error envelope: {"error": {"code", "message", "details"?}, "request_id"}.
 
 Every non-2xx JSON response goes through here so it validates against
-contracts/review-api.openapi.yaml#/components/schemas/Error.
+services/contracts/review-api.openapi.yaml#/components/schemas/Error.
 """
 from __future__ import annotations
 

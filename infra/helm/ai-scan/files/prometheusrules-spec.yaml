@@ -1,4 +1,4 @@
-# Copied from deploy/platform/base/prometheusrules.yaml (spec only); ci/tests/test_helm_chart_sync.py keeps them identical.
+# Copied from infra/k8s/platform/base/prometheusrules.yaml (spec only); ci/tests/test_helm_chart_sync.py keeps them identical.
 spec:
   groups:
     - name: ai-scan-repos.reviews

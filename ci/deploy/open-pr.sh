@@ -48,7 +48,7 @@ python3 - "$tmp/req" <<PY
 import json, os, sys
 c, sha, t, b = os.environ["COMPONENTS"], os.environ["GIT_SHA"], os.environ["TARGET"], os.environ["DEPLOY_BRANCH"]
 body = (f"Automated tag bump by Jenkins ({os.environ.get('BUILD_URL', 'local run')}).\n\n"
-        f"- Components: {', '.join(c.split(','))}\n- Image tag (commit sha): \`{sha}\`\n- Overlay: \`deploy/<component>/overlays/{t}\`\n\n"
+        f"- Components: {', '.join(c.split(','))}\n- Image tag (commit sha): \`{sha}\`\n- Overlay: \`infra/k8s/<component>/overlays/{t}\`\n\n"
         "Merge to deploy: Argo CD syncs main. Rollback: revert this PR's merge (docs/runbooks/rollback.md).")
 json.dump({"title": f"ci({t}): {c} -> {sha} [skip ci]", "head": b, "base": os.environ.get("BASE_BRANCH", "main"),
            "body": body, "maintainer_can_modify": True}, open(sys.argv[1], "w"))

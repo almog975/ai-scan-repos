@@ -1,6 +1,6 @@
 {{- $mon := include "ai-scan.monitoring" . | fromYaml }}
 {{- if $mon.enabled }}
-# Alerts: same rules as deploy/platform/base/prometheusrules.yaml (files/prometheusrules-spec.yaml).
+# Alerts: same rules as infra/k8s/platform/base/prometheusrules.yaml (files/prometheusrules-spec.yaml).
 # kube-prometheus-stack picks them up through the release label. Needs the prometheus-operator CRDs.
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
