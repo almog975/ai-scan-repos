@@ -1,5 +1,5 @@
 # K3s bundled Traefik (traefik.io/v1alpha1 CRDs). Host is ai-scan.local here (local overlay); k3s/eks patch it.
-# TLS: entryPoint websecure + Secret ai-scan-tls (docs/tls-runbook.md); web (:80) only redirects to https.
+# TLS: entryPoint websecure + Secret ai-scan-tls; web (:80) only redirects to https.
 # SSE: GET /api/reviews/{id}/progress (services/contracts/gateway.openapi.yaml) streams text/event-stream through the
 # gateway. Traefik only buffers when the `buffering` middleware is attached - NEVER attach it to /api routes.
 ---
@@ -68,7 +68,7 @@ spec:
       middlewares: [{name: security-headers}]
       services: [{name: frontend, port: 8080}]
   tls:
-    secretName: ai-scan-tls   # self-signed or cert-manager; see docs/tls-runbook.md
+    secretName: ai-scan-tls   # self-signed or cert-manager
 ---
 apiVersion: traefik.io/v1alpha1
 kind: IngressRoute

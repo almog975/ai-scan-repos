@@ -12,7 +12,6 @@ tests:
           - exp_labels: {severity: warning, job: gateway}
             exp_annotations:
               summary: "gateway: more than 5% of HTTP requests return 5xx"
-              runbook_url: https://github.com/almog975/ai-scan-repos/blob/main/docs/monitoring.md#alerts
   - interval: 1m
     input_series:
       - {series: 'http_request_duration_seconds_count{namespace="ai-scan-repos",job="gateway",method="PATCH",route="/api/admin/ai-providers/{id}",status="503"}', values: '0+5x60'}
@@ -24,7 +23,6 @@ tests:
           - exp_labels: {severity: warning, job: gateway}
             exp_annotations:
               summary: "gateway: more than 5% of HTTP requests return 5xx"
-              runbook_url: https://github.com/almog975/ai-scan-repos/blob/main/docs/monitoring.md#alerts
   - interval: 1m
     input_series:
       - {series: 'http_request_duration_seconds_count{namespace="ai-scan-repos",job="review-api",method="DELETE",route="/admin/ai-providers/{id}",status="500"}', values: '0+5x60'}
@@ -36,7 +34,6 @@ tests:
           - exp_labels: {severity: warning, job: review-api}
             exp_annotations:
               summary: "review-api: more than 5% of HTTP requests return 5xx"
-              runbook_url: https://github.com/almog975/ai-scan-repos/blob/main/docs/monitoring.md#alerts
   - interval: 1m
     input_series:
       - {series: 'http_request_duration_seconds_count{namespace="ai-scan-repos",job="review-api",method="GET",route="/admin/ai-providers",status="500"}', values: '0+5x60'}
@@ -48,7 +45,6 @@ tests:
           - exp_labels: {severity: warning, job: review-api}
             exp_annotations:
               summary: "review-api: more than 5% of HTTP requests return 5xx"
-              runbook_url: https://github.com/almog975/ai-scan-repos/blob/main/docs/monitoring.md#alerts
   - interval: 1m
     input_series:
       - {series: 'http_request_duration_seconds_count{namespace="ai-scan-repos",job="gateway",method="POST",route="/api/admin/ai-providers/testing",status="500"}', values: '0+5x60'}
@@ -60,4 +56,3 @@ tests:
           - exp_labels: {severity: warning, job: gateway}
             exp_annotations:
               summary: "gateway: more than 5% of HTTP requests return 5xx"
-              runbook_url: https://github.com/almog975/ai-scan-repos/blob/main/docs/monitoring.md#alerts

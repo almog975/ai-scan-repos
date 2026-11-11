@@ -8,7 +8,7 @@ helm repo add argo https://argoproj.github.io/argo-helm && helm repo update
 helm upgrade --install argocd argo/argo-cd -n argocd --version 10.11.6 --set 'configs.params.server\.insecure=true'
 # or manifests: kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/v3.5.6/manifests/install.yaml
 kubectl -n argocd patch cm argocd-cm --type merge --patch-file infra/argocd/argocd-cm-health-patch.yaml   # 1b
-# repo credentials: docs/argocd-repo-credentials.md (Almog creates them)
+# repo credentials (if private): Almog creates them
 kubectl apply -f infra/argocd/appproject-ai-scan.yaml     # 2a  MUST be before the root app
 kubectl apply -f infra/argocd/appproject-ai-scan-ci.yaml  # 2b  MUST be before the root app (Jenkins app)
 kubectl apply -n argocd -f infra/argocd/root-app.yaml    # 3   Pipelines-owned

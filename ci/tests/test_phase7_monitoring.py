@@ -91,7 +91,7 @@ def test_gaps_test_still_asserts_firing():
 
 def test_review_attempts_used_rename_consistent():
     for p in ["infra/k8s/platform/base/dashboards/ai-scan-repos.json", "infra/k8s/platform/base/prometheusrules.yaml",
-              "docs/monitoring.md", "services/review-api/app/metrics.py", "services/review-api/tests/test_metrics.py"]:
+              "services/review-api/app/metrics.py", "services/review-api/tests/test_metrics.py"]:
         src = (ROOT / p).read_text()
         assert not re.search(r"review_attempts_(sum|count|bucket)\b", src), p
         assert not re.search(r"[\"`]review_attempts[\"`]", src), p

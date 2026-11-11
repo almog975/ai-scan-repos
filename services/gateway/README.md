@@ -1,7 +1,7 @@
 # services/gateway/
 
 Part of the AI Scan Repos repo (`almog975/ai-scan-repos`). See the
-[top-level README](../../README.md) and [ADR-0001](../../docs/adr/0001-repo-layout.md).
+[top-level README](../../README.md).
 
 ## Purpose
 Public API edge: GitHub OAuth login, sessions + CSRF cookies, webhook HMAC verification, proxy to review-api with `X-Internal-Token` + `X-User-Id`.

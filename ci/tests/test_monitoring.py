@@ -87,11 +87,3 @@ def test_metric_labels_are_low_cardinality():
             labels = set(re.findall(r'"([a-z_]+)"', m.group(1)))
             assert not labels & HIGH_CARD, (f.name, labels)
 
-
-def test_monitoring_doc_lists_every_metric():
-    doc = (ROOT / "docs/monitoring.md").read_text()
-    base = {n for n in defined_metrics() if not re.search(r"_(bucket|count|sum)$", n)}
-    for f in SRC[:1]:
-        for m in re.finditer(r'(?:Counter|Histogram|GaugeMetricFamily)\(\s*"([a-z_]+)"', f.read_text()):
-            assert f"`{m.group(1)}" in doc, m.group(1)
-    assert base

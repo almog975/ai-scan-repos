@@ -1,6 +1,6 @@
 # Applied by installer (kubectl apply -k infra/bootstrap/cluster/overlays/k3s), not Argo CD.
 # Static local PV for reports. Host prep (done by infra/bootstrap/installer/scripts/install-ssh-k3s.sh):
-#   /srv/ai-scan/reports mounted with noexec,nosuid,nodev (see docs/storage-plan.md)
+#   /srv/ai-scan/reports mounted with noexec,nosuid,nodev
 apiVersion: v1
 kind: PersistentVolume
 metadata: {name: ai-scan-reports-pv, labels: {app: reports}}

@@ -20,7 +20,7 @@ def finding_id(tool: str, rule: str, file: str, line) -> str:
     return hashlib.sha1(f"{tool}\n{rule}\n{file}\n{'' if line is None else line}".encode()).hexdigest()
 
 
-# docs/severity-mapping.md. Keys are upper-cased tool values; anything else -> info + warning log.
+# Keys are upper-cased tool values; anything else -> info + warning log.
 SEVERITY_MAP = {
     "semgrep": {"UNKNOWN": "info", "CRITICAL": "critical", "ERROR": "high", "HIGH": "high", "WARNING": "medium", "MEDIUM": "medium",
                 "INFO": "low", "LOW": "low", "NOTE": "low", "INVENTORY": "info", "EXPERIMENT": "info"},

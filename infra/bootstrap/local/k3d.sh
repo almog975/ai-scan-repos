@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Local full stack on k3d (K3s in Docker) on Docker Desktop. Linux/macOS, or WSL2 on Windows. Docs: docs/local-k3d.md
+# Local full stack on k3d (K3s in Docker) on Docker Desktop. Linux/macOS, or WSL2 on Windows.
 #
 #   infra/bootstrap/local/k3d.sh [--env FILE] [--no-argocd] [--dry-run] [--yes] up|down|status
 #
@@ -50,7 +50,7 @@ prereqs() {
   for t in "$@"; do command -v "$t" >/dev/null 2>&1 || missing+=("$t"); done
   [ ${#missing[@]} -eq 0 ] && return 0
   dry && { echo "  (dry-run) missing tools: ${missing[*]}"; return 0; }
-  die "missing tools: ${missing[*]} (see docs/local-k3d.md#prerequisites)"
+  die "missing tools: ${missing[*]}"
 }
 
 # kubeconfig of the k3d cluster only: never acts on another context
@@ -61,7 +61,7 @@ use_cluster() {
 }
 
 up() {
-  [ -f "$ENV_FILE" ] || dry || die "$ENV_FILE not found: cp .env.example .env and fill it (docs/local-k3d.md)"
+  [ -f "$ENV_FILE" ] || dry || die "$ENV_FILE not found: cp .env.example .env and fill it"
   prereqs docker k3d kubectl kustomize htpasswd helm openssl
   dry || docker info >/dev/null 2>&1 || die "docker is not running (start Docker Desktop; on Windows enable WSL2 integration)"
 

@@ -1,4 +1,4 @@
-"""upgrade -> downgrade -> upgrade on sqlite (Postgres variant runs in CI, see docs/phase-1-plan.md step 12)."""
+"""upgrade -> downgrade -> upgrade on sqlite (Postgres variant runs in CI)."""
 from pathlib import Path
 
 from alembic import command

@@ -1,6 +1,6 @@
 # AI Scan Repos – User Guide
 
-For people who run security reviews of GitHub repositories in the web UI. Operators: [runbook](runbooks/runbook.md). Admins managing AI providers: [admin: AI providers](runbooks/admin-ai-providers.md).
+For people who run security reviews of GitHub repositories in the web UI.
 
 > **Screenshots** were captured with Playwright (headless Chromium) against a **real local stack**: the built SPA under the `services/frontend/nginx.conf` headers → gateway → review-api (SQLite, local launcher) → scanner-worker, using the full-stack e2e harness (`services/frontend/e2e/test_fullstack.py`). Only GitHub OAuth and the scanner binaries are stand-ins (a fake GitHub and the test shims), so the findings shown are fixture data. The two providers in the cloud screenshot were inserted directly into the database (no key).
 
@@ -10,14 +10,10 @@ The UI is available in English and Hebrew (language selector in the sidebar / to
 
 ## 1. Log in
 
-![Login](images/user-guide/login.png)
-
 1. Open the app. If you are not signed in you land on **/login** ("Sign in").
 2. Click **Log in with GitHub** → GitHub OAuth (`GET /auth/github/login`, scopes `read:user repo`). Approve.
 3. GitHub returns to `/auth/github/callback`; the gateway sets the session cookie and the CSRF cookie (`aiscan_csrf`) and redirects to `/`.
 4. Your `@login`, the language selector and **Log out** (`POST /auth/logout`) are at the bottom of the sidebar. Admins also see **AI providers** in the sidebar.
-
-![After login](images/user-guide/home-empty.png)
 
 Login errors are shown on the login page:
 - *"The sign-in link expired or was opened twice."* – OAuth state mismatch; try again.
@@ -27,8 +23,6 @@ Login errors are shown on the login page:
 The first user ever to log in becomes `admin`. Sessions expire after `SESSION_TTL_HOURS`.
 
 ## 2. Start a review
-
-![New review](images/user-guide/reviews.png)
 
 On **New review** (`/`):
 
@@ -45,8 +39,6 @@ Errors appear in a box under the form:
 
 ## 3. Depth and AI provider
 
-![Cloud provider warning](images/user-guide/new-review-cloud.png)
-
 | Depth | Scanners | AI (when a provider is selected) |
 |---|---|---|
 | **Quick** | Semgrep, Gitleaks, Trivy | Short AI summary (UI: *"Scanners + a short AI summary"*) |
@@ -60,8 +52,6 @@ If the admin's default provider is a **cloud** provider, *Default provider* stil
 **Cloud providers.** Each provider is `onprem` or `cloud` (set by an admin). Choosing a cloud provider (e.g. Grok, `api.x.ai`) shows: *"This provider is a cloud service: repository code leaves the cluster."* Until you tick **I understand that code is sent to a cloud AI provider**, **Start review** stays disabled with *"Confirm the cloud warning first"*; ticking it sends `ack_cloud: true`. Without it the API returns 422 `CLOUD_ACK_REQUIRED`. Reports produced with a cloud provider carry a cloud banner (§6). Resuming a cloud review asks again (§5).
 
 ## 4. Watch progress
-
-![Progress](images/user-guide/progress.png)
 
 **Recent reviews** (home page) shows repo, state, progress, depth, created time and actions; it updates live (one SSE stream per active review, otherwise polling every 3 s). Click a repository to open its **progress page** (`/reviews/<id>`):
 
@@ -85,13 +75,11 @@ Live updates come from `GET /api/reviews/{id}/progress` (Server-Sent Events). If
 | `failed` | Attempts exhausted or fatal error; code + hint shown | Retry, Open partial report (if any) |
 | `cancelled` | Cancelled by a user | Open partial report (if any) |
 
-Disabled buttons show why (e.g. *"Pause is only available while the review is running"*). Full diagram: [review-state-machine.md](diagrams/review-state-machine.md).
+Disabled buttons show why (e.g. *"Pause is only available while the review is running"*).
 
 ## 5. Pause, resume, cancel, retry
 
 - **Pause** – only while `running` (`POST /api/reviews/{id}/pause`).
-
-  ![Paused](images/user-guide/paused.png)
  The worker checkpoints after every file, so finished work is kept.
   From any other state the API returns **409** (invalid state); the UI disables the button.
 - **Resume** – from `paused` or `stuck` (`POST /api/reviews/{id}/resume`).
@@ -102,11 +90,9 @@ Disabled buttons show why (e.g. *"Pause is only available while the review is ru
 - **Cancel** – from any active state, after a confirmation dialog (`POST /api/reviews/{id}/cancel`). Partial results are kept.
 - **Retry** – from `failed` (`POST /api/reviews/{id}/retry`); opens a new attempt budget.
 
-Pausing for days is fine – see [resume-after-days.md](runbooks/resume-after-days.md).
+Pausing for days is fine.
 
 ## 6. Report and download
-
-![Report](images/user-guide/report.png)
 
 **Open report** (or **Open partial report** for failed/cancelled reviews that left one) goes to `/reviews/<id>/report`:
 
@@ -115,8 +101,6 @@ Pausing for days is fine – see [resume-after-days.md](runbooks/resume-after-da
 - depth, provider, files scanned and per-severity counts;
 - tabs **Findings** (filter by severity, tool, file), **JSON**, **Markdown**;
 - **Download JSON** / **Download Markdown** – `report-<id>.json` / `report-<id>.md` from `GET /api/reviews/{id}/report.json|report.md`.
-
-report.md structure: [report-md-spec.md](report-md-spec.md).
 
 From the command line (with your session cookie):
 

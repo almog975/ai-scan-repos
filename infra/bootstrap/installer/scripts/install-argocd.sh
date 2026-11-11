@@ -9,7 +9,7 @@ run helm repo add argo https://argoproj.github.io/argo-helm
 run helm upgrade --install argocd argo/argo-cd -n argocd --version "$ARGOCD_CHART_VERSION" \
   -f "$ROOT/infra/argocd/values.yaml" --wait   # server.insecure + Phase 9 resources
 run kubectl -n argocd patch cm argocd-cm --type merge --patch-file "$ROOT/infra/argocd/argocd-cm-health-patch.yaml"
-echo "# repo credentials (if private): docs/argocd-repo-credentials.md"
+echo "# repo credentials (if private)"
 run kubectl apply -f "$ROOT/infra/argocd/appproject-ai-scan.yaml"       # 2a
 run kubectl apply -f "$ROOT/infra/argocd/appproject-ai-scan-ci.yaml"    # 2b
 run kubectl apply -n argocd -f "$ROOT/infra/argocd/root-app.yaml"      # 3 (Pipelines-owned)

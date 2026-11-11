@@ -1,4 +1,4 @@
-"""render_markdown() vs docs/report-md-spec.md; tool_versions in report.json."""
+"""render_markdown() vs the report.md layout; tool_versions in report.json."""
 import json
 from pathlib import Path
 

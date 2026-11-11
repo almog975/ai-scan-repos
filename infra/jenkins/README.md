@@ -19,7 +19,7 @@ in 2025; if the image becomes unavailable, switch to the Chainguard-maintained f
 
 ## Infra-owned prerequisites (not in this folder)
 Namespace `jenkins` and PVC `jenkins-home` (infra/bootstrap), IngressRoute `jenkins` + TLS secret `jenkins-tls`
-(infra/bootstrap/ingress), AppProject `ai-scan-ci` (infra/argocd), registry htpasswd (docs/registry-auth-runbook.md).
+(infra/bootstrap/ingress), AppProject `ai-scan-ci` (infra/argocd), registry htpasswd.
 
 ## Secrets Almog creates (never in git)
 Jenkins credentials are K8s Secrets read by the kubernetes-credentials-provider plugin (label + annotations):

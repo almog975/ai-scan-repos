@@ -1,7 +1,6 @@
 # Local secrets on Docker Desktop (no commit, ever)
 
-The `ai-scan` chart ships **placeholder** Secrets (`gateway-secrets`, `scanner-secrets`, ...; see
-[secrets-runbook.md](secrets-runbook.md)). Under GitOps (`values-docker-desktop.yaml`, `secrets.create: false`)
+The `ai-scan` chart ships **placeholder** Secrets (`gateway-secrets`, `scanner-secrets`, ...). Under GitOps (`values-docker-desktop.yaml`, `secrets.create: false`)
 Argo CD renders the chart from git, so real values can't come from the chart. Instead you create two **optional
 override Secrets** by hand. The pods load them *after* the placeholder Secret, so on a duplicate key the real
 value wins. Pods start fine without them (`optional: true`); the feature just stays on placeholders.
@@ -51,8 +50,8 @@ Without it, `scanner-secrets` has `AI_PROVIDER=none` and an empty `AI_API_KEY`, 
 (semgrep, gitleaks, trivy) but skip the AI review.
 
 There are two ways to give the scanner an AI provider:
-- **Product way (preferred for the demo):** sign in as admin, add the provider under **AI providers** in the UI
-  ([runbooks/admin-ai-providers.md](runbooks/admin-ai-providers.md)). The key is stored encrypted in Postgres and
+- **Product way (preferred for the demo):** sign in as admin, add the provider under **AI providers** in the UI.
+  The key is stored encrypted in Postgres and
   each review gets its own short-lived Secret. That per-review Secret always wins over `scanner-ai`.
 - **Cluster default (this section):** the `scanner-ai` Secret, used for reviews that have no provider.
 

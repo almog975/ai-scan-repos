@@ -14,7 +14,7 @@ resources:
   - ../../review-api/base
   - ../../gateway/base
   - ../../frontend/base
-  - autoheal   # in-cluster auto-heal CronJob (ci/heal/heal.sh), docs/autoheal.md#local-cronjob
+  - autoheal   # in-cluster auto-heal CronJob (ci/heal/heal.sh)
 
 # Local image names (docker build / k3d image import). No registry host, no GIT_SHA_PLACEHOLDER.
 images:

@@ -1,4 +1,4 @@
-"""Prometheus metrics for review-api (scraped on :8001/metrics). See docs/monitoring.md.
+"""Prometheus metrics for review-api (scraped on :8001/metrics).
 
 Low cardinality only: labels are bounded enums (state, outcome, kind, stage, method, route template, status).
 Never a review_id, user, repo or URL.

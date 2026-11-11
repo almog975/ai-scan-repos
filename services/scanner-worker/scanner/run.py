@@ -41,7 +41,7 @@ BRIEF_JSON_HINT = ('Answer in Markdown, then end with one line of JSON exactly l
                    '{"ai_severity": "critical|high|medium|low|info", "confidence": 0.0-1.0, "ai_fix": "<markdown fix>"}')
 DEEP_JSON_HINT = ('Answer in Markdown, then end with one line of JSON: {"findings": [{"id": "<finding id>", '
                   '"ai_severity": "critical|high|medium|low|info", "confidence": 0.0-1.0, "ai_fix": "<markdown>"}]}')
-UNSTRUCTURED_CONFIDENCE = 0.5  # docs/severity-mapping.md: AI answered without the JSON line
+UNSTRUCTURED_CONFIDENCE = 0.5  # AI answered without the JSON line
 
 
 def _findings_with_ids(findings) -> str:

@@ -5,7 +5,7 @@ set -euo pipefail
 REPORTS_DIR=/srv/ai-scan/reports
 run() { echo "+ ssh $SSH_USER@$SSH_HOST $*"; [ "${DRY_RUN:-1}" = 1 ] || ssh -o BatchMode=yes "$SSH_USER@$SSH_HOST" "$@"; }
 
-# 1. Host prep: reports dir as a noexec,nosuid,nodev bind mount (see docs/storage-plan.md)
+# 1. Host prep: reports dir as a noexec,nosuid,nodev bind mount
 run "sudo mkdir -p $REPORTS_DIR && \
   (grep -q ' $REPORTS_DIR ' /etc/fstab || echo '$REPORTS_DIR $REPORTS_DIR none bind,noexec,nosuid,nodev 0 0' | sudo tee -a /etc/fstab) && \
   (findmnt $REPORTS_DIR >/dev/null || sudo mount $REPORTS_DIR) && \
@@ -20,7 +20,7 @@ echo "+ kubectl apply -k infra/bootstrap/cluster/overlays/k3s (node $NODE_NAME)"
 if [ "${DRY_RUN:-1}" != 1 ]; then
   kubectl kustomize "$ROOT/infra/bootstrap/cluster/overlays/k3s" | sed "s/REPLACE_NODE_NAME/$NODE_NAME/" | kubectl apply -f -
 fi
-# 4. Registry (htpasswd) + Jenkins/Argo CD IngressRoutes (secrets: docs/registry-auth-runbook.md, docs/tls-runbook.md)
+# 4. Registry (htpasswd) + Jenkins/Argo CD IngressRoutes
 echo "+ kubectl apply -f infra/bootstrap/registry/registry.yaml && kubectl apply -k infra/bootstrap/ingress/overlays/k3s"
 [ "${DRY_RUN:-1}" = 1 ] || { kubectl apply -f "$ROOT/infra/bootstrap/registry/registry.yaml"; kubectl apply -k "$ROOT/infra/bootstrap/ingress/overlays/k3s"; }
 # 5. TODO: copy registries.yaml, fetch kubeconfig

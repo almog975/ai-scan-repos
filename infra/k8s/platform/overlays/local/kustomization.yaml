@@ -1,4 +1,4 @@
-# Single-node local: k3d on Docker Desktop (infra/bootstrap/local/k3d.sh, docs/local-k3d.md). Host ai-scan.localhost.
+# Single-node local: k3d on Docker Desktop (infra/bootstrap/local/k3d.sh). Host ai-scan.localhost.
 # PVCs use the cluster's DEFAULT StorageClass (storageClassName removed): Docker Desktop = hostpath,
 # k3d/K3s = local-path. noexec on reports is NOT enforced here (mountOptions ignored) - dev only.
 apiVersion: kustomize.config.k8s.io/v1beta1

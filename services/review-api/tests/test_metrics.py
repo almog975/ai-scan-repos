@@ -1,4 +1,4 @@
-"""Phase 7: /metrics exposes the documented, low-cardinality review-api metrics (docs/monitoring.md)."""
+"""Phase 7: /metrics exposes the documented, low-cardinality review-api metrics."""
 import re
 from datetime import datetime, timedelta, timezone
 

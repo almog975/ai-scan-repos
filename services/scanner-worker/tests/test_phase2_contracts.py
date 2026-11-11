@@ -110,7 +110,7 @@ def test_no_ai_report_provider_null_or_kind(tmp_path):
 
 
 GAP_AI_FIELDS = ("brief/deep AI enrichment only fills ai_explanation; ai_fix / confidence / ai_severity "
-                 "(contract 7c00f77, docs/severity-mapping.md TODO) are never populated")
+                 "(contract 7c00f77, TODO) are never populated")
 
 
 @pytest.mark.parametrize("field", ["ai_fix", "confidence", "ai_severity"])

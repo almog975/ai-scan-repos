@@ -101,9 +101,6 @@ def test_images_workflow_publishes_to_ghcr():
 
 
 def test_docs_mention_ghcr_and_public_packages():
-    local = (ROOT / "docs/local-k3d.md").read_text()
-    assert "infra/k8s/overlays/local-registry" in local
-    assert "ghcr.io/almog975/ai-scan-repos-" in local
-    assert "Change visibility" in local or "Package settings" in local
     readme = (ROOT / "README.md").read_text()
     assert "infra/k8s/overlays/local-registry" in readme
+    assert "ghcr.io/almog975/ai-scan-repos-" in readme

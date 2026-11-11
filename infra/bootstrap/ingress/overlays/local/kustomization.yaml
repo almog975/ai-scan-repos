@@ -1,6 +1,6 @@
 # Local (k3d, infra/bootstrap/local/k3d.sh): hosts argocd.ai-scan.localhost / jenkins.ai-scan.localhost
 # (*.localhost resolves to 127.0.0.1 in browsers). TLS secrets argocd-ingress-tls / jenkins-tls are not created
-# locally: Traefik serves its default self-signed cert. Argo CD is normally reached via port-forward (docs/local-k3d.md).
+# locally: Traefik serves its default self-signed cert. Argo CD is normally reached via port-forward.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources: [../../base]

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# AI Scan Repos auto-heal (Jenkins job ai-scan-autoheal, ci/heal/Jenkinsfile). docs/autoheal.md
+# AI Scan Repos auto-heal (Jenkins job ai-scan-autoheal, ci/heal/Jenkinsfile).
 # Only restarts, deletes or re-runs things. It never edits a spec, a manifest or git, so Argo CD selfHeal has
 # nothing to fight. DRY_RUN=1 reports what it would do and changes nothing.
 #

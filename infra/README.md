@@ -8,4 +8,4 @@ Infra-level assets.
 The running review-api still applies its own Alembic migrations (`services/review-api/alembic/`); converging Alembic onto `infra/bootstrap/db/schema.sql` is a follow-up.
 
 TODO (per plan, not in repo yet): K3s install notes, kube-prometheus-stack values, installer (`infra/bootstrap/installer/aiscan-install.sh`) +
-Terraform (VPC/EKS/EFS/ECR), `create-secrets.sh`. Owner: AI Scan Infra. See [ADR-0001](../docs/adr/0001-repo-layout.md).
+Terraform (VPC/EKS/EFS/ECR), `create-secrets.sh`. Owner: AI Scan Infra.

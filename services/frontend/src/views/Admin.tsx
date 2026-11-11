@@ -124,7 +124,7 @@ function ProviderForm({ p, onClose, onSaved }: { p: AIProvider | null; onClose: 
     setTest({ busy: true })
     // Unsaved changes (or a new provider) → test the form body; otherwise the stored provider (incl. its stored key).
     // Contract gap: AIProviderWrite has no provider id, so an unsaved edit without a re-typed key is tested without
-    // the stored key (docs/contract-gaps.md#test-unsaved-stored-key).
+    // the stored key.
     try { setTest({ res: !p || dirty ? await api.testUnsaved(writeBody()) : await api.testProvider(p.id) }) }
     catch (e) { setTest({ err: e }) }
   }

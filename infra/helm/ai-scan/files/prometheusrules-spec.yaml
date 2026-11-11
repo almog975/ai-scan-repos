@@ -10,7 +10,6 @@ spec:
           annotations:
             summary: "{{ $value }} review(s) stuck for more than 15 minutes"
             description: The reconciler relaunches stuck attempts each cycle; a persistent stuck count means relaunches keep failing.
-            runbook_url: https://github.com/almog975/ai-scan-repos/blob/main/docs/runbooks/stuck-review.md
         - alert: AIScanReviewFailureRateHigh
           expr: |
             (sum(increase(reviews_total{namespace="ai-scan-repos", state="failed"}[1h]))
@@ -21,7 +20,6 @@ spec:
           annotations:
             summary: "More than 25% of finished reviews failed in the last hour"
             description: Check scan_attempts_total{outcome="error"}, job_launch_errors_total and ai_provider_requests_total{outcome="error"}.
-            runbook_url: https://github.com/almog975/ai-scan-repos/blob/main/docs/monitoring.md#alerts
         - alert: AIScanNoWorkerHeartbeat
           expr: max(reviews_heartbeat_overdue{namespace="ai-scan-repos"}) > 0
           for: 10m
@@ -29,7 +27,6 @@ spec:
           annotations:
             summary: "{{ $value }} running review(s) without a heartbeat for longer than HEARTBEAT_TIMEOUT_SECONDS"
             description: The scanner Job stopped reporting (OOM, node loss, network policy). The reconciler should mark it stuck within two passes.
-            runbook_url: https://github.com/almog975/ai-scan-repos/blob/main/docs/runbooks/stuck-review.md
         - alert: AIScanReconcilerNotRunning
           # `or vector(0)`: still fires when every pass errors and no result="ok" sample exists (labels are also
           # pre-initialised to 0 in review-api); gated on review-api exporting the metric at all (else TargetDown).
@@ -41,14 +38,12 @@ spec:
           annotations:
             summary: No successful reconciler pass in 15 minutes
             description: Stuck/overdue reviews are not being recovered. Check review-api logs ("watchdog pass failed") and the DB.
-            runbook_url: https://github.com/almog975/ai-scan-repos/blob/main/docs/monitoring.md#alerts
         - alert: AIScanMetricsDBReadFailing
           expr: max(review_db_metrics_up{namespace="ai-scan-repos"}) == 0
           for: 10m
           labels: {severity: warning}
           annotations:
             summary: review-api cannot read review counts from the database for /metrics
-            runbook_url: https://github.com/almog975/ai-scan-repos/blob/main/docs/monitoring.md#alerts
     - name: ai-scan-repos.platform
       rules:
         - alert: AIScanTargetDown
@@ -57,7 +52,6 @@ spec:
           labels: {severity: critical}
           annotations:
             summary: "{{ $labels.job }} pod {{ $labels.pod }} is not scrapeable"
-            runbook_url: https://github.com/almog975/ai-scan-repos/blob/main/docs/monitoring.md#alerts
         - alert: AIScanPodRestarting
           expr: increase(kube_pod_container_status_restarts_total{namespace="ai-scan-repos"}[15m]) > 2
           for: 5m
@@ -65,7 +59,6 @@ spec:
           annotations:
             summary: "{{ $labels.pod }}/{{ $labels.container }} restarted {{ $value | humanize }} times in 15m"
             description: Crash loop or failing liveness probe. kubectl -n ai-scan-repos describe pod / logs --previous.
-            runbook_url: https://github.com/almog975/ai-scan-repos/blob/main/docs/monitoring.md#alerts
         - alert: AIScanAIProviderErrors
           expr: |
             # plain ratio (no clamp_min: increase() is fractional, a clamp skews low-volume ratios) + minimum volume
@@ -77,7 +70,6 @@ spec:
           annotations:
             summary: "More than half of {{ $labels.kind }} AI provider calls failed in 30m"
             description: Reviews still complete (AI enrichment is best effort) but without explanations.
-            runbook_url: https://github.com/almog975/ai-scan-repos/blob/main/docs/monitoring.md#alerts
         - alert: AIScanHTTP5xxHigh
           expr: |
             # only the contract's 502 from AI provider connection tests (provider down) is excluded; any other 5xx
@@ -88,4 +80,3 @@ spec:
           labels: {severity: warning}
           annotations:
             summary: "{{ $labels.job }}: more than 5% of HTTP requests return 5xx"
-            runbook_url: https://github.com/almog975/ai-scan-repos/blob/main/docs/monitoring.md#alerts

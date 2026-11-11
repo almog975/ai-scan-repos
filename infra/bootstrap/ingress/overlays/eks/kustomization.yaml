@@ -1,7 +1,7 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources: [../../base]
-# EKS: hosts are placeholders; TLS via ACM at the LB or cert-manager (docs/tls-runbook.md).
+# EKS: hosts are placeholders; TLS via ACM at the LB or cert-manager.
 patches:
   - target: {kind: IngressRoute, name: jenkins}
     patch: |

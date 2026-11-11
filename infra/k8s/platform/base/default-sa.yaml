@@ -1,5 +1,5 @@
 # Namespace default SA: used by frontend, gateway and the migrations Job (no dedicated SA).
-# Adds the pull secret regcred (docs/registry-auth-runbook.md). No token automount.
+# Adds the pull secret regcred. No token automount.
 # Note: Argo CD adopts the controller-created default SA; pruning the platform app deletes it and
 # the ServiceAccount controller recreates it WITHOUT imagePullSecrets until the next sync.
 apiVersion: v1

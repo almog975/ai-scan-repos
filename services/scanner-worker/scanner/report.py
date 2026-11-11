@@ -41,7 +41,7 @@ def _cell(v) -> str:
     return str(v if v is not None else "").replace("|", "\\|").replace("\n", " ")
 
 
-# Banner wording (docs/report-md-spec.md section 3). Private-repo wording is NOT confirmed yet: change it here only.
+# Banner wording. Private-repo wording is NOT confirmed yet: change it here only.
 CLOUD_BANNER = "> ⚠️ cloud AI — code/findings were sent outside your network"
 PARTIAL_BANNER = "> ⚠️ Partial report — the review stopped (failed or cancelled) before it finished; results cover {n} file(s) scanned so far."
 CLOUD_BANNER_PRIVATE = "> ⚠️ cloud AI — code/findings from this private repository were sent outside your network"

@@ -12,7 +12,7 @@ contracts:
 	openapi-spec-validator services/contracts/gateway.openapi.yaml services/contracts/review-api.openapi.yaml
 	python3 -c "import json,jsonschema,glob; [jsonschema.Draft202012Validator.check_schema(json.load(open(f))) for f in glob.glob('services/contracts/*.schema.json')]; print('schemas ok')"
 
-# Local full stack on k3d (Docker Desktop; Windows: run in WSL2). docs/local-k3d.md. ARGS e.g. ARGS=--no-argocd / --yes
+# Local full stack on k3d (Docker Desktop; Windows: run in WSL2). ARGS e.g. ARGS=--no-argocd / --yes
 local-k8s:
 	infra/bootstrap/local/k3d.sh $(ARGS) up
 local-k8s-down:

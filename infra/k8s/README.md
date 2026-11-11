@@ -1,7 +1,7 @@
 # infra/k8s/
 
 Part of the standalone `almog975/ai-scan-repos` repo. Kubernetes manifests watched by
-Argo CD (GitOps). See the [top-level README](../README.md) and [ADR-0001](../../docs/adr/0001-repo-layout.md).
+Argo CD (GitOps). See the [top-level README](../../README.md).
 
 ## Layout
 ```
@@ -38,7 +38,7 @@ Sync waves (`argocd.argoproj.io/sync-wave`): `platform` 0 → `postgres` 1 → `
 For another target, swap `k3s` in the name and path.
 
 ## Tag flow
-1. A push to a service folder triggers Jenkins (via smee relay, see `docs/ci.md`).
+1. A push to a service folder triggers Jenkins (via smee relay).
 2. Jenkins builds only the changed services, scans with Trivy (fails on HIGH/CRITICAL) and pushes
    `<host for TARGET>/ai-scan/<svc>:<sha>` (TARGET defaults to `k3s`).
 3. Deploy edits `infra/k8s/<svc>/overlays/${TARGET}/kustomization.yaml`:

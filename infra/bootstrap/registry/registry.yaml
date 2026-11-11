@@ -25,7 +25,7 @@ spec:
           ports: [{name: http, containerPort: 5000}]
           env:
             - {name: REGISTRY_STORAGE_DELETE_ENABLED, value: "true"}
-            # htpasswd auth: Secret registry-htpasswd (key htpasswd), created per docs/registry-auth-runbook.md
+            # htpasswd auth: Secret registry-htpasswd (key htpasswd)
             - {name: REGISTRY_AUTH, value: htpasswd}
             - {name: REGISTRY_AUTH_HTPASSWD_REALM, value: ai-scan-registry}
             - {name: REGISTRY_AUTH_HTPASSWD_PATH, value: /auth/htpasswd}
@@ -52,7 +52,6 @@ spec:
   # always allows to local pods). Local keeps the client IP so the registry NetworkPolicy (Traefik + ns jenkins only)
   # rejects remote clients; containerd's own 127.0.0.1 pulls are SNATed to the node IP and still pass.
   # Host side (required): K3s --kube-proxy-arg=nodeport-addresses=127.0.0.0/8 and a firewall drop for 30500
-  # (docs/registry-auth-runbook.md "NodePort 30500").
   type: NodePort
   externalTrafficPolicy: Local
   selector: {app: registry}

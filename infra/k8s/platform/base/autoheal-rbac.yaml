@@ -1,5 +1,5 @@
 # ai-scan-autoheal (Jenkins job, SA jenkins/ai-scan-autoheal): what ci/heal/heal.sh may do in ai-scan-repos.
-# Namespaced Role only; restart / delete / re-run, never update or edit specs. docs/autoheal.md
+# Namespaced Role only; restart / delete / re-run, never update or edit specs.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata: {name: ai-scan-autoheal, namespace: ai-scan-repos}

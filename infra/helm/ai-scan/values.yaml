@@ -128,7 +128,7 @@ secrets:
   internalApiToken: local-dev-only-internal-api-token-32b   # >= 32 chars
   aiApiKey: ""
 
-# Auto-heal (ci/heal/heal.sh, docs/autoheal.md): deletes crashed/evicted pods, re-runs a failed
+# Auto-heal (ci/heal/heal.sh): deletes crashed/evicted pods, re-runs a failed
 # review-api-migrate Job, restarts Deployments whose /readyz keeps failing, checks postgres.
 autoheal:
   enabled: true                 # Role ai-scan-autoheal (namespaced, delete/restart/re-run only)

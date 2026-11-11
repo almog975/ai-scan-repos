@@ -23,5 +23,3 @@ def test_pause_only_from_running_everywhere():
     assert "pause: (s: State) => s === 'running'" in read("services/frontend/src/api/client.ts")
     assert 'PAUSABLE = {"running"}' in read("services/frontend/e2e/mock_stack.py")
     assert "only while `running`" in read("docs/user-guide.md")
-    sm = read("docs/diagrams/review-state-machine.md")
-    assert [l for l in sm.splitlines() if "--> paused" in l] and all(l.strip().startswith("running") for l in sm.splitlines() if "--> paused" in l)

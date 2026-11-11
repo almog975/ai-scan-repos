@@ -23,7 +23,7 @@ metadata:
   name: argocd
   labels:
     app.kubernetes.io/part-of: ai-scan-repos
-    # PSA: report only (no enforce) - Helm charts here; see docs/security-accepted-risks.md
+    # PSA: report only (no enforce) - Helm charts here
     pod-security.kubernetes.io/warn: restricted
     pod-security.kubernetes.io/warn-version: latest
     pod-security.kubernetes.io/audit: restricted
@@ -35,7 +35,7 @@ metadata:
   name: monitoring
   labels:
     app.kubernetes.io/part-of: ai-scan-repos
-    # PSA: report only (no enforce) - Helm charts here; see docs/security-accepted-risks.md
+    # PSA: report only (no enforce) - Helm charts here
     pod-security.kubernetes.io/warn: restricted
     pod-security.kubernetes.io/warn-version: latest
     pod-security.kubernetes.io/audit: restricted

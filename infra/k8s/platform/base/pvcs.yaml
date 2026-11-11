@@ -1,5 +1,5 @@
 # Default: local-path RWO (local overlay removes it -> cluster default). k3s overlay -> static PV reports-local (noexec,nosuid,nodev);
-# eks overlay -> EFS RWX. See docs/storage-plan.md
+# eks overlay -> EFS RWX.
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim

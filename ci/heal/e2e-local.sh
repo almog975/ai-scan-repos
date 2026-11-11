@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2329  # helpers are called indirectly (check, wait_for, trap)
 # End-to-end test of auto-heal on the local stack (infra/k8s/overlays/local), current kubectl context.
-# Runs from WSL or Git Bash; needs kubectl and images built/imported as in docs/local-k3d.md.
+# Runs from WSL or Git Bash; needs kubectl and images built/imported.
 #   ci/heal/e2e-local.sh [--keep] [--timeout SECONDS] [--no-apply]
 # Steps: apply + wait healthy -> baseline heal (nothing fixed) -> inject faults -> heal -> assert fixes ->
-# restore -> healthy again -> cleanup -> PASS/FAIL. docs/autoheal.md#end-to-end-test-local
+# restore -> healthy again -> cleanup -> PASS/FAIL.
 set -uo pipefail
 
 NS=ai-scan-repos

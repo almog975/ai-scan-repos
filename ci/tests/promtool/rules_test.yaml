@@ -19,7 +19,6 @@ tests:
       exp_annotations:
         summary: 1 review(s) stuck for more than 15 minutes
         description: The reconciler relaunches stuck attempts each cycle; a persistent stuck count means relaunches keep failing.
-        runbook_url: https://github.com/almog975/ai-scan-repos/blob/main/docs/runbooks/stuck-review.md
 - interval: 1m
   input_series:
   - series: reviews_by_state{namespace="ai-scan-repos",state="stuck"}
@@ -48,7 +47,6 @@ tests:
       exp_annotations:
         summary: More than 25% of finished reviews failed in the last hour
         description: Check scan_attempts_total{outcome="error"}, job_launch_errors_total and ai_provider_requests_total{outcome="error"}.
-        runbook_url: https://github.com/almog975/ai-scan-repos/blob/main/docs/monitoring.md#alerts
 - interval: 1m
   input_series:
   - series: reviews_total{namespace="ai-scan-repos",state="failed"}
@@ -83,7 +81,6 @@ tests:
       exp_annotations:
         summary: 2 running review(s) without a heartbeat for longer than HEARTBEAT_TIMEOUT_SECONDS
         description: The scanner Job stopped reporting (OOM, node loss, network policy). The reconciler should mark it stuck within two passes.
-        runbook_url: https://github.com/almog975/ai-scan-repos/blob/main/docs/runbooks/stuck-review.md
 - interval: 1m
   input_series:
   - series: reviews_heartbeat_overdue{namespace="ai-scan-repos"}
@@ -108,7 +105,6 @@ tests:
       exp_annotations:
         summary: No successful reconciler pass in 15 minutes
         description: Stuck/overdue reviews are not being recovered. Check review-api logs ("watchdog pass failed") and the DB.
-        runbook_url: https://github.com/almog975/ai-scan-repos/blob/main/docs/monitoring.md#alerts
 - interval: 1m
   input_series:
   - series: reconciler_runs_total{namespace="ai-scan-repos",result="ok"}
@@ -132,7 +128,6 @@ tests:
         severity: warning
       exp_annotations:
         summary: review-api cannot read review counts from the database for /metrics
-        runbook_url: https://github.com/almog975/ai-scan-repos/blob/main/docs/monitoring.md#alerts
 - interval: 1m
   input_series:
   - series: review_db_metrics_up{namespace="ai-scan-repos",instance="a"}
@@ -166,7 +161,6 @@ tests:
         instance: 10.42.0.5:8001
       exp_annotations:
         summary: review-api pod review-api-1 is not scrapeable
-        runbook_url: https://github.com/almog975/ai-scan-repos/blob/main/docs/monitoring.md#alerts
 - interval: 1m
   input_series:
   - series: kube_pod_container_status_restarts_total{namespace="ai-scan-repos",pod="review-api-1",container="review-api",job="kube-state-metrics"}
@@ -187,7 +181,6 @@ tests:
       exp_annotations:
         summary: review-api-1/review-api restarted 15 times in 15m
         description: Crash loop or failing liveness probe. kubectl -n ai-scan-repos describe pod / logs --previous.
-        runbook_url: https://github.com/almog975/ai-scan-repos/blob/main/docs/monitoring.md#alerts
 - interval: 1m
   input_series:
   - series: kube_pod_container_status_restarts_total{namespace="ai-scan-repos",pod="p",container="c"}
@@ -217,7 +210,6 @@ tests:
       exp_annotations:
         summary: More than half of cloud AI provider calls failed in 30m
         description: Reviews still complete (AI enrichment is best effort) but without explanations.
-        runbook_url: https://github.com/almog975/ai-scan-repos/blob/main/docs/monitoring.md#alerts
 - interval: 1m
   input_series:
   - series: ai_provider_requests_total{namespace="ai-scan-repos",kind="cloud",outcome="error",source="worker"}
@@ -248,7 +240,6 @@ tests:
         job: gateway
       exp_annotations:
         summary: 'gateway: more than 5% of HTTP requests return 5xx'
-        runbook_url: https://github.com/almog975/ai-scan-repos/blob/main/docs/monitoring.md#alerts
 - interval: 1m
   input_series:
   - series: http_request_duration_seconds_count{namespace="ai-scan-repos",job="gateway",status="500"}

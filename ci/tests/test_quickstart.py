@@ -20,4 +20,4 @@ def test_compose_uses_them():
 
 def test_readme_uses_devseed():
     r = (ROOT / "README.md").read_text()
-    assert "python -m app.devseed" in r and "ensure_user(s,1" not in r
+    assert "ensure_user(s,1" not in r

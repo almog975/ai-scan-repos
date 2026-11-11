@@ -7,7 +7,7 @@ patches:
       - {op: replace, path: /spec/accessModes, value: [ReadWriteMany]}
       - {op: replace, path: /spec/storageClassName, value: efs-sc}
   # EKS TLS placeholder: either terminate at the NLB/ALB with an ACM cert (then drop `tls` and route on `web`),
-  # or let cert-manager (ClusterIssuer letsencrypt) issue Secret ai-scan-tls. See docs/tls-runbook.md.
+  # or let cert-manager (ClusterIssuer letsencrypt) issue Secret ai-scan-tls.
   - target: {kind: IngressRoute, name: ai-scan}
     patch: |
       - op: replace

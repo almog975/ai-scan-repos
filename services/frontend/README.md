@@ -1,7 +1,7 @@
 # services/frontend/
 
 Part of the AI Scan Repos repo (`almog975/ai-scan-repos`). See the
-[top-level README](../../README.md) and [ADR-0001](../../docs/adr/0001-repo-layout.md).
+[top-level README](../../README.md).
 
 ## Purpose
 React + Vite SPA (TypeScript): log in with GitHub, start a review (repo URL + depth), follow its progress live,

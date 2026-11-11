@@ -1,6 +1,6 @@
 # Nightly logical backup: pg_dump -Fc of $POSTGRES_DB to PVC postgres-backups, keep BACKUP_RETENTION_DAYS (ConfigMap).
 # Credentials: existing Secret db-secrets (POSTGRES_USER/POSTGRES_PASSWORD/POSTGRES_DB), mounted read-only as files.
-# No values in git. Restore: docs/postgres-backup-restore.md.
+# No values in git.
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:

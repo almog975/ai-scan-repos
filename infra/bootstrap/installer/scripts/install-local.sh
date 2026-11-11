@@ -6,11 +6,11 @@ OVERLAY=local
 command -v kubectl >/dev/null || { echo "kubectl required" >&2; exit 1; }
 echo "+ kubectl apply -k $ROOT/infra/bootstrap/cluster/overlays/$OVERLAY"
 [ "${DRY_RUN:-1}" = 1 ] || kubectl apply -k "$ROOT/infra/bootstrap/cluster/overlays/$OVERLAY"
-echo "+ kubectl apply -f $ROOT/infra/bootstrap/registry/registry.yaml && kubectl apply -k $ROOT/infra/bootstrap/ingress/overlays/$OVERLAY   # secrets: docs/registry-auth-runbook.md, docs/tls-runbook.md"
+echo "+ kubectl apply -f $ROOT/infra/bootstrap/registry/registry.yaml && kubectl apply -k $ROOT/infra/bootstrap/ingress/overlays/$OVERLAY"
 [ "${DRY_RUN:-1}" = 1 ] || { kubectl apply -f "$ROOT/infra/bootstrap/registry/registry.yaml"; kubectl apply -k "$ROOT/infra/bootstrap/ingress/overlays/$OVERLAY"; }
 for c in platform postgres scanner-worker review-api gateway frontend; do
   echo "+ kubectl apply -k $ROOT/infra/k8s/$c/overlays/$OVERLAY"
   [ "${DRY_RUN:-1}" = 1 ] || kubectl apply -k "$ROOT/infra/k8s/$c/overlays/$OVERLAY"
 done
 [ "${WITH_ARGOCD:-0}" = 1 ] && "$ROOT/infra/bootstrap/installer/scripts/install-argocd.sh"   # optional GitOps on local
-echo "TODO: secrets (docs/secrets-runbook.md), kube-prometheus-stack, registry"
+echo "TODO: secrets, kube-prometheus-stack, registry"

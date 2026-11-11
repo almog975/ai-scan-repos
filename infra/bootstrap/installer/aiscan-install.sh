@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # AI Scan Repos installer (Phase 8). Non-interactive, idempotent, --dry-run prints the plan without touching
-# the cluster, the cloud or the working tree. Docs: docs/installer.md.
+# the cluster, the cloud or the working tree.
 #
 #   aiscan-install.sh [--config FILE] [--dry-run] [--overlay k3s|eks|local] [--mode gitops|direct]
 #                     [--registry local|ecr] [--tag TAG] [--yes] [--purge] [--rotate-secrets] COMMAND
@@ -159,14 +159,14 @@ preflight() {
   echo "  context: $("$KUBECTL" config current-context 2>/dev/null || echo '?')"
   for check in "create namespaces" "create customresourcedefinitions" "create clusterroles" "create secrets -n $APP_NS"; do
     # shellcheck disable=SC2086
-    "$KUBECTL" auth can-i $check >/dev/null 2>&1 || die "insufficient RBAC: cannot '$check' (see docs/installer.md#rbac)"
+    "$KUBECTL" auth can-i $check >/dev/null 2>&1 || die "insufficient RBAC: cannot '$check'"
   done
   if [ "$MODE" = direct ]; then
     # platform overlays ship ServiceMonitor/PrometheusRule: without the prometheus-operator CRDs `apply -k` fails
     # half-way. In gitops mode Argo CD's sync-waves order this (monitoring app first).
     local crd
     for crd in servicemonitors.monitoring.coreos.com prometheusrules.monitoring.coreos.com; do
-      exists default crd "$crd" || die "CRD $crd missing: install the prometheus-operator CRDs (kube-prometheus-stack) before --mode direct, see docs/installer.md#monitoring-crds"
+      exists default crd "$crd" || die "CRD $crd missing: install the prometheus-operator CRDs (kube-prometheus-stack) before --mode direct"
     done
   fi
   if [ "$REGISTRY_TYPE" = ecr ]; then aws sts get-caller-identity >/dev/null || die "aws credentials not usable"; fi
@@ -294,7 +294,7 @@ secrets() {
   else apply_secret "$APP_NS" scanner-secrets generic; fi
   # ai-keys-master encrypts every stored provider key: NEVER replaced by the installer (rotation = re-encrypt first)
   if exists "$APP_NS" secret ai-keys-master; then
-    echo "  secret $APP_NS/ai-keys-master exists: kept (never rotated by the installer, see docs/secrets-runbook.md)"
+    echo "  secret $APP_NS/ai-keys-master exists: kept (never rotated by the installer)"
   else
     gen_var AI_KEYS_ENCRYPTION_KEY 32
     local save=$ROTATE_SECRETS; ROTATE_SECRETS=1
@@ -492,7 +492,7 @@ uninstall() {
     k delete -k "$ROOT/infra/bootstrap/ingress/overlays/$OVERLAY" --ignore-not-found
     k delete namespace "$APP_NS" registry argocd --ignore-not-found
     echo "  NOTE: cluster-scoped bootstrap (PVs/StorageClasses, namespaces jenkins/monitoring) left in place;"
-    echo "        reports PV has reclaimPolicy Retain (docs/storage-plan.md)."
+    echo "        reports PV has reclaimPolicy Retain."
   else
     # platform keeps ServiceAccounts/RBAC and the reports PVC: only removed with --purge
     for ((i=${#COMPONENTS[@]}-1; i>=1; i--)); do delete_kept "$ROOT/infra/k8s/${COMPONENTS[$i]}/overlays/$OVERLAY"; done

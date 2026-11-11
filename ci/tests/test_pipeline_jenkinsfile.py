@@ -111,7 +111,7 @@ def repo(tmp_path):
     (["services/frontend/src/App.tsx"], ["frontend"]),
     (["services/gateway/app/main.py", "services/review-api/app/state.py"], ["gateway", "review-api"]),
     (["services/scanner-worker/scanner/run.py", "docs/x.md"], ["scanner-worker"]),
-    (["docs/ci.md"], []),
+    (["docs/user-guide.md"], []),
     (["infra/k8s/gateway/overlays/k3s/kustomization.yaml"], "skip"),
 ])
 def test_changed_simulation(repo, files, expect):
