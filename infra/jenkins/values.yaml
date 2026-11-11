@@ -107,7 +107,7 @@ controller:
 
 persistence:
   enabled: true
-  existingClaim: jenkins-home        # Infra-owned PVC; the chart does not create one
+  existingClaim: jenkins-home        # created in infra/bootstrap; the chart does not create one
 
 serviceAccount:
   create: true

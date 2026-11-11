@@ -6,7 +6,7 @@ import { format } from '../i18n'
 
 afterEach(() => { vi.restoreAllMocks(); document.cookie = 'aiscan_csrf=; max-age=0' })
 
-describe('state matrix (Planner decisions)', () => {
+describe('state matrix', () => {
   it('pause only for running', () => {
     expect(['queued', 'running', 'paused', 'stuck', 'retrying'].filter(s => CAN.pause(s as never))).toEqual(['running'])
   })

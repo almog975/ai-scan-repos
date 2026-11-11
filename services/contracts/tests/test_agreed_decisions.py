@@ -1,6 +1,6 @@
-"""Tests for the decisions AI Scan Planner accepted (review notes 1-17 + gateway follow-ups).
+"""Tests for the agreed contract decisions (review notes 1-17 + gateway follow-ups).
 
-Anything the contracts don't reflect yet is xfail(strict=True): once Coder lands the
+Anything the contracts don't reflect yet is xfail(strict=True): once the code lands the
 change the test XPASSes, the run fails, and the marker must be removed.
 Fixtures in fixtures/pending_invalid/ must be rejected once the decision lands.
 """

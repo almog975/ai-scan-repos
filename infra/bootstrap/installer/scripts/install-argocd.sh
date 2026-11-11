@@ -12,4 +12,4 @@ run kubectl -n argocd patch cm argocd-cm --type merge --patch-file "$ROOT/infra/
 echo "# repo credentials (if private)"
 run kubectl apply -f "$ROOT/infra/argocd/appproject-ai-scan.yaml"       # 2a
 run kubectl apply -f "$ROOT/infra/argocd/appproject-ai-scan-ci.yaml"    # 2b
-run kubectl apply -n argocd -f "$ROOT/infra/argocd/root-app.yaml"      # 3 (Pipelines-owned)
+run kubectl apply -n argocd -f "$ROOT/infra/argocd/root-app.yaml"      # 3

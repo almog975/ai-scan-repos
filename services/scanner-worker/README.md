@@ -11,9 +11,3 @@ Scanner Job image: clone → Semgrep, Gitleaks, Trivy → AI (quick / brief = to
 
 ## Build/Run
 `python -m scanner.run --review-id <id>` (normally launched by review-api); `make test`.
-
-## CI/CD
-TODO: Jenkins stage with path filter `services/scanner-worker/**` (Test → Build → Scan → Push); image tag bump in `infra/k8s/review-api/overlays/<env>`; Argo CD syncs. TODO: confirm where the worker image tag lives.
-
-## Owners
-AI Scan Coder; Tester (golden/chaos tests).

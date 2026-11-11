@@ -1,5 +1,5 @@
 """Phase 3 DoD on the real local stack (uvicorn + LocalLauncher + scanner-worker subprocess + sqlite file DB).
-(a) SIGKILL/resume without duplicate ids: test_phase3_recovery.py::test_worker_sigkill_* (Tester).
+(a) SIGKILL/resume without duplicate ids: test_phase3_recovery.py::test_worker_sigkill_*.
 (b) 5 consecutive failures -> failed with an honest reason + 5 review_attempts rows.
 (c) pause / resume / cancel; cancel stops the worker, cleans /work and keeps the partial report."""
 from pathlib import Path

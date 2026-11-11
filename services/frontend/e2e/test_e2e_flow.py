@@ -85,7 +85,7 @@ def test_pause_resume_with_csrf(page, stack):
 def test_paused_review_stops_polling(page, stack):
     login(page)
     rid = start(page, stack)
-    mset(stack, rid, state="running")  # Planner: Pause is offered only for running
+    mset(stack, rid, state="running")  # Pause is offered only for running
     expect(row(page).locator(".badge")).to_have_text("running")
     row(page).get_by_role("button", name="Pause").click()
     expect(row(page).locator(".badge")).to_have_text("paused")

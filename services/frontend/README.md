@@ -5,7 +5,7 @@ Part of the AI Scan Repos repo (`almog975/ai-scan-repos`). See the
 
 ## Purpose
 React + Vite SPA (TypeScript): log in with GitHub, start a review (repo URL + depth), follow its progress live,
-read the report, and (admins) manage AI providers. Dark theme from the UI design guide v1; English (LTR) and
+read the report, and (admins) manage AI providers. Dark theme; English (LTR) and
 Hebrew (RTL).
 
 ## Structure
@@ -27,13 +27,7 @@ e2e/                     Playwright + axe (pytest) against a mock gateway servin
 ```
 
 ## Build/Run
-`npm ci && npm run dev`; `make test` (vitest); `docker build -t ai-scan-repos/frontend frontend`; full stack: `docker compose up --build` → http://localhost:8080.
-
-## CI/CD
-TODO: Jenkins stage with path filter `services/frontend/**` (Test → Build → Scan → Push); image tag bump in `infra/k8s/frontend/overlays/<env>`; Argo CD syncs.
+`npm ci && npm run dev`; `make test` (vitest); `docker build -t ai-scan-repos-frontend services/frontend`; full stack: `docker compose up --build` → http://localhost:8080.
 
 ## Config
-Calls the gateway under `/api` (via nginx/Traefik). TODO: document build-time vars.
-
-## Owners
-AI Scan Coder (code), UI Designer (design), Tester (e2e TODO: Playwright).
+Calls the gateway under `/api` (via nginx/Traefik).

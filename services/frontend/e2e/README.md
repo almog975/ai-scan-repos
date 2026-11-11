@@ -1,4 +1,4 @@
-# Frontend e2e (Phase 4)
+# Frontend e2e
 
 Playwright (Python) against the real built SPA served by `mock_stack.py`, a contract-shaped
 mock gateway (login cookies + CSRF, reviews, pause/resume/cancel/retry 409 rules, reports

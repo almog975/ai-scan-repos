@@ -5,11 +5,11 @@ Argo CD (GitOps). See the [top-level README](../../README.md).
 
 ## Layout
 ```
-infra/k8s/<component>/base/                    # Infra-owned
-infra/k8s/<component>/overlays/{local,k3s,eks} # Infra-owned; Jenkins only rewrites image tags here
+infra/k8s/<component>/base/
+infra/k8s/<component>/overlays/{local,k3s,eks} # Jenkins only rewrites image tags here
 infra/k8s/overlays/local/                      # Lightweight compose overlay (Docker Desktop / k3d; no registry)
-infra/argocd/root-app.yaml                 # Pipelines-owned: app-of-apps root
-infra/argocd/apps/<component>.yaml         # Pipelines-owned: one child Application per component
+infra/argocd/root-app.yaml                 # app-of-apps root
+infra/argocd/apps/<component>.yaml         # one child Application per component
 ```
 Components: `frontend`, `gateway`, `review-api`, `postgres`, `scanner-worker`, `platform` (6 × 3 = 18 overlays),
 plus top-level `infra/k8s/overlays/local` for a one-shot local apply. Everything deploys to the single namespace `ai-scan-repos`.
@@ -23,7 +23,7 @@ plus top-level `infra/k8s/overlays/local` for a one-shot local apply. Everything
 Images are always `<host>/ai-scan/<svc>:<git-sha>`, never `latest`. Overlays ship with `GIT_SHA_PLACEHOLDER`.
 
 ## Argo CD (app-of-apps, 6 child Applications)
-Bootstrap once (Argo CD installed in namespace `argocd`). First apply the Infra-owned AppProject `ai-scan`
+Bootstrap once (Argo CD installed in namespace `argocd`). First apply the AppProject `ai-scan`
 from `infra/argocd/` (all child apps use `project: ai-scan` and will not sync without it), then:
 ```
 kubectl apply -n argocd -f infra/argocd/root-app.yaml
@@ -46,7 +46,7 @@ For another target, swap `k3s` in the name and path.
    - scanner-worker: `kustomize edit set configmap scanner-image --from-literal=SCANNER_IMAGE=<host>/ai-scan/scanner-worker:<sha>`;
      review-api reads `SCANNER_IMAGE` via `configMapKeyRef` and launches per-review scanner Jobs with it.
    - postgres and platform have no image to set.
-4. Jenkins commits with `[skip ci]` (the loop guard also skips deploy-only changes) and pushes (TODO stub);
+4. Jenkins commits with `[skip ci]` (the loop guard also skips deploy-only changes) and opens a PR;
    Argo CD syncs the new tag.
 
 ## Build / check locally
@@ -54,9 +54,6 @@ For another target, swap `k3s` in the name and path.
 
 ## Config
 No Secret YAML in git for k3s/eks (create from the CLI). `infra/k8s/overlays/local` is the exception: committed **NOT FOR PRODUCTION** placeholders via secretGenerator.
-
-## Owners
-Infra: `base/` and `overlays/` content. Pipelines: image tags, `argocd/`, `Jenkinsfile`. See `.github/CODEOWNERS`.
 
 ## Helm alternative (Docker Desktop)
 For a simple local run without Kustomize, use the Helm chart in [`infra/helm/ai-scan`](../helm/ai-scan/README.md):

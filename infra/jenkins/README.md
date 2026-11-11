@@ -1,4 +1,4 @@
-# infra/jenkins (Pipelines-owned)
+# infra/jenkins
 
 Jenkins controller + agents in namespace `jenkins`, deployed by Argo CD (`infra/argocd/apps/jenkins.yaml`,
 project `ai-scan-ci`).
@@ -17,7 +17,7 @@ user namespace-free container with no daemon. Images are built to a tarball, sca
 pushed with `crane` (main only), so nothing unscanned reaches the registry. Note: upstream kaniko was archived
 in 2025; if the image becomes unavailable, switch to the Chainguard-maintained fork or BuildKit rootless.
 
-## Infra-owned prerequisites (not in this folder)
+## Prerequisites (not in this folder)
 Namespace `jenkins` and PVC `jenkins-home` (infra/bootstrap), IngressRoute `jenkins` + TLS secret `jenkins-tls`
 (infra/bootstrap/ingress), AppProject `ai-scan-ci` (infra/argocd), registry htpasswd.
 
@@ -50,7 +50,7 @@ The GitHub webhook (repo Settings > Webhooks) points at the smee channel URL, co
 
 ## github-bot PAT (Deploy PR flow)
 
-Created by Almog (repo owner); Jenkins never sees more than this one repo.
+The token only has access to this one repo.
 
 1. GitHub → Settings → Developer settings → Personal access tokens → **Fine-grained tokens** → *Generate new token*.
 2. Name `ai-scan-jenkins-deploy`, **Expiration 90 days** (put the renewal date in the calendar; max allowed 1 year).

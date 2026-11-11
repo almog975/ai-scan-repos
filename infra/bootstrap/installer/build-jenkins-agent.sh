@@ -4,7 +4,7 @@
 # then replace CHANGE_ME_AGENT_SHA in infra/jenkins/values.yaml (SED=1, default) or just print the tag to commit.
 # Uses docker, else nerdctl. Log in first with the push user:
 #   echo '<PUSH_PASSWORD>' | docker login <PUSH_REGISTRY> -u <PUSH_USER> --password-stdin
-# The values.yaml change must be committed + pushed by Almog/Pipelines for Argo CD to pick it up.
+# The values.yaml change must be committed and pushed for Argo CD to pick it up.
 set -euo pipefail
 ROOT="${ROOT:-$(cd "$(dirname "$0")/../../.." && pwd)}"
 # Runs on the installer host (outside the cluster). In-cluster pushes (Jenkins agents) use registry.registry:5000
@@ -19,7 +19,7 @@ VALUES="$ROOT/infra/jenkins/values.yaml"
 if command -v docker >/dev/null; then CLI=docker
 elif command -v nerdctl >/dev/null; then CLI=nerdctl
 else echo "need docker or nerdctl" >&2; exit 1; fi
-[ -f "$ROOT/ci/agent/Dockerfile" ] || { echo "ci/agent/Dockerfile not found (Pipelines patch not merged?)" >&2; exit 1; }
+[ -f "$ROOT/ci/agent/Dockerfile" ] || { echo "ci/agent/Dockerfile not found" >&2; exit 1; }
 run() { echo "+ $*"; [ "${DRY_RUN:-0}" = 1 ] || "$@"; }
 PUSH_IMG="$PUSH_REGISTRY/ai-scan/jenkins-agent:$SHA"
 run "$CLI" build -t "$IMG" -t "$PUSH_IMG" -f "$ROOT/ci/agent/Dockerfile" "$ROOT/ci/agent"

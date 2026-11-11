@@ -1,6 +1,6 @@
 # AppProject for CI tooling (Application ai-scan-jenkins, infra/argocd/apps/jenkins.yaml).
 # Separate from ai-scan so the app project keeps a single destination (ai-scan-repos).
-# Apply BEFORE infra/argocd/root-app.yaml (installer step 2b). Infra-owned (adopted from the Pipelines proposal).
+# Apply BEFORE infra/argocd/root-app.yaml (installer step 2b).
 # Whitelist = exactly what `helm template jenkins/jenkins 5.10.3 -f infra/jenkins/values.yaml` + infra/jenkins/manifests render.
 apiVersion: argoproj.io/v1alpha1
 kind: AppProject

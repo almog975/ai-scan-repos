@@ -1,6 +1,6 @@
 # Child of infra/argocd/root-app.yaml (app-of-apps). Jenkins controller (Helm chart jenkins/jenkins with
 # infra/jenkins/values.yaml) + smee-client and agent ServiceAccount (infra/jenkins/manifests), namespace jenkins.
-# Project ai-scan-ci (Infra-owned, infra/argocd/appproject-ai-scan-ci.yaml): ai-scan only allows ai-scan-repos.
+# Project ai-scan-ci (infra/argocd/appproject-ai-scan-ci.yaml): ai-scan only allows ai-scan-repos.
 # Multi-source Application: needs Argo CD >= 2.6. Wave 0: independent of the app components.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
