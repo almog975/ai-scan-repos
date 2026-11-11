@@ -6,7 +6,7 @@ Technion DevOps final project. Standalone repo `almog975/ai-scan-repos`; all pat
 
 ## Architecture
 
-![Architecture](docs/diagrams/architecture-v1.svg)
+![End-to-end architecture](docs/diagrams/architecture-e2e.png)
 
 [architecture-v1.md](docs/diagrams/architecture-v1.md) (target, mermaid) · [architecture.md](docs/diagrams/architecture.md) (backend as built) · [review state machine](docs/diagrams/review-state-machine.md)
 
@@ -155,15 +155,3 @@ GitHub Actions (`.github/workflows/images.yml`) builds and pushes `ghcr.io/almog
 | Everything | [docs/README.md](docs/README.md) |
 
 Folder READMEs: [contracts](services/contracts/README.md) · [frontend](services/frontend/README.md) · [gateway](services/gateway/README.md) · [review-api](services/review-api/README.md) · [scanner-worker](services/scanner-worker/README.md) · [deploy](infra/k8s/README.md) · [infra](infra/README.md)
-
-## Status
-
-**Done:**
-- Phases 0–8: contracts, backend, scanner with AI, recovery and reconciler, frontend (English/Hebrew, accessibility checked), K3s overlays, CI build interface, monitoring, installer.
-
-**Open:**
-- `github-bot` PAT not created yet: until then the Deploy stage fails at the PR step (images are already pushed).
-- No tool to re-encrypt AI keys after rotating the master key ([ADR-0003](docs/adr/0003-ai-key-rotation.md), deferred).
-- No automatic backups of reports or the database.
-
-More: [known-limitations.md](docs/known-limitations.md).
