@@ -17,7 +17,7 @@ services:
   migrate:   # alembic upgrade head, once, before review-api starts
     build:
       context: .
-      dockerfile: review-api/Dockerfile.local
+      dockerfile: services/review-api/Dockerfile.local
     depends_on:
       postgres: {condition: service_healthy}
     environment:
@@ -28,7 +28,7 @@ services:
   review-api:
     build:
       context: .
-      dockerfile: review-api/Dockerfile.local
+      dockerfile: services/review-api/Dockerfile.local
     depends_on:
       postgres: {condition: service_healthy}
       migrate: {condition: service_completed_successfully}
@@ -49,7 +49,7 @@ services:
       retries: 20
 
   gateway:
-    build: gateway
+    build: services/gateway
     depends_on:
       review-api: {condition: service_healthy}   # migrations ran in `migrate` first
     env_file: [.env]
@@ -61,7 +61,7 @@ services:
     ports: ["127.0.0.1:8000:8000"]   # for `npm run dev` proxy
 
   frontend:
-    build: frontend
+    build: services/frontend
     depends_on: [gateway]
     environment:
       GATEWAY_UPSTREAM: gateway:8000

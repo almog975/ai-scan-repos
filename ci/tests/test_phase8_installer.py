@@ -13,7 +13,7 @@ pytestmark = pytest.mark.skipif(not shutil.which("kustomize") or not shutil.whic
 @pytest.fixture
 def sb(tmp_path):
     root = tmp_path / "repo"
-    for d in ("deploy", "infra"):
+    for d in ("infra",):
         shutil.copytree(ROOT / d, root / d)
     g = ["git", "-C", str(root), "-c", "user.name=t", "-c", "user.email=t@t"]
     subprocess.run(g[:3] + ["init", "-q"], check=True)
@@ -35,7 +35,7 @@ def sb(tmp_path):
             self.log.write_text("")
             e = {"PATH": f"{path_prefix + ':' if path_prefix else ''}{bin_}:/usr/bin:/bin", "HOME": str(tmp_path),
                  "SHIM_LOG": str(self.log), "KSTATE": str(self.state), "ROOT": str(root), **SECRET_ENV, **(env or {})}
-            r = subprocess.run(["bash", str(ROOT / "infra/installer/aiscan-install.sh"), *args], env=e,
+            r = subprocess.run(["bash", str(ROOT / "infra/bootstrap/installer/aiscan-install.sh"), *args], env=e,
                                capture_output=True, text=True, stdin=subprocess.DEVNULL, timeout=120)
             r.calls = self.log.read_text().splitlines()
             return r
@@ -57,7 +57,7 @@ def test_dry_run_makes_no_calls(sb, cmd, opts):
     assert r.returncode == 0, r.stderr
     assert r.calls == [], r.calls
     assert "S3CRET" not in r.stdout + r.stderr
-    assert subprocess.run(["git", "diff", "--quiet", "--no-index", str(ROOT / "deploy"), str(sb.tmp / "repo/deploy")]).returncode == 0
+    assert subprocess.run(["git", "diff", "--quiet", "--no-index", str(ROOT / "infra"), str(sb.tmp / "repo/infra")]).returncode == 0
 
 
 def test_idempotent_and_rotate(sb):

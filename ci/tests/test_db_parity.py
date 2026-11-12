@@ -18,7 +18,7 @@ def test_parity_clean():
 def test_parity_drift_fails(tmp_path):
     dst = tmp_path / "repo"
     shutil.copytree(ROOT, dst, symlinks=True, ignore=shutil.ignore_patterns(".git", "node_modules", "reports", "__pycache__"))
-    sql = dst / "infra/db/schema.sql"
+    sql = dst / "infra/bootstrap/db/schema.sql"
     sql.write_text("CREATE TABLE parity_canary (x int);\n" + sql.read_text())
     r = run(dst)
     assert "parity_canary" in r.stdout  # the drift is detected...

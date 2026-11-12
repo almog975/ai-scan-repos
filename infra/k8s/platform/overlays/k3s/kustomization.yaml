@@ -1,0 +1,33 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources: [../../base]  # PV/StorageClass: infra/bootstrap/cluster/overlays/k3s
+patches:
+  - target: {kind: IngressRoute, name: ai-scan}
+    patch: |
+      - op: replace
+        path: /spec/routes/0/match
+        value: Host(`ai-scan.127.0.0.1.nip.io`) && PathRegexp(`^/api/reviews/[^/]+/progress$`)
+      - op: replace
+        path: /spec/routes/1/match
+        value: Host(`ai-scan.127.0.0.1.nip.io`) && (PathPrefix(`/api`) || PathPrefix(`/auth`) || PathPrefix(`/me`) || PathPrefix(`/webhooks`))
+      - op: replace
+        path: /spec/routes/2/match
+        value: Host(`ai-scan.127.0.0.1.nip.io`) && PathPrefix(`/`)
+  - target: {kind: IngressRoute, name: ai-scan-http}
+    patch: |
+      - op: replace
+        path: /spec/routes/0/match
+        value: Host(`ai-scan.127.0.0.1.nip.io`)
+  - target: {kind: PersistentVolumeClaim, name: reports}
+    patch: |
+      - {op: replace, path: /spec/storageClassName, value: reports-local}
+      - {op: add, path: /spec/volumeName, value: ai-scan-reports-pv}
+  # k3s: per-environment egress endpoints (placeholders, RFC 5737). Keep the AI CIDR in sync with
+  # infra/k8s/scanner-worker/overlays/k3s/networkpolicy-ai-egress.yaml. API endpoint: kubectl get endpoints kubernetes -n default.
+  - target: {kind: NetworkPolicy, name: review-api-ai-egress}
+    patch: |
+      - {op: replace, path: /spec/egress/0/to, value: [{ipBlock: {cidr: 192.0.2.0/24}}]}   # PLACEHOLDER AI provider CIDRs (installer: AI_EGRESS_CIDRS)
+  - target: {kind: NetworkPolicy, name: review-api-kube-api-egress}
+    patch: |
+      - {op: replace, path: /spec/egress/0/to/0/ipBlock/cidr, value: 198.51.100.201/32}   # PLACEHOLDER API server endpoint (installer: KUBE_API_ENDPOINT)
+      - {op: replace, path: /spec/egress/1/to/0/ipBlock/cidr, value: 10.43.0.1/32}   # kubernetes Service IP (installer: KUBE_SERVICE_IP)

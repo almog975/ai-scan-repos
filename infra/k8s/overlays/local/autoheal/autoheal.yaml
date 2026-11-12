@@ -1,0 +1,62 @@
+# Local auto-heal: in-cluster CronJob running ci/heal/heal.sh (ConfigMap ai-scan-autoheal-script, ci/heal/kustomization.yaml).
+# Same Role as Jenkins (infra/k8s/platform/base/autoheal-rbac.yaml, Role ai-scan-autoheal); this binds it to a local SA.
+# No Argo CD locally: the Argo CD step reports "skipped".
+apiVersion: v1
+kind: ServiceAccount
+metadata: {name: ai-scan-autoheal, namespace: ai-scan-repos}
+automountServiceAccountToken: true   # kubectl in the CronJob pod uses this token
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: ai-scan-autoheal-local, namespace: ai-scan-repos}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: ai-scan-autoheal}
+subjects:
+  - {kind: ServiceAccount, name: ai-scan-autoheal, namespace: ai-scan-repos}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata: {name: ai-scan-autoheal, namespace: ai-scan-repos, labels: {app: ai-scan-autoheal}}
+spec:
+  schedule: "*/10 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: 480
+      ttlSecondsAfterFinished: 3600
+      template:
+        metadata: {labels: {app: ai-scan-autoheal}}
+        spec:
+          serviceAccountName: ai-scan-autoheal
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65534
+            runAsGroup: 65534
+            seccompProfile: {type: RuntimeDefault}
+          containers:
+            - name: heal
+              image: alpine/k8s:1.31.4   # kubectl + bash + curl + jq
+              imagePullPolicy: IfNotPresent
+              command: [bash, /opt/heal/heal.sh]
+              env:
+                - {name: NAMESPACE, value: ai-scan-repos}
+                - {name: HOME, value: /tmp}      # kubectl discovery cache
+                - {name: TMPDIR, value: /tmp}    # bash here-strings
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: [ALL]}
+              resources:
+                requests: {cpu: 20m, memory: 32Mi}
+                limits: {cpu: 200m, memory: 128Mi}
+              volumeMounts:
+                - {name: script, mountPath: /opt/heal, readOnly: true}
+                - {name: tmp, mountPath: /tmp}
+          volumes:
+            - name: script
+              configMap: {name: ai-scan-autoheal-script, defaultMode: 0555}
+            - name: tmp
+              emptyDir: {sizeLimit: 16Mi}

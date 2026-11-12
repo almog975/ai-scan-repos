@@ -1,7 +1,7 @@
-# AppProject for CI tooling (Application ai-scan-jenkins, deploy/argocd/apps/jenkins.yaml).
+# AppProject for CI tooling (Application ai-scan-jenkins, infra/argocd/apps/jenkins.yaml).
 # Separate from ai-scan so the app project keeps a single destination (ai-scan-repos).
-# Apply BEFORE deploy/argocd/root-app.yaml (installer step 2b). Infra-owned (adopted from the Pipelines proposal).
-# Whitelist = exactly what `helm template jenkins/jenkins 5.10.3 -f deploy/jenkins/values.yaml` + deploy/jenkins/manifests render.
+# Apply BEFORE infra/argocd/root-app.yaml (installer step 2b).
+# Whitelist = exactly what `helm template jenkins/jenkins 5.10.3 -f infra/jenkins/values.yaml` + infra/jenkins/manifests render.
 apiVersion: argoproj.io/v1alpha1
 kind: AppProject
 metadata:
@@ -25,4 +25,4 @@ spec:
     - {group: apps, kind: Deployment}
     - {group: rbac.authorization.k8s.io, kind: Role}
     - {group: rbac.authorization.k8s.io, kind: RoleBinding}
-    - {group: networking.k8s.io, kind: NetworkPolicy}   # Phase 9 deploy/jenkins/manifests/networkpolicies.yaml
+    - {group: networking.k8s.io, kind: NetworkPolicy}   # Phase 9 infra/jenkins/manifests/networkpolicies.yaml

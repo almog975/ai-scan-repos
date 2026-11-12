@@ -1,0 +1,102 @@
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata: {name: registry-data, namespace: registry}
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: local-path
+  resources: {requests: {storage: 20Gi}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: registry, namespace: registry, labels: {app: registry}}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector: {matchLabels: {app: registry}}
+  template:
+    metadata: {labels: {app: registry}}
+    spec:
+      automountServiceAccountToken: false   # registry never calls the K8s API
+      securityContext: {runAsNonRoot: true, runAsUser: 1000, runAsGroup: 1000, fsGroup: 1000, fsGroupChangePolicy: OnRootMismatch, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: registry
+          image: registry:2.8.3
+          ports: [{name: http, containerPort: 5000}]
+          env:
+            - {name: REGISTRY_STORAGE_DELETE_ENABLED, value: "true"}
+            # htpasswd auth: Secret registry-htpasswd (key htpasswd)
+            - {name: REGISTRY_AUTH, value: htpasswd}
+            - {name: REGISTRY_AUTH_HTPASSWD_REALM, value: ai-scan-registry}
+            - {name: REGISTRY_AUTH_HTPASSWD_PATH, value: /auth/htpasswd}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+          resources: {requests: {cpu: 50m, memory: 64Mi}, limits: {cpu: 500m, memory: 512Mi}}
+          readinessProbe: {httpGet: {path: /, port: 5000}}
+          livenessProbe: {httpGet: {path: /, port: 5000}}
+          volumeMounts:
+            - {name: data, mountPath: /var/lib/registry}
+            - {name: auth, mountPath: /auth, readOnly: true}
+      volumes:
+        - {name: data, persistentVolumeClaim: {claimName: registry-data}}
+        - name: auth
+          secret: {secretName: registry-htpasswd, items: [{key: htpasswd, path: htpasswd}]}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: registry, namespace: registry, labels: {app: registry}}
+spec:
+  # NodePort so K3s nodes (containerd, no cluster DNS) reach the registry at 127.0.0.1:30500 via the
+  # registries.yaml mirror for "registry.registry:5000". Pods keep using registry.registry:5000 (cluster DNS).
+  # NOT meant to be reachable from outside the node. kube-proxy opens NodePorts on ALL node addresses, and NetworkPolicy
+  # does not reliably filter NodePort traffic (with Cluster policy the source is SNATed to the node, which kube-router
+  # always allows to local pods). Local keeps the client IP so the registry NetworkPolicy (Traefik + ns jenkins only)
+  # rejects remote clients; containerd's own 127.0.0.1 pulls are SNATed to the node IP and still pass.
+  # Host side (required): K3s --kube-proxy-arg=nodeport-addresses=127.0.0.0/8 and a firewall drop for 30500
+  type: NodePort
+  externalTrafficPolicy: Local
+  selector: {app: registry}
+  ports: [{name: http, port: 5000, targetPort: 5000, nodePort: 30500}]
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata: {name: large-body, namespace: registry}
+spec:
+  buffering: {maxRequestBodyBytes: 0}
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata: {name: registry, namespace: registry}
+spec:
+  entryPoints: [websecure]
+  routes:
+    - match: Host(`registry.ai-scan.local`)
+      kind: Rule
+      services: [{name: registry, port: 5000}]
+  tls: {secretName: registry-tls}
+---
+# Phase 9: registry needs no egress except DNS; ingress only from Traefik (pushes/pulls incl. kubelet pulls, which
+# arrive via the Traefik pod) and from ns jenkins (in-cluster registry.registry:5000).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: default-deny, namespace: registry}
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+  egress:
+    - to:
+        - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: kube-system}}
+          podSelector: {matchLabels: {k8s-app: kube-dns}}
+      ports: [{protocol: UDP, port: 53}, {protocol: TCP, port: 53}]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: registry-ingress, namespace: registry}
+spec:
+  podSelector: {matchLabels: {app: registry}}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: kube-system}}
+          podSelector: {matchLabels: {app.kubernetes.io/name: traefik}}
+        - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: jenkins}}
+      ports: [{protocol: TCP, port: 5000}]

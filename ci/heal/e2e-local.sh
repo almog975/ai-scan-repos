@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2329  # helpers are called indirectly (check, wait_for, trap)
-# End-to-end test of auto-heal on the local stack (deploy/overlays/local), current kubectl context.
-# Runs from WSL or Git Bash; needs kubectl and images built/imported as in docs/local-k3d.md.
+# End-to-end test of auto-heal on the local stack (infra/k8s/overlays/local), current kubectl context.
+# Runs from WSL or Git Bash; needs kubectl and images built/imported.
 #   ci/heal/e2e-local.sh [--keep] [--timeout SECONDS] [--no-apply]
 # Steps: apply + wait healthy -> baseline heal (nothing fixed) -> inject faults -> heal -> assert fixes ->
-# restore -> healthy again -> cleanup -> PASS/FAIL. docs/autoheal.md#end-to-end-test-local
+# restore -> healthy again -> cleanup -> PASS/FAIL.
 set -uo pipefail
 
 NS=ai-scan-repos
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
-OVERLAY="$ROOT/deploy/overlays/local"
+OVERLAY="$ROOT/infra/k8s/overlays/local"
 TIMEOUT=300
 KEEP=0
 APPLY=1
@@ -70,7 +70,7 @@ command -v kubectl >/dev/null || { echo "kubectl not found" >&2; exit 2; }
 echo "context: $(kubectl config current-context)  namespace: $NS  timeout: ${TIMEOUT}s"
 
 step "1. apply overlay and wait until healthy"
-if [ "$APPLY" = 1 ]; then check "kubectl apply -k deploy/overlays/local" kubectl apply -k "$OVERLAY"; fi
+if [ "$APPLY" = 1 ]; then check "kubectl apply -k infra/k8s/overlays/local" kubectl apply -k "$OVERLAY"; fi
 check "stack healthy (migrate Complete, deployments Available)" wait_healthy
 
 step "2. baseline heal run (expect nothing fixed)"

@@ -1,0 +1,15 @@
+# Egress for autoheal agent pods only (label jenkins/label=autoheal set by the kubernetes plugin):
+# /readyz checks on the app Services in ai-scan-repos. K8s API and DNS are already allowed for every pod in
+# networkpolicies.yaml (jenkins-egress, allow-intra-namespace); pg_isready runs via kubectl exec (API server).
+# Matching ingress: infra/k8s/platform/base/autoheal-rbac.yaml (autoheal-readyz-ingress).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: autoheal-egress, namespace: jenkins}
+spec:
+  podSelector: {matchLabels: {jenkins/label: autoheal}}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: ai-scan-repos}}
+          podSelector: {matchExpressions: [{key: app, operator: In, values: [review-api, gateway, frontend]}]}
+      ports: [{protocol: TCP, port: 8001}, {protocol: TCP, port: 8000}, {protocol: TCP, port: 8080}]

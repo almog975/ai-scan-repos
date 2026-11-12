@@ -1,0 +1,1 @@
+{{- include "ai-scan.hpa" (list . "reviewApi" "review-api") }}

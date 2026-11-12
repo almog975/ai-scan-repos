@@ -1,11 +1,9 @@
 # infra/
 
-Infra-level assets.
+Everything needed to run the app on Kubernetes.
 
-- `db/schema.sql` – target PostgreSQL schema v1 (source-of-truth reference for the data model).
-- `db/migrations/001_init.sql` – same schema wrapped in a transaction for raw `psql` bootstrap.
-
-The running review-api still applies its own Alembic migrations (`review-api/alembic/`); converging Alembic onto `infra/db/schema.sql` is a follow-up.
-
-TODO (per plan, not in repo yet): K3s install notes, kube-prometheus-stack values, installer (`infra/installer/aiscan-install.sh`) +
-Terraform (VPC/EKS/EFS/ECR), `create-secrets.sh`. Owner: AI Scan Infra. See [ADR-0001](../docs/adr/0001-repo-layout.md).
+- `helm/` — the `ai-scan` chart (Docker Desktop) and kube-prometheus-stack values
+- `k8s/` — Kustomize bases and overlays per component
+- `argocd/` — Argo CD install values, AppProjects, and Applications
+- `jenkins/` — Jenkins Helm values and manifests
+- `bootstrap/` — cluster-scoped objects, the installer, registry, ingress, and the DB schema

@@ -1,4 +1,4 @@
-# Jenkins agent "tools" container for the ai-scan-agent pod template (deploy/jenkins/values.yaml).
+# Jenkins agent "tools" container for the ai-scan-agent pod template (infra/jenkins/values.yaml).
 # node 22 + python 3 (venv/pip) + git/make + trivy + kustomize + crane. Image builds happen in the separate
 # kaniko container, so no Docker daemon is needed here. Build once and push to the registry, e.g.:
 #   docker build -t registry.registry:5000/ai-scan/jenkins-agent:<sha> ci/agent

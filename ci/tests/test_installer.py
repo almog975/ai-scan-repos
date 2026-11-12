@@ -1,4 +1,4 @@
-"""Phase 8: infra/installer/aiscan-install.sh — dry-run plan, no secret leakage, idempotency, image rewrite."""
+"""Phase 8: infra/bootstrap/installer/aiscan-install.sh — dry-run plan, no secret leakage, idempotency, image rewrite."""
 import os
 import shutil
 import subprocess
@@ -9,7 +9,7 @@ import yaml
 
 from conftest import ROOT
 
-SCRIPT = ROOT / "infra/installer/aiscan-install.sh"
+SCRIPT = ROOT / "infra/bootstrap/installer/aiscan-install.sh"
 SECRETS = {"GITHUB_CLIENT_ID": "ghid-123", "GITHUB_CLIENT_SECRET": "fake-oauth-SENTINEL-1",
            "REGISTRY_PUSH_USER": "pusher", "REGISTRY_PUSH_PASSWORD": "push-SENTINEL-2",
            "REGISTRY_PULL_USER": "puller", "REGISTRY_PULL_PASSWORD": "pull-SENTINEL-3",
@@ -62,17 +62,17 @@ def test_shellcheck():
     sc = shutil.which("shellcheck")
     if not sc:
         pytest.skip("shellcheck not installed")
-    r = subprocess.run([sc, str(SCRIPT), str(ROOT / "infra/installer/scripts/install-argocd.sh")],
+    r = subprocess.run([sc, str(SCRIPT), str(ROOT / "infra/bootstrap/installer/scripts/install-argocd.sh")],
                        capture_output=True, text=True)
     assert r.returncode == 0, r.stdout
 
 
 def test_dry_run_plan_touches_nothing(fake):
     env, tmp = fake
-    before = subprocess.run(["git", "status", "--porcelain", "deploy"], cwd=ROOT, capture_output=True, text=True).stdout
+    before = subprocess.run(["git", "status", "--porcelain", "infra/k8s"], cwd=ROOT, capture_output=True, text=True).stdout
     out = sh("--dry-run", "install", env=env).stdout
     assert not (tmp / "log").exists(), "dry-run must not call kubectl/helm/aws"
-    assert subprocess.run(["git", "status", "--porcelain", "deploy"], cwd=ROOT, capture_output=True,
+    assert subprocess.run(["git", "status", "--porcelain", "infra/k8s"], cwd=ROOT, capture_output=True,
                           text=True).stdout == before
     for step in ("preflight", "bootstrap", "registry", "secrets", "images", "deploy", "verify"):
         assert f"==> {step}" in out
@@ -149,16 +149,16 @@ def test_images_rewrite_idempotent_and_valid(fake, tmp_path):
         pytest.skip("kustomize not on PATH")
     env, _ = fake
     root = tmp_path / "repo"
-    shutil.copytree(ROOT / "deploy", root / "deploy")
+    shutil.copytree(ROOT / "infra" / "k8s", root / "infra" / "k8s")
     env = {**env, "ROOT": str(root), "MODE": "direct"}
     sh("--tag", "deadbeef", "--overlay", "local", "images", env=env)
-    snap = {p: p.read_text() for p in root.glob("deploy/*/overlays/local/kustomization.yaml")}
+    snap = {p: p.read_text() for p in root.glob("infra/k8s/*/overlays/local/kustomization.yaml")}
     sh("--tag", "deadbeef", "--overlay", "local", "images", env=env)
-    assert snap == {p: p.read_text() for p in root.glob("deploy/*/overlays/local/kustomization.yaml")}
+    assert snap == {p: p.read_text() for p in root.glob("infra/k8s/*/overlays/local/kustomization.yaml")}
     imgs = set()
     for c in ("review-api", "gateway", "frontend", "scanner-worker"):
         docs = [d for d in yaml.safe_load_all(subprocess.run(
-            ["kustomize", "build", str(root / f"deploy/{c}/overlays/local")], capture_output=True, text=True,
+            ["kustomize", "build", str(root / f"infra/k8s/{c}/overlays/local")], capture_output=True, text=True,
             check=True).stdout) if d]
         text = yaml.safe_dump_all(docs)
         imgs |= {w for w in text.split() if "k3d-ai-scan-registry.localhost:5111/ai-scan/" in w}
@@ -172,14 +172,14 @@ def test_direct_install_calls_in_order(fake):
     env = {**env, "MODE": "direct", "OVERLAY": "local", "SKIP_VERIFY": "1"}
     sh("deploy", env=env)
     calls = [l for l in (tmp / "log").read_text().splitlines() if "apply -k" in l]
-    order = [l.split("deploy/")[1].split("/")[0] for l in calls]
+    order = [l.split("infra/k8s/")[1].split("/")[0] for l in calls]
     assert order == ["platform", "postgres", "scanner-worker", "review-api", "gateway", "frontend"]
 
 
 def test_example_config_has_placeholders_only_and_real_config_ignored():
-    ex = (ROOT / "infra/installer/installer.env.example").read_text()
+    ex = (ROOT / "infra/bootstrap/installer/installer.env.example").read_text()
     for line in ex.splitlines():
         if line and not line.startswith("#") and ("PASSWORD" in line or "SECRET" in line):
             assert line.split("=", 1)[1].split()[0] == "REPLACE_ME", line
-    r = subprocess.run(["git", "check-ignore", "-q", "infra/installer/installer.env"], cwd=ROOT)
+    r = subprocess.run(["git", "check-ignore", "-q", "infra/bootstrap/installer/installer.env"], cwd=ROOT)
     assert r.returncode == 0

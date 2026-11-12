@@ -1,0 +1,9 @@
+# Namespace default SA: used by frontend, gateway and the migrations Job (no dedicated SA).
+# Adds the pull secret regcred. No token automount.
+# Note: Argo CD adopts the controller-created default SA; pruning the platform app deletes it and
+# the ServiceAccount controller recreates it WITHOUT imagePullSecrets until the next sync.
+apiVersion: v1
+kind: ServiceAccount
+metadata: {name: default, namespace: ai-scan-repos}
+automountServiceAccountToken: false
+imagePullSecrets: [{name: regcred}]

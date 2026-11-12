@@ -1,13 +1,13 @@
 # Default owner
 * @almog975
-# --- Infra-owned: Kustomize base/ and overlays/ for every component
+# --- Kustomize base/ and overlays/ for every component
 #     (frontend, gateway, review-api, postgres, scanner-worker, platform), plus infra/ ---
-/deploy/*/base/ @almog975
-/deploy/*/overlays/ @almog975
+/infra/k8s/*/base/ @almog975
+/infra/k8s/*/overlays/ @almog975
 /infra/ @almog975
-# --- Pipelines-owned: CI and Argo CD apps. Jenkins also commits image tags / SCANNER_IMAGE
-#     into deploy/<svc>/overlays/<target>/kustomization.yaml (tagged [skip ci]) ---
+# --- CI and Argo CD apps. Jenkins also commits image tags / SCANNER_IMAGE
+#     into infra/k8s/<svc>/overlays/<target>/kustomization.yaml (tagged [skip ci]) ---
 /Jenkinsfile @almog975
-/deploy/argocd/ @almog975
-/deploy/jenkins/ @almog975
+/infra/argocd/ @almog975
+/infra/jenkins/ @almog975
 /ci/ @almog975

@@ -15,7 +15,7 @@ def k3s():
     if not shutil.which("kustomize"):
         pytest.skip("kustomize not on PATH")
     docs = []
-    for o in sorted(glob.glob(str(ROOT / "deploy/*/overlays/k3s"))) + sorted(glob.glob(str(ROOT / "infra/*/overlays/k3s"))):
+    for o in sorted(glob.glob(str(ROOT / "infra/k8s/*/overlays/k3s"))) + sorted(glob.glob(str(ROOT / "infra/bootstrap/*/overlays/k3s"))):
         for d in build(o):
             d.setdefault("metadata", {})["_overlay"] = o
             docs.append(d)

@@ -1,0 +1,12 @@
+---
+# K3s: on-prem AI over Tailscale via subnet router on K3S-SRV
+# Replace with the advertised subnet
+# or the Tailscale 100.x.y.z/32 of the AI host. Must NOT overlap node IPs.
+# Placeholder CIDRs are RFC 5737 documentation ranges (not routable).
+# Hostnames cannot be used in NetworkPolicy; list IPs/CIDRs only.
+- op: add
+  path: /spec/egress/-
+  value:
+    to: [{ipBlock: {cidr: 192.0.2.0/24}}]  # PLACEHOLDER AI CIDRs (installer: AI_EGRESS_CIDRS)
+    ports:
+      - {protocol: TCP, port: 443}

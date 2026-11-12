@@ -14,7 +14,6 @@ tests:
             exp_annotations:
               summary: No successful reconciler pass in 15 minutes
               description: Stuck/overdue reviews are not being recovered. Check review-api logs ("watchdog pass failed") and the DB.
-              runbook_url: https://github.com/almog975/ai-scan-repos/blob/main/docs/monitoring.md#alerts
   # review-api not exporting at all -> TargetDown's job, ReconcilerNotRunning must stay silent
   - interval: 1m
     input_series:
@@ -41,4 +40,3 @@ tests:
             exp_annotations:
               summary: More than half of onprem AI provider calls failed in 30m
               description: Reviews still complete (AI enrichment is best effort) but without explanations.
-              runbook_url: https://github.com/almog975/ai-scan-repos/blob/main/docs/monitoring.md#alerts

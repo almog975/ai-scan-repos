@@ -6,7 +6,7 @@ from conftest import ROOT
 
 JF = (ROOT / "Jenkinsfile").read_text()
 CODE = "\n".join("" if l.strip().startswith("//") else l for l in JF.splitlines())
-SERVICES = re.findall(r"'([\w-]+)'\s*:\s*\['([\w-]+)',", JF)
+SERVICES = re.findall(r"'([\w-]+)'\s*:\s*\['([\w/-]+)',", JF)
 BOT_EMAIL = re.search(r"BOT_EMAIL\s*=\s*'([^']+)'", JF).group(1)
 
 
@@ -62,7 +62,7 @@ SHARED = re.search(r"def SHARED = \[([^\]]*)\]", JF).group(1).replace("'", "").r
 def model(files, msg="feat: x", author="dev@x", have_base=True):
     if author == BOT_EMAIL or "[skip ci]" in msg:
         return "skip"
-    if files and all(f.startswith("deploy/") for f in files):
+    if files and all(f.startswith("infra/k8s/") for f in files):
         return "skip"
     if not have_base or any(f == s or f.startswith(s) for f in files for s in SHARED):
         return sorted(s for s, _ in SERVICES)
@@ -82,7 +82,7 @@ def test_deploy_uses_same_set_as_build():
 
 def test_model_matches_jenkinsfile_source():
     assert "author == BOT_EMAIL" in JF and "msg.contains('[skip ci]')" in JF
-    assert "files.every { it.startsWith('deploy/') }" in JF
+    assert "files.every { it.startsWith('infra/k8s/') }" in JF
     assert 'files.any { it.startsWith("${SERVICES[s][0]}/") }' in JF
 
 
@@ -108,11 +108,11 @@ def repo(tmp_path):
 
 
 @pytest.mark.parametrize("files,expect", [
-    (["frontend/src/App.tsx"], ["frontend"]),
-    (["gateway/app/main.py", "review-api/app/state.py"], ["gateway", "review-api"]),
-    (["scanner-worker/scanner/run.py", "docs/x.md"], ["scanner-worker"]),
-    (["docs/ci.md"], []),
-    (["deploy/gateway/overlays/k3s/kustomization.yaml"], "skip"),
+    (["services/frontend/src/App.tsx"], ["frontend"]),
+    (["services/gateway/app/main.py", "services/review-api/app/state.py"], ["gateway", "review-api"]),
+    (["services/scanner-worker/scanner/run.py", "docs/x.md"], ["scanner-worker"]),
+    (["docs/user-guide.md"], []),
+    (["infra/k8s/gateway/overlays/k3s/kustomization.yaml"], "skip"),
 ])
 def test_changed_simulation(repo, files, expect):
     assert model(*commit(repo, files, "change")) == expect
@@ -121,13 +121,13 @@ def test_changed_simulation(repo, files, expect):
 def test_tag_bump_commit_is_skipped(repo):
     msg = re.search(r"commit -m '([^']+)'", JF).group(1)
     assert "[skip ci]" in msg
-    files, m, a = commit(repo, ["deploy/frontend/overlays/k3s/kustomization.yaml"], "ci(k3s): frontend -> abc [skip ci]", BOT_EMAIL)
+    files, m, a = commit(repo, ["infra/k8s/frontend/overlays/k3s/kustomization.yaml"], "ci(k3s): frontend -> abc [skip ci]", BOT_EMAIL)
     assert model(files, m, a) == "skip"
     # each guard alone is enough
-    assert model(files) == "skip" and model(["frontend/x"], m) == "skip" and model(["frontend/x"], author=BOT_EMAIL) == "skip"
+    assert model(files) == "skip" and model(["services/frontend/x"], m) == "skip" and model(["services/frontend/x"], author=BOT_EMAIL) == "skip"
 
 
-@pytest.mark.parametrize("f", ["contracts/review-api.openapi.yaml", "mk/common.mk"])
+@pytest.mark.parametrize("f", ["services/contracts/review-api.openapi.yaml", "ci/mk/common.mk"])
 def test_shared_changes_test_dependents(repo, f):
     assert model(*commit(repo, [f], "change")) not in ([], "skip")
 

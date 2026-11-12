@@ -1,0 +1,35 @@
+# Argo CD Application for Docker Desktop: deploys infra/helm/ai-scan from GitHub as Helm release "ai-scan".
+# Image tags come from infra/helm/ai-scan/values-images.yaml, which the CI bot (ci/cicd/Jenkinsfile.docker-desktop)
+# updates after a green build. Jenkins never runs helm/kubectl against the app; this Application does the deploy.
+# Rollback: git revert the bot commit (Argo syncs it back), or see docs/cicd-docker-desktop.md.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: ai-scan
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/almog975/ai-scan-repos.git   # public: no repo credentials
+    targetRevision: main
+    path: infra/helm/ai-scan
+    helm:
+      releaseName: ai-scan
+      valueFiles:
+        - values.yaml
+        - values-docker-desktop.yaml
+        - values-images.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: ai-scan-repos
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+    retry:
+      limit: 3
+      backoff: {duration: 10s, factor: 2, maxDuration: 2m}

@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  labels: {app: frontend}
+spec:
+  {{- include "ai-scan.replicas" (list . "frontend") | nindent 2 }}
+  selector:
+    matchLabels: {app: frontend}
+  template:
+    metadata:
+      labels: {app: frontend}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        {{- include "ai-scan.podSecurityContext" 101 | nindent 8 }}
+      containers:
+        - name: frontend
+          image: {{ include "ai-scan.image" (list . "frontend") }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          ports:
+            - {name: http, containerPort: 8080}
+          env:
+            # nginx proxies /api, /auth, /me, /webhooks to the gateway Service
+            - {name: GATEWAY_UPSTREAM, value: "gateway:{{ .Values.gateway.port }}"}
+          readinessProbe:
+            httpGet: {path: /nginx-health, port: http}
+            periodSeconds: 10
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet: {path: /nginx-health, port: http}
+            periodSeconds: 20
+            timeoutSeconds: 3
+          resources: {{- toYaml .Values.frontend.resources | nindent 12 }}
+          securityContext:
+            {{- include "ai-scan.containerSecurityContext" . | nindent 12 }}
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - {name: tmp, emptyDir: {}}

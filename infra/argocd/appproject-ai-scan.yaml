@@ -1,5 +1,5 @@
-# AppProject for the Pipelines-owned child Applications (deploy/argocd/apps/*.yaml).
-# Apply BEFORE deploy/argocd/root-app.yaml. Cluster-scoped objects (namespaces, PV, StorageClasses) live in
+# AppProject for the child Applications (infra/argocd/apps/*.yaml).
+# Apply BEFORE infra/argocd/root-app.yaml. Cluster-scoped objects (namespaces, PV, StorageClasses) live in
 # infra/bootstrap and are applied by the installer, so only Namespace is whitelisted (CreateNamespace).
 apiVersion: argoproj.io/v1alpha1
 kind: AppProject

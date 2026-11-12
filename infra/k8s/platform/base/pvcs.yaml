@@ -1,0 +1,14 @@
+# Default: local-path RWO (local overlay removes it -> cluster default). k3s overlay -> static PV reports-local (noexec,nosuid,nodev);
+# eks overlay -> EFS RWX.
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: reports
+  namespace: ai-scan-repos
+  labels: {app: review-api}
+  annotations: {argocd.argoproj.io/sync-options: "Delete=false,Prune=false"}
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: local-path
+  resources: {requests: {storage: 5Gi}}

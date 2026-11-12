@@ -1,12 +1,12 @@
-"""deploy/overlays/local: one-shot kubectl apply -k for Docker Desktop / k3d (no registry, no NetworkPolicies)."""
+"""infra/k8s/overlays/local: one-shot kubectl apply -k for Docker Desktop / k3d (no registry, no NetworkPolicies)."""
 import pathlib, shutil, subprocess
 
 import pytest
 import yaml
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-OVERLAY = ROOT / "deploy/overlays/local"
-BASE_NP = ROOT / "deploy/platform/base/networkpolicies.yaml"
+OVERLAY = ROOT / "infra/k8s/overlays/local"
+BASE_NP = ROOT / "infra/k8s/platform/base/networkpolicies.yaml"
 
 
 def build(path=OVERLAY):
@@ -58,9 +58,9 @@ def test_local_overlay_renders_clean():
 @pytest.mark.skipif(not shutil.which("kustomize"), reason="kustomize")
 def test_base_postgres_netpol_covers_migrate():
     """Strict base/prod path: review-api-migrate may reach postgres (egress + ingress)."""
-    docs = build(ROOT / "deploy/platform/overlays/k3s")
+    docs = build(ROOT / "infra/k8s/platform/overlays/k3s")
     # also need a workload with migrate labels from review-api overlay
-    docs += build(ROOT / "deploy/review-api/overlays/k3s")
+    docs += build(ROOT / "infra/k8s/review-api/overlays/k3s")
     nps = [d for d in docs if d["kind"] == "NetworkPolicy"]
     ingress = next(p for p in nps if p["metadata"]["name"] == "postgres-ingress")
     egress = next(p for p in nps if p["metadata"]["name"] == "postgres-clients-egress")
@@ -88,7 +88,7 @@ def test_base_postgres_netpol_covers_migrate():
 def test_gitattributes_and_installer_crlf():
     ga = (ROOT / ".gitattributes").read_text()
     assert "eol=lf" in ga and "*.sh" in ga and "*.yaml" in ga and "Makefile" in ga
-    sh = (ROOT / "infra/installer/aiscan-install.sh").read_text()
+    sh = (ROOT / "infra/bootstrap/installer/aiscan-install.sh").read_text()
     assert r'grep -qE "^  - name: ai-scan/$c\r?$"' in sh
 
 

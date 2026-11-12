@@ -1,0 +1,121 @@
+# Nightly logical backup: pg_dump -Fc of $POSTGRES_DB to PVC postgres-backups, keep BACKUP_RETENTION_DAYS (ConfigMap).
+# Credentials: existing Secret db-secrets (POSTGRES_USER/POSTGRES_PASSWORD/POSTGRES_DB), mounted read-only as files.
+# No values in git.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-backups
+  namespace: ai-scan-repos
+  labels: {app: postgres-backup}
+  # survives Argo CD app deletion/prune (installer uninstall without --purge)
+  annotations: {argocd.argoproj.io/sync-options: "Delete=false,Prune=false"}
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: local-path
+  resources: {requests: {storage: 10Gi}}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata: {name: postgres-backup-config, namespace: ai-scan-repos, labels: {app: postgres-backup}}
+data:
+  BACKUP_RETENTION_DAYS: "14"
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata: {name: postgres-backup, namespace: ai-scan-repos, labels: {app: postgres-backup}}
+automountServiceAccountToken: false
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: postgres-backup
+  namespace: ai-scan-repos
+  labels: {app: postgres-backup, app.kubernetes.io/name: postgres-backup, app.kubernetes.io/part-of: ai-scan-repos}
+spec:
+  schedule: "30 2 * * *"
+  timeZone: Asia/Jerusalem
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 3600
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 3600
+      ttlSecondsAfterFinished: 86400
+      template:
+        metadata: {labels: {app: postgres-backup, app.kubernetes.io/name: postgres-backup, app.kubernetes.io/part-of: ai-scan-repos}}
+        spec:
+          serviceAccountName: postgres-backup
+          automountServiceAccountToken: false
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 70          # postgres user in postgres:16-alpine
+            runAsGroup: 70
+            fsGroup: 70
+            fsGroupChangePolicy: OnRootMismatch
+            seccompProfile: {type: RuntimeDefault}
+          containers:
+            - name: pg-dump
+              image: postgres:16-alpine   # same major as the server (pg_dump must be >= server version)
+              env:
+                - {name: PGHOST, value: postgres}
+                - {name: PGPORT, value: "5432"}
+                - name: BACKUP_RETENTION_DAYS
+                  valueFrom: {configMapKeyRef: {name: postgres-backup-config, key: BACKUP_RETENTION_DAYS}}
+              command: ["/bin/sh", "-c"]
+              args:
+                - |
+                  set -eu
+                  DAYS="$BACKUP_RETENTION_DAYS"
+                  case "$DAYS" in ''|*[!0-9]*|0*) echo "invalid BACKUP_RETENTION_DAYS='$DAYS'" >&2; exit 2;; esac
+                  export PGUSER="$(cat /db/POSTGRES_USER)" PGDATABASE="$(cat /db/POSTGRES_DB)" PGPASSWORD="$(cat /db/POSTGRES_PASSWORD)"
+                  TS=$(date -u +%Y%m%dT%H%M%SZ)
+                  TMP="/backups/.${PGDATABASE}-${TS}.dump.partial"
+                  pg_dump --format=custom --no-owner --file="$TMP"
+                  pg_restore --list "$TMP" >/dev/null      # sanity check: archive is readable
+                  mv "$TMP" "/backups/${PGDATABASE}-${TS}.dump"
+                  find /backups -maxdepth 1 -name '*.dump' -type f -mtime +"$DAYS" -print -delete
+                  find /backups -maxdepth 1 -name '.*.partial' -type f -mmin +120 -delete
+                  echo "postgres-backup: wrote ${PGDATABASE}-${TS}.dump ($(du -h "/backups/${PGDATABASE}-${TS}.dump" | cut -f1)), retention ${DAYS}d"
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: [ALL]}
+              resources:
+                requests: {cpu: 50m, memory: 64Mi}
+                limits: {cpu: 500m, memory: 256Mi}
+              volumeMounts:
+                - {name: backups, mountPath: /backups}
+                - {name: db, mountPath: /db, readOnly: true}
+                - {name: tmp, mountPath: /tmp}
+          volumes:
+            - name: backups
+              persistentVolumeClaim: {claimName: postgres-backups}
+            - name: db
+              secret:
+                secretName: db-secrets
+                defaultMode: 0400
+                items:
+                  - {key: POSTGRES_USER, path: POSTGRES_USER}
+                  - {key: POSTGRES_PASSWORD, path: POSTGRES_PASSWORD}
+                  - {key: POSTGRES_DB, path: POSTGRES_DB}
+            - name: tmp
+              emptyDir: {sizeLimit: 64Mi}
+---
+# Backup pod: no ingress; egress only DNS (allow-dns-egress) + postgres:5432 (postgres-clients-egress) via the
+# namespace policies in infra/k8s/platform. This policy makes the intent explicit and survives if those change.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: postgres-backup, namespace: ai-scan-repos}
+spec:
+  podSelector: {matchLabels: {app: postgres-backup}}
+  policyTypes: [Ingress, Egress]
+  egress:
+    - to: [{podSelector: {matchLabels: {app: postgres}}}]
+      ports: [{protocol: TCP, port: 5432}]
+    - to:
+        - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: kube-system}}
+          podSelector: {matchLabels: {k8s-app: kube-dns}}
+      ports: [{protocol: UDP, port: 53}, {protocol: TCP, port: 53}]

@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: gateway, namespace: ai-scan-repos, labels: {app: gateway}}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: gateway}}
+  template:
+    metadata: {labels: {app: gateway}}
+    spec:
+      automountServiceAccountToken: false   # the gateway never talks to the K8s API
+      securityContext: {runAsNonRoot: true, runAsUser: 10001, runAsGroup: 10001, fsGroup: 10001, fsGroupChangePolicy: OnRootMismatch, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: gateway
+          image: ai-scan/gateway:GIT_SHA   # rewritten by overlay images:, never latest
+          ports: [{name: http, containerPort: 8000}]
+          env:
+            - {name: APP_ENV, value: production}   # refuses dev defaults at startup (app/config.py problems())
+            - {name: REVIEW_API_URL, value: "http://review-api:8001"}
+            - {name: PUBLIC_URL, value: "https://ai-scan.local"}   # = ingress host; every overlay patches it. OAuth callback = PUBLIC_URL/auth/github/callback
+            - {name: COOKIE_SECURE, value: "true"}
+            # uvicorn --proxy-headers trusts only 127.0.0.1 by default; behind Traefik/nginx the client IP (rate limits,
+            # session ip) would be the proxy pod. The Service is ClusterIP-only, reached through the ingress.
+            # Trust X-Forwarded-For only from Traefik: pod CIDR (K3s default 10.42.0.0/16). Override per overlay.
+            # uvicorn takes IP/CIDR literals only (ingress pod IPs are dynamic); the gateway-ingress NetworkPolicy limits
+            # peers to Traefik/frontend/Prometheus. See services/gateway/README.md "Rate limits".
+            - {name: FORWARDED_ALLOW_IPS, value: "10.42.0.0/16"}
+            - name: DATABASE_URL   # users/sessions tables live in the app DB (Alembic, review-api migrations Job)
+              valueFrom: {secretKeyRef: {name: db-secrets, key: DATABASE_URL}}
+            - name: INTERNAL_API_TOKEN   # must equal review-api's; X-Internal-Token on every proxied call
+              valueFrom: {secretKeyRef: {name: scanner-secrets, key: INTERNAL_API_TOKEN}}
+          envFrom: [{secretRef: {name: gateway-secrets}}]   # GITHUB_CLIENT_ID/SECRET, GITHUB_WEBHOOK_SECRET
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+          resources: {requests: {cpu: 100m, memory: 128Mi}, limits: {cpu: 500m, memory: 512Mi}}
+          startupProbe: {httpGet: {path: /healthz, port: http}, periodSeconds: 2, failureThreshold: 30}   # 60 s to boot before liveness counts
+          livenessProbe: {httpGet: {path: /healthz, port: http}, periodSeconds: 20, timeoutSeconds: 3}
+          readinessProbe: {httpGet: {path: /readyz, port: http}, periodSeconds: 10, timeoutSeconds: 5, failureThreshold: 3}
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - {name: tmp, emptyDir: {}}

@@ -1,11 +1,11 @@
-"""deploy/overlays/local-registry: same as local, but images pull from ghcr.io."""
+"""infra/k8s/overlays/local-registry: same as local, but images pull from ghcr.io."""
 import pathlib, shutil, subprocess
 
 import pytest
 import yaml
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-OVERLAY = ROOT / "deploy/overlays/local-registry"
+OVERLAY = ROOT / "infra/k8s/overlays/local-registry"
 WORKFLOW = ROOT / ".github/workflows/images.yml"
 
 GHCR = {
@@ -70,7 +70,7 @@ def test_images_workflow_publishes_to_ghcr():
     assert "workflow_dispatch" in on
     assert "main" in on["push"]["branches"]
     assert "pull_request" in on
-    for key in ("frontend/**", "gateway/**", "review-api/**", "scanner-worker/**", ".github/workflows/images.yml"):
+    for key in ("services/frontend/**", "services/gateway/**", "services/review-api/**", "services/scanner-worker/**", ".github/workflows/images.yml"):
         assert key in on["push"]["paths"]
         assert key in on["pull_request"]["paths"]
 
@@ -80,7 +80,7 @@ def test_images_workflow_publishes_to_ghcr():
     # contexts are the service dirs (same as Makefiles / Jenkins kaniko), not repo root
     by_svc = {row["service"]: row["context"] for row in job["strategy"]["matrix"]["include"]}
     for svc, ctx in by_svc.items():
-        assert ctx == f"./{svc}"
+        assert ctx == f"./services/{svc}"
 
     steps = job["steps"]
     meta = next(s for s in steps if s.get("uses", "").startswith("docker/metadata-action@"))
@@ -101,9 +101,6 @@ def test_images_workflow_publishes_to_ghcr():
 
 
 def test_docs_mention_ghcr_and_public_packages():
-    local = (ROOT / "docs/local-k3d.md").read_text()
-    assert "deploy/overlays/local-registry" in local
-    assert "ghcr.io/almog975/ai-scan-repos-" in local
-    assert "Change visibility" in local or "Package settings" in local
     readme = (ROOT / "README.md").read_text()
-    assert "deploy/overlays/local-registry" in readme
+    assert "infra/k8s/overlays/local-registry" in readme
+    assert "ghcr.io/almog975/ai-scan-repos-" in readme

@@ -1,0 +1,51 @@
+# kube-prometheus-stack for Docker Desktop (nginx ingress, default StorageClass, small footprint).
+#   helm upgrade --install kube-prometheus-stack kube-prometheus-stack \
+#     --repo https://prometheus-community.github.io/helm-charts --version 65.1.1 \
+#     -n monitoring --create-namespace -f infra/helm/kube-prometheus-stack/values-local.yaml --wait
+# k3s/Traefik values stay in values.yaml.
+prometheus:
+  prometheusSpec:
+    retention: 2d
+    # ServiceMonitors / PrometheusRules labelled release=kube-prometheus-stack in any namespace
+    # (infra/helm/ai-scan with monitoring.enabled=true)
+    serviceMonitorSelectorNilUsesHelmValues: false
+    serviceMonitorSelector:
+      matchLabels: {release: kube-prometheus-stack}
+    serviceMonitorNamespaceSelector: {}
+    ruleSelectorNilUsesHelmValues: false
+    ruleSelector:
+      matchLabels: {release: kube-prometheus-stack}
+    ruleNamespaceSelector: {}
+    resources: {requests: {cpu: 100m, memory: 256Mi}, limits: {memory: 1Gi}}
+alertmanager:
+  enabled: false                     # alerts still visible in Prometheus (Alerts tab) and Grafana
+grafana:
+  adminUser: admin
+  adminPassword: admin-local-dev-only    # NOT FOR PRODUCTION (local demo); change with --set grafana.adminPassword=...
+  resources: {requests: {cpu: 50m, memory: 128Mi}, limits: {cpu: 500m, memory: 512Mi}}
+  sidecar:
+    dashboards:
+      enabled: true
+      label: grafana_dashboard
+      labelValue: "1"
+      searchNamespace: [ai-scan-repos]
+      folderAnnotation: grafana_folder
+      provider: {foldersFromFilesStructure: true}
+  persistence:
+    enabled: false
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    hosts: [grafana.localhost]
+# Docker Desktop: control-plane components are not scrapeable as separate targets
+kubeEtcd: {enabled: false}
+kubeControllerManager: {enabled: false}
+kubeScheduler: {enabled: false}
+kubeProxy: {enabled: false}
+# node-exporter mounts the host root and uses hostNetwork; on Docker Desktop (WSL2) the mount
+# propagation of "/" fails ("path / is mounted on / but it is not a shared or slave mount"). Not needed for the demo.
+nodeExporter: {enabled: false}
+prometheusOperator:
+  resources: {requests: {cpu: 50m, memory: 64Mi}, limits: {cpu: 200m, memory: 256Mi}}
+kube-state-metrics:
+  resources: {requests: {cpu: 10m, memory: 64Mi}, limits: {cpu: 200m, memory: 256Mi}}

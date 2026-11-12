@@ -1,5 +1,5 @@
 # ConfigMap ai-scan-autoheal-script from heal.sh (the one copy of the script). Included as a resource by
-# deploy/overlays/local (kustomize's load restrictor allows a kustomization directory outside the root, not a file).
+# infra/k8s/overlays/local (kustomize's load restrictor allows a kustomization directory outside the root, not a file).
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 namespace: ai-scan-repos

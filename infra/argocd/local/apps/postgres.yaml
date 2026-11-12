@@ -1,0 +1,25 @@
+# Child of infra/argocd/local/root-app.yaml (k3d). Sync wave 1.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: ai-scan-postgres-local
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/almog975/ai-scan-repos.git
+    targetRevision: main
+    path: infra/k8s/postgres/overlays/local
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: ai-scan-repos
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

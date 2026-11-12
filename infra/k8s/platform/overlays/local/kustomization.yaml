@@ -1,0 +1,28 @@
+# Single-node local: k3d on Docker Desktop (infra/bootstrap/local/k3d.sh). Host ai-scan.localhost.
+# PVCs use the cluster's DEFAULT StorageClass (storageClassName removed): Docker Desktop = hostpath,
+# k3d/K3s = local-path. noexec on reports is NOT enforced here (mountOptions ignored) - dev only.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources: [../../base]
+patches:
+  - target: {kind: PersistentVolumeClaim, name: reports}
+    patch: |
+      - {op: remove, path: /spec/storageClassName}   # cluster default (Docker Desktop: hostpath)
+  # local: per-environment egress endpoints (placeholders, RFC 5737). Keep the AI CIDR in sync with
+  # infra/k8s/scanner-worker/overlays/local/networkpolicy-ai-egress.yaml. API endpoint: kubectl get endpoints kubernetes -n default.
+  - target: {kind: NetworkPolicy, name: review-api-ai-egress}
+    patch: |
+      - {op: replace, path: /spec/egress/0/to, value: [{ipBlock: {cidr: 198.51.100.10/32}}]}   # PLACEHOLDER AI provider CIDRs (installer: AI_EGRESS_CIDRS)
+  - target: {kind: NetworkPolicy, name: review-api-kube-api-egress}
+    patch: |
+      - {op: replace, path: /spec/egress/0/to/0/ipBlock/cidr, value: 172.16.0.0/12}   # k3d server node on a Docker network; k3d.sh pins the real IP (installer: KUBE_API_ENDPOINT)
+      - {op: replace, path: /spec/egress/1/to/0/ipBlock/cidr, value: 10.43.0.1/32}   # kubernetes Service IP (installer: KUBE_SERVICE_IP)
+  # Host ai-scan.local -> ai-scan.localhost (resolves to 127.0.0.1 in browsers, no /etc/hosts edit; k3d maps 80/443).
+  - target: {kind: IngressRoute, name: ai-scan}
+    patch: |
+      - {op: replace, path: /spec/routes/0/match, value: "Host(`ai-scan.localhost`) && PathRegexp(`^/api/reviews/[^/]+/progress$`)"}
+      - {op: replace, path: /spec/routes/1/match, value: "Host(`ai-scan.localhost`) && (PathPrefix(`/api`) || PathPrefix(`/auth`) || PathPrefix(`/me`) || PathPrefix(`/webhooks`))"}
+      - {op: replace, path: /spec/routes/2/match, value: "Host(`ai-scan.localhost`) && PathPrefix(`/`)"}
+  - target: {kind: IngressRoute, name: ai-scan-http}
+    patch: |
+      - {op: replace, path: /spec/routes/0/match, value: "Host(`ai-scan.localhost`)"}
