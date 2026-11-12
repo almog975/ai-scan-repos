@@ -84,7 +84,7 @@ controller:
           - script: >
               pipelineJob('ai-scan-autoheal') {
                 displayName('AI Scan auto-heal')
-                description('ci/heal/heal.sh every 10 min: delete crashed/evicted pods, re-run a failed migrate Job, restart deployments failing /readyz, check postgres, sync OutOfSync Argo CD apps. docs/autoheal.md')
+                description('ci/heal/heal.sh every 10 min: delete crashed/evicted pods, re-run a failed migrate Job, restart deployments failing /readyz, check postgres, sync OutOfSync Argo CD apps.')
                 parameters { booleanParam('DRY_RUN', false, 'Only report what would be healed; change nothing') }
                 properties {
                   disableConcurrentBuilds()
